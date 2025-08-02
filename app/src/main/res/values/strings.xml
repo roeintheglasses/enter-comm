@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Enter Comm</string>
+    <string name="mesh_network_active">Mesh Network Active</string>
+    <string name="connected_devices">Connected Devices: %1$d</string>
+    <string name="recording_status">Recording: %1$s</string>
+    <string name="start_network">Start Network</string>
+    <string name="stop_network">Stop Network</string>
+    <string name="start_recording">Start Recording</string>
+    <string name="stop_recording">Stop Recording</string>
+    <string name="mute">Mute</string>
+    <string name="unmute">Unmute</string>
+    <string name="create_group">Create Group</string>
+    <string name="searching_devices">Searching for devices...</string>
+    <string name="no_devices_found">No devices found</string>
+    <string name="permissions_required">All permissions are required for the app to work</string>
+    <string name="connection_established">Connected to %1$s</string>
+    <string name="connection_failed">Failed to connect: %1$s</string>
+</resources>
