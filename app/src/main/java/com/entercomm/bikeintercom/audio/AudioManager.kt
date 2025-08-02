@@ -10,7 +10,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import org.webrtc.*
+// import org.webrtc.* // Commented out for now to avoid compatibility issues
 import java.nio.ByteBuffer
 import java.util.concurrent.ConcurrentHashMap
 
@@ -43,9 +43,9 @@ class AudioManager(
     
     private val audioConfig = AudioConfig()
     
-    // WebRTC components
-    private var peerConnectionFactory: PeerConnectionFactory? = null
-    private var audioSource: AudioSource? = null
+    // WebRTC components - temporarily commented out for initial build
+    // private var peerConnectionFactory: PeerConnectionFactory? = null
+    // private var audioSource: AudioSource? = null
     private var audioTrack: AudioTrack? = null
     private var audioRecord: AudioRecord? = null
     
@@ -59,7 +59,7 @@ class AudioManager(
     
     fun initialize() {
         try {
-            initializeWebRTC()
+            // initializeWebRTC() // Temporarily commented out
             setupAudioCapture()
             setupAudioPlayback()
             Log.d(TAG, "AudioManager initialized successfully")
@@ -130,13 +130,14 @@ class AudioManager(
         
         audioRecord?.release()
         audioTrack?.release()
-        audioSource?.dispose()
-        peerConnectionFactory?.dispose()
+        // audioSource?.dispose() // Temporarily commented out
+        // peerConnectionFactory?.dispose() // Temporarily commented out
         
         scope.cancel()
         Log.d(TAG, "AudioManager cleaned up")
     }
     
+    /*
     private fun initializeWebRTC() {
         val initializationOptions = PeerConnectionFactory.InitializationOptions.builder(context)
             .setEnableInternalTracer(false)
@@ -165,7 +166,9 @@ class AudioManager(
         
         audioSource = peerConnectionFactory?.createAudioSource(audioConstraints)
     }
+    */
     
+    /*
     private fun createAudioDeviceModule(): AudioDeviceModule {
         return JavaAudioDeviceModule.builder(context)
             .setUseStereoInput(false)
@@ -178,6 +181,7 @@ class AudioManager(
             }
             .createAudioDeviceModule()
     }
+    */
     
     private fun setupAudioCapture() {
         val bufferSize = AudioRecord.getMinBufferSize(

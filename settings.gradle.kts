@@ -12,6 +12,8 @@ dependencyResolutionManagement {
         google()
         mavenCentral()
         maven { url = uri("https://jitpack.io") }
+        // Add Maven repository for WebRTC
+        maven { url = uri("https://repo1.maven.org/maven2/") }
     }
 }
 

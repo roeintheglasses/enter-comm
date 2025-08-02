@@ -59,8 +59,8 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
     
-    // WebRTC
-    implementation("org.webrtc:google-webrtc:1.0.32006")
+    // WebRTC - using official WebRTC SDK for Android
+    implementation("io.github.webrtc-sdk:android:125.6422.07")
     
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
