@@ -58,6 +58,10 @@ dependencies {
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material:material-icons-extended")
+    
+    // AppCompat for theme support
+    implementation("androidx.appcompat:appcompat:1.6.1")
     
     // WebRTC - using official WebRTC SDK for Android
     implementation("io.github.webrtc-sdk:android:125.6422.07")

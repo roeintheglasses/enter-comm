@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.net.wifi.p2p.*
 import android.net.wifi.p2p.WifiP2pManager.*
+import android.net.wifi.WpsInfo
 import android.util.Log
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,7 +34,7 @@ sealed class WiFiDirectEvent {
 class WiFiDirectManager(
     private val context: Context,
     private val manager: WifiP2pManager,
-    private val channel: Channel
+    private val channel: WifiP2pManager.Channel
 ) {
     
     companion object {

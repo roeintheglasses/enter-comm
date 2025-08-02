@@ -14,7 +14,11 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -218,7 +222,7 @@ class MainActivity : ComponentActivity() {
                     )
                 ) {
                     Icon(
-                        imageVector = if (serviceState.isRunning) Icons.Default.Stop else Icons.Default.PlayArrow,
+                        imageVector = if (serviceState.isRunning) Icons.Default.Close else Icons.Default.PlayArrow,
                         contentDescription = null
                     )
                     Spacer(modifier = Modifier.width(8.dp))
@@ -243,7 +247,7 @@ class MainActivity : ComponentActivity() {
                         )
                     ) {
                         Icon(
-                            imageVector = if (serviceState.isRecording) Icons.Default.MicOff else Icons.Default.Mic,
+                            imageVector = if (serviceState.isRecording) Icons.Default.Close else Icons.Default.Add,
                             contentDescription = null
                         )
                         Spacer(modifier = Modifier.width(8.dp))
@@ -274,7 +278,7 @@ class MainActivity : ComponentActivity() {
                                 onClick = { meshService?.toggleMute() },
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Icon(Icons.Default.VolumeOff, contentDescription = null)
+                                Icon(Icons.Default.Close, contentDescription = null)
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text("Mute")
                             }
@@ -286,7 +290,7 @@ class MainActivity : ComponentActivity() {
                                 },
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Icon(Icons.Default.GroupAdd, contentDescription = null)
+                                Icon(Icons.Default.Add, contentDescription = null)
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text("Create Group")
                             }
@@ -418,7 +422,7 @@ class MainActivity : ComponentActivity() {
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Icon(
-                                                Icons.Default.DeviceHub,
+                                                Icons.Default.Settings,
                                                 contentDescription = null,
                                                 tint = MaterialTheme.colorScheme.primary
                                             )
@@ -436,7 +440,7 @@ class MainActivity : ComponentActivity() {
                                                 )
                                             }
                                             Icon(
-                                                Icons.Default.ChevronRight,
+                                                Icons.Default.KeyboardArrowRight,
                                                 contentDescription = null,
                                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
