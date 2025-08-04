@@ -5,7 +5,16 @@
 *.aab
 
 # Claude
-CLAUDE.md
+GEMINI*.md
+CLAUDE*.md
+.claude
+agents
+plans
+docs
+tickets
+
+
+
 
 # Files for the ART/Dalvik VM
 *.dex
