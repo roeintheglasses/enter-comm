@@ -22,6 +22,9 @@
     <!-- Foreground service for background operation -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    
+    <!-- Nearby devices permission for WiFi Direct discovery (Android 12+) -->
+    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" />
 
     <!-- WiFi Direct feature requirement -->
     <uses-feature

@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -46,6 +47,7 @@ class MainActivity : ComponentActivity() {
             Manifest.permission.CHANGE_WIFI_STATE,
             Manifest.permission.RECORD_AUDIO,
             Manifest.permission.MODIFY_AUDIO_SETTINGS,
+            Manifest.permission.NEARBY_WIFI_DEVICES,
             Manifest.permission.POST_NOTIFICATIONS
         )
     } else {
@@ -62,54 +64,77 @@ class MainActivity : ComponentActivity() {
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
+        Log.d("MainActivity", "Permission result received: $permissions")
+        
+        // Check critical permissions (exclude POST_NOTIFICATIONS as it's optional)
+        val criticalPermissions = permissions.filterKeys { it != Manifest.permission.POST_NOTIFICATIONS }
+        val allCriticalGranted = criticalPermissions.values.all { it }
         val allGranted = permissions.values.all { it }
-        if (allGranted) {
+        
+        Log.d("MainActivity", "All permissions granted: $allGranted")
+        Log.d("MainActivity", "All critical permissions granted: $allCriticalGranted")
+        
+        if (allCriticalGranted) {
+            if (!allGranted) {
+                Log.d("MainActivity", "Non-critical permissions denied, but proceeding normally")
+                Toast.makeText(this, "App ready! (Some optional permissions denied)", Toast.LENGTH_SHORT).show()
+            } else {
+                Log.d("MainActivity", "All permissions granted!")
+                Toast.makeText(this, "All permissions granted! App ready.", Toast.LENGTH_SHORT).show()
+            }
             initializeService()
         } else {
-            Toast.makeText(this, "All permissions are required for the app to work", Toast.LENGTH_LONG).show()
+            Log.w("MainActivity", "Critical permissions denied: $permissions")
+            Toast.makeText(this, "Critical permissions required for mesh networking", Toast.LENGTH_LONG).show()
+            
+            // Still try to initialize service for debugging
+            Log.d("MainActivity", "Attempting to initialize service with missing critical permissions")
+            initializeService()
         }
     }
     
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-            val binder = service as MeshNetworkService.MeshNetworkBinder
-            meshService = binder.getService()
-            isServiceBound = true
-            
-            // Set up service callbacks
-            meshService?.onStateChanged = { state ->
-                // State updates are handled in Compose
-            }
-            
-            meshService?.onDeviceDiscovered = { deviceName, deviceAddress ->
-                // Handle device discovery
-            }
-            
-            meshService?.onConnectionEstablished = { address ->
-                Toast.makeText(this@MainActivity, "Connected to $address", Toast.LENGTH_SHORT).show()
-            }
-            
-            meshService?.onError = { message ->
-                Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
+            try {
+                val binder = service as? MeshNetworkService.MeshNetworkBinder
+                if (binder != null) {
+                    meshService = binder.getService()
+                    isServiceBound = true
+                    Log.d("MainActivity", "Service connected successfully")
+                    Toast.makeText(this@MainActivity, "Mesh service connected - Ready to start!", Toast.LENGTH_SHORT).show()
+                } else {
+                    Log.e("MainActivity", "Failed to get service binder")
+                    Toast.makeText(this@MainActivity, "Failed to connect to service", Toast.LENGTH_LONG).show()
+                }
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Error connecting to service", e)
+                Toast.makeText(this@MainActivity, "Service connection error: ${e.message}", Toast.LENGTH_LONG).show()
             }
         }
         
         override fun onServiceDisconnected(name: ComponentName?) {
+            Log.d("MainActivity", "Service disconnected")
             meshService = null
             isServiceBound = false
+            Toast.makeText(this@MainActivity, "Service disconnected", Toast.LENGTH_SHORT).show()
         }
     }
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Log.d("MainActivity", "onCreate() started")
         
         // Check permissions
         if (hasAllPermissions()) {
+            Log.d("MainActivity", "All critical permissions granted, initializing service")
+            Toast.makeText(this, "All permissions ready! Starting app...", Toast.LENGTH_SHORT).show()
             initializeService()
         } else {
+            Log.d("MainActivity", "Missing critical permissions, requesting them")
             requestPermissions()
         }
         
+        Log.d("MainActivity", "Setting up UI content")
         setContent {
             EnterCommTheme {
                 Surface(
@@ -131,18 +156,63 @@ class MainActivity : ComponentActivity() {
     }
     
     private fun hasAllPermissions(): Boolean {
-        return requiredPermissions.all { permission ->
+        val permissionStatus = requiredPermissions.associateWith { permission ->
             ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
         }
+        Log.d("MainActivity", "Permission status: $permissionStatus")
+        
+        // Check critical permissions (exclude POST_NOTIFICATIONS as it's optional)
+        val criticalPermissions = permissionStatus.filterKeys { it != Manifest.permission.POST_NOTIFICATIONS }
+        val allCriticalGranted = criticalPermissions.values.all { it }
+        val allGranted = permissionStatus.values.all { it }
+        
+        Log.d("MainActivity", "All permissions granted: $allGranted")
+        Log.d("MainActivity", "All critical permissions granted: $allCriticalGranted")
+        
+        return allCriticalGranted
     }
     
     private fun requestPermissions() {
+        Log.d("MainActivity", "Requesting permissions: ${requiredPermissions.toList()}")
         permissionLauncher.launch(requiredPermissions)
     }
     
     private fun initializeService() {
-        val intent = Intent(this, MeshNetworkService::class.java)
-        bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+        Log.d("MainActivity", "Initializing service...")
+        try {
+            val intent = Intent(this, MeshNetworkService::class.java)
+            Log.d("MainActivity", "Created intent for service: ${intent.component}")
+            
+            // Start the service first to ensure it's created
+            val startResult = startService(intent)
+            Log.d("MainActivity", "Start service result: $startResult")
+            
+            // Add a small delay to ensure service is ready
+            Thread.sleep(100)
+            
+            // Then bind to it
+            val bound = bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+            Log.d("MainActivity", "Service binding attempted: $bound")
+            
+            if (!bound) {
+                Log.e("MainActivity", "Failed to bind to service")
+                Toast.makeText(this, "Failed to bind to service", Toast.LENGTH_LONG).show()
+            } else {
+                // Set a timeout to detect if service connection fails
+                Thread {
+                    Thread.sleep(3000) // Wait 3 seconds
+                    if (!isServiceBound) {
+                        Log.w("MainActivity", "Service connection timeout")
+                        runOnUiThread {
+                            Toast.makeText(this@MainActivity, "Service connection timeout. Check logs for errors.", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }.start()
+            }
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error initializing service", e)
+            Toast.makeText(this, "Service initialization error: ${e.message}", Toast.LENGTH_LONG).show()
+        }
     }
     
     @Composable
@@ -150,10 +220,43 @@ class MainActivity : ComponentActivity() {
         var serviceState by remember { mutableStateOf(ServiceState()) }
         var discoveredDevices by remember { mutableStateOf(listOf<Pair<String, String>>()) }
         
-        // Collect service state
+        // Collect service state from the service
         LaunchedEffect(meshService) {
-            meshService?.serviceState?.collect { state ->
-                serviceState = state
+            meshService?.let { service ->
+                service.serviceState.collect { state ->
+                    serviceState = state
+                }
+            }
+        }
+        
+        // Set up service callbacks for real-time updates
+        LaunchedEffect(meshService) {
+            meshService?.let { service ->
+                service.onStateChanged = { state ->
+                    serviceState = state
+                    // Clear discovered devices when network stops
+                    if (!state.isRunning) {
+                        discoveredDevices = emptyList()
+                    }
+                }
+                
+                service.onDeviceDiscovered = { deviceName, deviceAddress ->
+                    // Avoid duplicates by checking if device already exists
+                    val devicePair = deviceName to deviceAddress
+                    if (!discoveredDevices.contains(devicePair)) {
+                        discoveredDevices = discoveredDevices + devicePair
+                    }
+                }
+                
+                service.onConnectionEstablished = { address ->
+                    // Clear discovered devices since we're now connected
+                    discoveredDevices = emptyList()
+                    Log.d("MainActivity", "Connection established to $address")
+                }
+                
+                service.onError = { message ->
+                    // Handle error feedback
+                }
             }
         }
         
@@ -163,40 +266,34 @@ class MainActivity : ComponentActivity() {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Header
+            // App status and instructions
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(
-                    containerColor = if (serviceState.isRunning) 
-                        MaterialTheme.colorScheme.primaryContainer 
-                    else 
-                        MaterialTheme.colorScheme.surfaceVariant
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
                 )
             ) {
                 Column(
                     modifier = Modifier.padding(16.dp)
                 ) {
                     Text(
-                        text = "Bike Intercom",
-                        style = MaterialTheme.typography.headlineMedium,
+                        "Enter-Comm Bike Intercom",
+                        style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = serviceState.networkStatus,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = if (serviceState.isRunning) 
-                            MaterialTheme.colorScheme.onPrimaryContainer 
-                        else 
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    if (serviceState.connectedDevices > 0) {
-                        Text(
-                            text = "${serviceState.connectedDevices} device(s) connected",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.primary
-                        )
+                    
+                    val statusText = when {
+                        !isServiceBound -> "Connecting to service..."
+                        !serviceState.isRunning -> "Ready to start. Tap 'Start' to begin mesh network."
+                        else -> "Mesh network active: ${serviceState.networkStatus}"
                     }
+                    
+                    Text(
+                        statusText,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
                 }
             }
             
@@ -210,7 +307,14 @@ class MainActivity : ComponentActivity() {
                         if (serviceState.isRunning) {
                             meshService?.stopMeshNetwork()
                         } else {
-                            meshService?.startMeshNetwork()
+                            if (meshService != null) {
+                                Log.d("MainActivity", "Starting mesh network...")
+                                Toast.makeText(this@MainActivity, "Starting mesh network...", Toast.LENGTH_SHORT).show()
+                                meshService?.startMeshNetwork()
+                            } else {
+                                Log.w("MainActivity", "Service not connected")
+                                Toast.makeText(this@MainActivity, "Service not connected. Please wait...", Toast.LENGTH_SHORT).show()
+                            }
                         }
                     },
                     modifier = Modifier.weight(1f),

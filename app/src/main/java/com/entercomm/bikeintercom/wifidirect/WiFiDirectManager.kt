@@ -12,6 +12,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import java.net.InetAddress
 
 data class PeerDevice(
@@ -28,6 +29,7 @@ sealed class WiFiDirectEvent {
     data class PeersChanged(val peers: List<WifiP2pDevice>) : WiFiDirectEvent()
     data class ConnectionChanged(val info: WifiP2pInfo?) : WiFiDirectEvent()
     data class DeviceChanged(val device: WifiP2pDevice?) : WiFiDirectEvent()
+    data class GroupInfoChanged(val clients: List<PeerDevice>, val isGroupOwner: Boolean) : WiFiDirectEvent()
     data class Error(val message: String) : WiFiDirectEvent()
 }
 
@@ -52,6 +54,9 @@ class WiFiDirectManager(
     private val _connectionInfo = MutableStateFlow<WifiP2pInfo?>(null)
     val connectionInfo: StateFlow<WifiP2pInfo?> = _connectionInfo.asStateFlow()
     
+    private val _availablePeers = MutableStateFlow<List<WifiP2pDevice>>(emptyList())
+    val availablePeers: StateFlow<List<WifiP2pDevice>> = _availablePeers.asStateFlow()
+    
     private val eventChannel = Channel<WiFiDirectEvent>(Channel.UNLIMITED)
     
     private val receiver = object : BroadcastReceiver() {
@@ -70,8 +75,10 @@ class WiFiDirectManager(
                 
                 WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION -> {
                     manager.requestPeers(channel) { peers ->
-                        eventChannel.trySend(WiFiDirectEvent.PeersChanged(peers.deviceList.toList()))
-                        Log.d(TAG, "Peers changed: ${peers.deviceList.size} devices found")
+                        val peerList = peers.deviceList.toList()
+                        _availablePeers.value = peerList
+                        eventChannel.trySend(WiFiDirectEvent.PeersChanged(peerList))
+                        Log.d(TAG, "Peers changed: ${peerList.size} devices found")
                     }
                 }
                 
@@ -191,7 +198,11 @@ class WiFiDirectManager(
         })
     }
     
-    private fun requestGroupInfo() {
+    fun getAvailablePeers(): List<WifiP2pDevice> {
+        return _availablePeers.value
+    }
+    
+    fun requestGroupInfo() {
         manager.requestGroupInfo(channel) { group ->
             if (group != null) {
                 val peers = group.clientList.map { client ->
@@ -202,9 +213,11 @@ class WiFiDirectManager(
                     )
                 }.toMutableList()
                 
-                // Add group owner if we're not the group owner
                 val connectionInfo = _connectionInfo.value
-                if (connectionInfo?.isGroupOwner == false) {
+                val isGroupOwner = connectionInfo?.isGroupOwner ?: false
+                
+                // Add group owner if we're not the group owner
+                if (!isGroupOwner && connectionInfo != null) {
                     peers.add(0, PeerDevice(
                         deviceName = "Group Owner",
                         deviceAddress = "",
@@ -215,7 +228,10 @@ class WiFiDirectManager(
                 }
                 
                 _connectedPeers.value = peers
-                Log.d(TAG, "Group info updated: ${peers.size} connected peers")
+                Log.d(TAG, "Group info updated: ${peers.size} connected peers, isGroupOwner: $isGroupOwner")
+                
+                // Emit group info event
+                eventChannel.trySend(WiFiDirectEvent.GroupInfoChanged(peers, isGroupOwner))
             }
         }
     }
@@ -230,7 +246,5 @@ class WiFiDirectManager(
         }
     }
     
-    suspend fun getEvents(): kotlinx.coroutines.channels.ReceiveChannel<WiFiDirectEvent> {
-        return eventChannel
-    }
+    fun getEvents() = eventChannel.receiveAsFlow()
 }

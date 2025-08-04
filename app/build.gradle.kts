@@ -63,8 +63,8 @@ dependencies {
     // AppCompat for theme support
     implementation("androidx.appcompat:appcompat:1.6.1")
     
-    // WebRTC - using official WebRTC SDK for Android
-    implementation("io.github.webrtc-sdk:android:125.6422.07")
+    // WebRTC - temporarily disabled due to compatibility issues
+    // implementation("io.github.webrtc-sdk:android:125.6422.07")
     
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
