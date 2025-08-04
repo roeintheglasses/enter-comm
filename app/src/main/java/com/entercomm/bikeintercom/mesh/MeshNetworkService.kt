@@ -251,6 +251,28 @@ class MeshNetworkService : Service() {
                 // Monitor WiFi Direct events (with restart capability)
                 launch { monitorWiFiDirectEvents() }
                 
+                // Start automatic device scanning after a short delay (and limit frequency)
+                launch {
+                    delay(10000) // Wait 10 seconds for mesh network to initialize and WiFi Direct discovery
+                    
+                    // Only do network scan if no devices discovered through WiFi Direct
+                    if (_serviceState.value.connectedDevices == 0) {
+                        Log.d(TAG, "No devices found via WiFi Direct, starting network scan...")
+                        meshNetworkManager.scanAndConnectToAvailableDevices()
+                    } else {
+                        Log.d(TAG, "Devices already found via WiFi Direct, skipping network scan")
+                    }
+                    
+                    // Periodic scanning every 2 minutes, but only if no devices connected
+                    while (_serviceState.value.isRunning) {
+                        delay(120000) // Wait 2 minutes between scans
+                        if (_serviceState.value.isRunning && _serviceState.value.connectedDevices == 0) {
+                            Log.d(TAG, "No devices connected, performing periodic scan...")
+                            meshNetworkManager.scanAndConnectToAvailableDevices()
+                        }
+                    }
+                }
+                
                 updateServiceState {
                     copy(
                         isRunning = true,
@@ -358,6 +380,17 @@ class MeshNetworkService : Service() {
     private var lastConnectionAttempt = 0L
     private val CONNECTION_COOLDOWN = 5000L // 5 seconds
     
+    fun scanForDevices() {
+        if (_serviceState.value.isRunning && ::meshNetworkManager.isInitialized) {
+            Log.d(TAG, "Starting network scan for available devices...")
+            meshNetworkManager.scanAndConnectToAvailableDevices()
+        } else {
+            val message = if (!_serviceState.value.isRunning) "Cannot scan: Mesh network not active" else "Mesh network manager not initialized"
+            onError?.invoke(message)
+            Log.w(TAG, message)
+        }
+    }
+    
     fun connectToDevice(deviceAddress: String) {
         // Prevent multiple simultaneous connection attempts
         val now = System.currentTimeMillis()
@@ -443,7 +476,7 @@ class MeshNetworkService : Service() {
                                     val groupOwnerAddress = info.groupOwnerAddress?.hostAddress
                                     if (!info.isGroupOwner) {
                                         // We're a client, connect to group owner
-                                        val groupOwnerIP = groupOwnerAddress ?: "192.168.49.1"
+                                        val groupOwnerIP = groupOwnerAddress ?: getWiFiDirectGroupOwnerIP()
                                         Log.d(TAG, "CLIENT: Attempting to connect to group owner mesh network at $groupOwnerIP")
                                         
                                         // Add retry logic for mesh network connection
@@ -465,7 +498,7 @@ class MeshNetworkService : Service() {
                                         onConnectionEstablished?.invoke(groupOwnerIP)
                                     } else {
                                         // We're the group owner
-                                        val ourIP = groupOwnerAddress ?: "192.168.49.1"
+                                        val ourIP = groupOwnerAddress ?: getLocalWiFiDirectIP()
                                         Log.d(TAG, "GROUP OWNER: We are group owner at $ourIP, mesh network ready for client connections")
                                         Log.d(TAG, "GROUP OWNER: Mesh network is listening on port ${MeshNetworkManager.DISCOVERY_PORT} for client discovery messages")
                                         wifiDirectManager.requestGroupInfo()
@@ -573,6 +606,87 @@ class MeshNetworkService : Service() {
             val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.createNotificationChannel(channel)
         }
+    }
+    
+    private fun getWiFiDirectGroupOwnerIP(): String {
+        // Try to dynamically detect the group owner IP
+        try {
+            val networkInterfaces = java.net.NetworkInterface.getNetworkInterfaces()
+            
+            for (networkInterface in networkInterfaces) {
+                if (!networkInterface.isUp || networkInterface.isLoopback) {
+                    continue
+                }
+                
+                // Look for WiFi Direct interface (usually p2p-* or similar)
+                val interfaceName = networkInterface.name.lowercase()
+                if (interfaceName.contains("p2p") || interfaceName.contains("direct")) {
+                    for (interfaceAddress in networkInterface.interfaceAddresses) {
+                        val inetAddress = interfaceAddress.address
+                        if (inetAddress is java.net.Inet4Address) {
+                            val ipAddress = inetAddress.hostAddress
+                            if (ipAddress != null && !ipAddress.startsWith("127.")) {
+                                Log.d(TAG, "Found WiFi Direct IP: $ipAddress on interface $interfaceName")
+                                // For WiFi Direct, the group owner is typically at .1
+                                val subnet = ipAddress.substringBeforeLast(".")
+                                return "$subnet.1"
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error detecting WiFi Direct group owner IP", e)
+        }
+        
+        // Fallback to common WiFi Direct group owner IP
+        Log.d(TAG, "Using fallback WiFi Direct group owner IP: 192.168.49.1")
+        return "192.168.49.1"
+    }
+    
+    private fun getLocalWiFiDirectIP(): String {
+        // Try to dynamically detect our local WiFi Direct IP
+        try {
+            val networkInterfaces = java.net.NetworkInterface.getNetworkInterfaces()
+            
+            for (networkInterface in networkInterfaces) {
+                if (!networkInterface.isUp || networkInterface.isLoopback) {
+                    continue
+                }
+                
+                // Look for WiFi Direct interface
+                val interfaceName = networkInterface.name.lowercase()
+                if (interfaceName.contains("p2p") || interfaceName.contains("direct")) {
+                    for (interfaceAddress in networkInterface.interfaceAddresses) {
+                        val inetAddress = interfaceAddress.address
+                        if (inetAddress is java.net.Inet4Address) {
+                            val ipAddress = inetAddress.hostAddress
+                            if (ipAddress != null && !ipAddress.startsWith("127.")) {
+                                Log.d(TAG, "Found our WiFi Direct IP: $ipAddress on interface $interfaceName")
+                                return ipAddress
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error detecting local WiFi Direct IP", e)
+        }
+        
+        // Fallback - try to get any non-loopback IP
+        try {
+            val localIPs = meshNetworkManager.getLocalIPAddresses()
+            if (localIPs.isNotEmpty()) {
+                Log.d(TAG, "Using fallback IP from available interfaces: ${localIPs.first()}")
+                return localIPs.first()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting fallback IP", e)
+        }
+        
+        // Final fallback
+        Log.d(TAG, "Using final fallback WiFi Direct IP: 192.168.49.1")
+        return "192.168.49.1"
     }
     
     private fun createNotification(): Notification {

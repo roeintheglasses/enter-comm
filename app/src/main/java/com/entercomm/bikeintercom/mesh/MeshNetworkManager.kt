@@ -69,6 +69,7 @@ class MeshNetworkManager(
     private val nodes = ConcurrentHashMap<String, MeshNode>()
     private val routingTable = ConcurrentHashMap<String, MeshRoute>()
     private val messageCache = ConcurrentHashMap<String, Long>()
+    private val discoveryResponseCache = ConcurrentHashMap<String, Long>() // Rate limit discovery responses
     
     private var discoverySocket: DatagramSocket? = null
     private var audioSocket: DatagramSocket? = null
@@ -125,54 +126,100 @@ class MeshNetworkManager(
         nodes.clear()
         routingTable.clear()
         messageCache.clear()
+        discoveryResponseCache.clear()
         _connectedNodes.value = emptyList()
         
         Log.d(TAG, "Mesh network stopped")
     }
     
+    fun scanAndConnectToAvailableDevices() {
+        scope.launch {
+            Log.d(TAG, "Starting network scan for available devices...")
+            
+            val localIPs = getLocalIPAddresses()
+            if (localIPs.isEmpty()) {
+                Log.w(TAG, "No local IP addresses found, cannot scan network")
+                return@launch
+            }
+            
+            Log.d(TAG, "Local IPs: ${localIPs.joinToString(", ")}")
+            
+            // Use the first available local IP to determine network subnet
+            val localIP = localIPs.first()
+            val subnet = localIP.substringBeforeLast(".")
+            
+            Log.d(TAG, "Scanning subnet $subnet.* for Enter-Comm devices (excluding our own IPs)...")
+            
+            // Scan common IP ranges in the subnet
+            val scanJobs = mutableListOf<Job>()
+            
+            for (i in 1..254) {
+                val targetIP = "$subnet.$i"
+                
+                // Skip our own IPs and any already connected nodes
+                if (localIPs.contains(targetIP) || nodes.values.any { it.ipAddress == targetIP }) {
+                    continue
+                }
+                
+                // Launch concurrent discovery probes
+                val job = launch {
+                    try {
+                        // Quick check if host is reachable
+                        val address = InetAddress.getByName(targetIP)
+                        if (address.isReachable(500)) { // 500ms timeout for quick scan
+                            Log.d(TAG, "Found reachable device at $targetIP, sending discovery probe...")
+                            sendDiscoveryProbe(targetIP, DISCOVERY_PORT)
+                        }
+                    } catch (e: Exception) {
+                        // Silently ignore unreachable hosts to avoid spam
+                    }
+                }
+                scanJobs.add(job)
+                
+                // Limit concurrent scans to avoid overwhelming the network
+                if (scanJobs.size >= 20) {
+                    scanJobs.joinAll()
+                    scanJobs.clear()
+                    delay(100) // Small delay between batches
+                }
+            }
+            
+            // Wait for remaining scan jobs
+            scanJobs.joinAll()
+            
+            Log.d(TAG, "Network scan completed. Sent discovery probes to all reachable devices.")
+            Log.d(TAG, "Actual mesh connections: ${nodes.size} devices")
+        }
+    }
+    
     fun addDirectConnection(ipAddress: String, port: Int = DISCOVERY_PORT) {
-        Log.d(TAG, "Adding direct connection to $ipAddress:$port")
-        
-        val nodeId = generateNodeId(ipAddress)
-        val node = MeshNode(
-            nodeId = nodeId,
-            deviceName = "Direct-$ipAddress",
-            ipAddress = ipAddress,
-            port = port,
-            isDirectConnection = true,
-            hopCount = 1
-        )
-        
-        // Check if node already exists
-        if (nodes.containsKey(nodeId)) {
-            Log.d(TAG, "Node $nodeId already exists, updating...")
+        // Check if this is our own IP
+        val localIPs = getLocalIPAddresses()
+        if (localIPs.contains(ipAddress)) {
+            Log.d(TAG, "Skipping direct connection to our own IP: $ipAddress")
+            return
         }
         
-        nodes[nodeId] = node
-        routingTable[nodeId] = MeshRoute(
-            destinationId = nodeId,
-            nextHop = nodeId,
-            hopCount = 1
-        )
+        val nodeId = generateNodeId(ipAddress)
         
-        updateConnectedNodesList()
-        
-        Log.d(TAG, "Node added to mesh network: $nodeId at $ipAddress:$port")
-        Log.d(TAG, "Current mesh network has ${nodes.size} nodes: ${nodes.keys.joinToString(", ")}")
-        
-        // Send multiple discovery messages to establish connection
-        repeat(3) { attempt ->
-            Log.d(TAG, "Sending discovery message to $ipAddress:$port (attempt ${attempt + 1}/3)")
-            sendDiscoveryMessage(ipAddress, port)
-            if (attempt < 2) {
-                // Small delay between attempts
-                scope.launch {
-                    delay(1000)
-                }
+        // Check if node already exists and was recently updated
+        val existingNode = nodes[nodeId]
+        if (existingNode != null) {
+            val timeSinceUpdate = System.currentTimeMillis() - existingNode.lastSeen
+            if (timeSinceUpdate < 30000) { // Don't re-add if updated within last 30 seconds
+                Log.d(TAG, "Node $nodeId at $ipAddress already exists and is recent, skipping...")
+                return
             }
         }
         
-        Log.d(TAG, "Added direct connection to $ipAddress:$port, total nodes: ${nodes.size}")
+        Log.d(TAG, "Attempting direct connection to $ipAddress:$port")
+        
+        // Only send discovery message - don't create phantom nodes
+        // Nodes will be created only when they respond with discovery messages
+        Log.d(TAG, "Sending discovery message to $ipAddress:$port")
+        sendDiscoveryMessage(ipAddress, port)
+        
+        Log.d(TAG, "Discovery message sent to $ipAddress:$port - waiting for response...")
     }
     
     fun sendAudioData(audioData: ByteArray, destinationId: String? = null) {
@@ -379,6 +426,21 @@ class MeshNetworkManager(
                 return
             }
             
+            // Check if we should respond (rate limiting)
+            val currentTime = System.currentTimeMillis()
+            val lastResponseTime = discoveryResponseCache[senderIp] ?: 0
+            val timeSinceLastResponse = currentTime - lastResponseTime
+            
+            if (timeSinceLastResponse < 5000) { // Don't respond more than once every 5 seconds to same IP
+                Log.d(TAG, "Rate limiting discovery response to $senderIp (last response ${timeSinceLastResponse}ms ago)")
+                // Still update the node but don't send another response
+            } else {
+                // Send our info back
+                Log.d(TAG, "Sending discovery response to $senderIp")
+                sendDiscoveryResponse(senderIp)
+                discoveryResponseCache[senderIp] = currentTime
+            }
+            
             // Check if this is a new node or an update
             val existingNode = nodes[remoteNodeId]
             if (existingNode != null) {
@@ -405,10 +467,6 @@ class MeshNetworkManager(
             )
             
             updateConnectedNodesList()
-            
-            // Send our info back
-            Log.d(TAG, "Sending discovery response to $senderIp")
-            sendDiscoveryResponse(senderIp)
             
             Log.d(TAG, "Mesh network updated: discovered $deviceName ($remoteNodeId) at $senderIp")
             Log.d(TAG, "Total connected nodes: ${nodes.size}")
@@ -480,11 +538,9 @@ class MeshNetworkManager(
                 val data = serializeMessage(message)
                 Log.d(TAG, "Broadcasting discovery: nodeId=$nodeId, deviceName=$deviceName, dataSize=${data.size}")
                 
-                // Try multiple broadcast addresses for better coverage
-                val broadcastAddresses = listOf(
-                    "255.255.255.255",  // General broadcast
-                    "192.168.49.255"    // WiFi Direct subnet broadcast
-                )
+                // Dynamically get broadcast addresses for all active network interfaces
+                val broadcastAddresses = getNetworkBroadcastAddresses()
+                Log.d(TAG, "Found ${broadcastAddresses.size} broadcast addresses: ${broadcastAddresses.joinToString(", ")}")
                 
                 for (broadcastAddr in broadcastAddresses) {
                     try {
@@ -535,6 +591,38 @@ class MeshNetworkManager(
                 Log.e(TAG, "Failed to send discovery message to $ipAddress:$port", e)
                 Log.e(TAG, "Exception details: ${e.javaClass.simpleName}: ${e.message}")
                 e.printStackTrace()
+            }
+        }
+    }
+    
+    private fun sendDiscoveryProbe(ipAddress: String, port: Int) {
+        scope.launch {
+            try {
+                Log.d(TAG, "Sending discovery probe to $ipAddress:$port")
+                
+                val payload = "$nodeId|$deviceName".toByteArray()
+                val message = MeshMessage(
+                    sourceId = nodeId,
+                    destinationId = "discovery",
+                    messageType = MeshMessage.MessageType.DISCOVERY,
+                    payload = payload
+                )
+                
+                val data = serializeMessage(message)
+                val targetAddress = InetAddress.getByName(ipAddress)
+                val packet = DatagramPacket(data, data.size, targetAddress, port)
+                
+                val socket = discoverySocket
+                if (socket != null && !socket.isClosed) {
+                    socket.send(packet)
+                    Log.d(TAG, "Discovery probe sent to $ipAddress:$port")
+                } else {
+                    Log.w(TAG, "Discovery socket not available for probe to $ipAddress:$port")
+                }
+                
+            } catch (e: Exception) {
+                // Silently fail for probes - most devices won't be running Enter-Comm
+                Log.v(TAG, "Discovery probe failed to $ipAddress:$port: ${e.message}")
             }
         }
     }
@@ -592,6 +680,15 @@ class MeshNetworkManager(
             messageCache.remove(messageId)
         }
         
+        // Remove old discovery response cache entries
+        val expiredResponses = discoveryResponseCache.filter { (_, timestamp) ->
+            currentTime - timestamp > 300000 // 5 minutes
+        }.keys
+        
+        expiredResponses.forEach { ipAddress ->
+            discoveryResponseCache.remove(ipAddress)
+        }
+        
         if (expiredNodes.isNotEmpty() || expiredRoutes.isNotEmpty()) {
             updateConnectedNodesList()
         }
@@ -609,6 +706,77 @@ class MeshNetworkManager(
         // Simple serialization - in production, use more robust serialization
         val data = "${message.messageId}|${message.sourceId}|${message.destinationId}|${message.messageType}|${message.ttl}|${message.timestamp}|"
         return data.toByteArray() + message.payload
+    }
+    
+    private fun getNetworkBroadcastAddresses(): List<String> {
+        val broadcastAddresses = mutableListOf<String>()
+        
+        try {
+            // Always include general broadcast
+            broadcastAddresses.add("255.255.255.255")
+            
+            val networkInterfaces = NetworkInterface.getNetworkInterfaces()
+            
+            for (networkInterface in networkInterfaces) {
+                if (!networkInterface.isUp || networkInterface.isLoopback) {
+                    continue
+                }
+                
+                Log.d(TAG, "Checking network interface: ${networkInterface.name}")
+                
+                for (interfaceAddress in networkInterface.interfaceAddresses) {
+                    val broadcast = interfaceAddress.broadcast
+                    if (broadcast != null) {
+                        val broadcastAddr = broadcast.hostAddress
+                        if (broadcastAddr != null && !broadcastAddresses.contains(broadcastAddr)) {
+                            broadcastAddresses.add(broadcastAddr)
+                            Log.d(TAG, "Found broadcast address: $broadcastAddr for interface ${networkInterface.name}")
+                        }
+                    }
+                }
+            }
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting network broadcast addresses", e)
+            // Fallback to common addresses if dynamic detection fails
+            if (broadcastAddresses.size <= 1) {
+                broadcastAddresses.add("192.168.49.255") // WiFi Direct common subnet
+                broadcastAddresses.add("192.168.1.255")  // Common home network
+                broadcastAddresses.add("10.0.0.255")     // Common mobile hotspot
+            }
+        }
+        
+        return broadcastAddresses
+    }
+    
+    fun getLocalIPAddresses(): List<String> {
+        val ipAddresses = mutableListOf<String>()
+        
+        try {
+            val networkInterfaces = NetworkInterface.getNetworkInterfaces()
+            
+            for (networkInterface in networkInterfaces) {
+                if (!networkInterface.isUp || networkInterface.isLoopback) {
+                    continue
+                }
+                
+                for (interfaceAddress in networkInterface.interfaceAddresses) {
+                    val inetAddress = interfaceAddress.address
+                    if (inetAddress is Inet4Address) {
+                        val ipAddress = inetAddress.hostAddress
+                        if (ipAddress != null && !ipAddress.startsWith("127.")) {
+                            ipAddresses.add(ipAddress)
+                            Log.d(TAG, "Found local IP: $ipAddress on interface ${networkInterface.name}")
+                        }
+                    }
+                }
+            }
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting local IP addresses", e)
+        }
+        
+        return ipAddresses
     }
     
     private fun deserializeMessage(data: ByteArray, length: Int): MeshMessage? {
