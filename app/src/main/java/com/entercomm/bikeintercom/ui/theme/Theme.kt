@@ -15,6 +15,52 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
+// Pitch Black Theme - Always use dark colors for this app
+private val PitchBlackColorScheme = darkColorScheme(
+    // Core colors
+    primary = TechGreen,
+    onPrimary = PitchBlack,
+    primaryContainer = DarkSurfaceVariant,
+    onPrimaryContainer = TechGreen,
+    
+    secondary = TechCyan,
+    onSecondary = PitchBlack,
+    secondaryContainer = DarkSurfaceVariant,
+    onSecondaryContainer = TechCyan,
+    
+    tertiary = TechBlue,
+    onTertiary = PitchBlack,
+    tertiaryContainer = DarkSurfaceVariant,
+    onTertiaryContainer = TechBlue,
+    
+    // Error colors
+    error = TechRed,
+    onError = TextPrimary,
+    errorContainer = DarkSurfaceVariant,
+    onErrorContainer = TechRed,
+    
+    // Background colors
+    background = PitchBlack,
+    onBackground = TextPrimary,
+    surface = DarkSurface,
+    onSurface = TextPrimary,
+    surfaceVariant = DarkSurfaceVariant,
+    onSurfaceVariant = TextSecondary,
+    
+    // Outline colors
+    outline = DarkBorder,
+    outlineVariant = TextTertiary,
+    
+    // Surface tint
+    surfaceTint = TechGreen,
+    
+    // Inverse colors
+    inverseSurface = TextPrimary,
+    inverseOnSurface = PitchBlack,
+    inversePrimary = TechGreen
+)
+
+// Legacy color schemes (kept for fallback)
 private val DarkColorScheme = darkColorScheme(
     primary = Purple80,
     secondary = PurpleGrey80,
@@ -29,25 +75,26 @@ private val LightColorScheme = lightColorScheme(
 
 @Composable
 fun EnterCommTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = true,
+    darkTheme: Boolean = true, // Always dark theme for this app
+    usePitchBlack: Boolean = true, // Control whether to use custom pitch black theme
     content: @Composable () -> Unit
 ) {
-    val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        }
-
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
+    // Always use pitch black theme for this app, ignore system preferences
+    val colorScheme = if (usePitchBlack) {
+        PitchBlackColorScheme
+    } else {
+        // Fallback to standard dark theme if needed
+        DarkColorScheme
     }
+    
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            window.statusBarColor = colorScheme.primary.toArgb()
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = darkTheme
+            // Set status bar to pure black for immersive experience
+            window.statusBarColor = PitchBlack.toArgb()
+            // Always use light content on dark status bar
+            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false
         }
     }
 

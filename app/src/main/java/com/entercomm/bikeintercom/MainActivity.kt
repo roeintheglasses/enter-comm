@@ -15,11 +15,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -27,6 +23,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.entercomm.bikeintercom.ui.components.*
+import com.entercomm.bikeintercom.ui.theme.*
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.entercomm.bikeintercom.mesh.MeshNetworkService
@@ -219,6 +217,7 @@ class MainActivity : ComponentActivity() {
     private fun MainScreen() {
         var serviceState by remember { mutableStateOf(ServiceState()) }
         var discoveredDevices by remember { mutableStateOf(listOf<Pair<String, String>>()) }
+        var audioLevel by remember { mutableStateOf(0f) }
         
         // Collect service state from the service
         LaunchedEffect(meshService) {
@@ -260,49 +259,102 @@ class MainActivity : ComponentActivity() {
             }
         }
         
+        // Simulate audio level for demonstration
+        LaunchedEffect(serviceState.isRecording) {
+            if (serviceState.isRecording) {
+                while (serviceState.isRecording) {
+                    audioLevel = kotlin.random.Random.nextFloat() * 0.9f + 0.1f
+                    kotlinx.coroutines.delay(100)
+                }
+            } else {
+                audioLevel = 0f
+            }
+        }
+        
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // App status and instructions
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
-                )
+            // Header Status Card
+            TechnicalStatusCard(
+                title = "ENTER-COMM INTERCOM",
+                status = when {
+                    !isServiceBound -> "INITIALIZING SYSTEM..."
+                    !serviceState.isRunning -> "STANDBY - READY FOR OPERATION"
+                    else -> "MESH NETWORK OPERATIONAL - ${serviceState.networkStatus.uppercase()}"
+                },
+                isActive = serviceState.isRunning,
+                isError = !isServiceBound,
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Column(
-                    modifier = Modifier.padding(16.dp)
-                ) {
-                    Text(
-                        "Enter-Comm Bike Intercom",
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold
-                    )
+                if (serviceState.isRunning && serviceState.connectedDevices > 0) {
                     Spacer(modifier = Modifier.height(8.dp))
-                    
-                    val statusText = when {
-                        !isServiceBound -> "Connecting to service..."
-                        !serviceState.isRunning -> "Ready to start. Tap 'Start' to begin mesh network."
-                        else -> "Mesh network active: ${serviceState.networkStatus}"
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "NETWORK TOPOLOGY",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextTertiary
+                        )
+                        NetworkTopology(
+                            connectedDevices = serviceState.connectedDevices,
+                            modifier = Modifier.size(60.dp)
+                        )
                     }
-                    
-                    Text(
-                        statusText,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                }
+            }
+            
+            // Main Control Area
+            if (serviceState.isRunning) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // PTT Button
+                    PTTButton(
+                        isRecording = serviceState.isRecording,
+                        onClick = {
+                            if (serviceState.isRecording) {
+                                meshService?.stopRecording()
+                            } else {
+                                meshService?.startRecording()
+                            }
+                        },
+                        enabled = serviceState.isRunning
                     )
+                    
+                    // Audio Level Meter
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "AUDIO LEVEL",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextTertiary
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        AudioLevelMeter(
+                            level = audioLevel,
+                            isRecording = serviceState.isRecording,
+                            modifier = Modifier.size(width = 80.dp, height = 100.dp)
+                        )
+                    }
                 }
             }
             
             // Control Buttons
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Button(
+                TechnicalButton(
+                    text = if (serviceState.isRunning) "STOP" else "START",
                     onClick = {
                         if (serviceState.isRunning) {
                             meshService?.stopMeshNetwork()
@@ -318,240 +370,131 @@ class MainActivity : ComponentActivity() {
                         }
                     },
                     modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (serviceState.isRunning) 
-                            MaterialTheme.colorScheme.error 
-                        else 
-                            MaterialTheme.colorScheme.primary
-                    )
-                ) {
-                    Icon(
-                        imageVector = if (serviceState.isRunning) Icons.Default.Close else Icons.Default.PlayArrow,
-                        contentDescription = null
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(if (serviceState.isRunning) "Stop" else "Start")
-                }
+                    icon = if (serviceState.isRunning) Icons.Default.Stop else Icons.Default.PlayArrow,
+                    isActive = serviceState.isRunning,
+                    buttonType = if (serviceState.isRunning) TechnicalButtonType.DANGER else TechnicalButtonType.PRIMARY,
+                    enabled = isServiceBound
+                )
                 
                 if (serviceState.isRunning) {
-                    Button(
-                        onClick = {
-                            if (serviceState.isRecording) {
-                                meshService?.stopRecording()
-                            } else {
-                                meshService?.startRecording()
-                            }
-                        },
+                    TechnicalButton(
+                        text = "MUTE",
+                        onClick = { meshService?.toggleMute() },
                         modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (serviceState.isRecording) 
-                                MaterialTheme.colorScheme.error 
-                            else 
-                                MaterialTheme.colorScheme.secondary
-                        )
-                    ) {
-                        Icon(
-                            imageVector = if (serviceState.isRecording) Icons.Default.Close else Icons.Default.Add,
-                            contentDescription = null
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(if (serviceState.isRecording) "Stop Recording" else "Start Recording")
-                    }
+                        icon = Icons.Default.VolumeOff,
+                        buttonType = TechnicalButtonType.SECONDARY
+                    )
                 }
             }
             
-            // Quick Actions
-            if (serviceState.isRunning) {
-                Card(
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp)
-                    ) {
-                        Text(
-                            text = "Quick Actions",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            OutlinedButton(
-                                onClick = { meshService?.toggleMute() },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Icon(Icons.Default.Close, contentDescription = null)
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Mute")
-                            }
-                            
-                            OutlinedButton(
-                                onClick = { 
-                                    // Create group (become group owner)
-                                    // This would call wifiDirectManager.createGroup()
-                                },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Icon(Icons.Default.Add, contentDescription = null)
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Create Group")
-                            }
-                        }
-                    }
-                }
-            }
-            
-            // Network Status
-            Card(
+            // Network Status Panel
+            TechnicalStatusCard(
+                title = "NETWORK STATUS",
+                status = buildString {
+                    append("STATUS: ${if (serviceState.isRunning) "ACTIVE" else "INACTIVE"}")
+                    append(" | NODES: ${serviceState.connectedDevices}")
+                    append(" | REC: ${if (serviceState.isRecording) "ON" else "OFF"}")
+                },
+                isActive = serviceState.isRunning && serviceState.connectedDevices > 0,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(
-                    modifier = Modifier.padding(16.dp)
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = "Network Status",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.weight(1f)
+                            text = if (serviceState.isRunning) "ONLINE" else "OFFLINE",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = if (serviceState.isRunning) TechGreen else TextTertiary,
+                            fontWeight = FontWeight.Bold
                         )
-                        
-                        // Status indicator
-                        Box(
-                            modifier = Modifier
-                                .size(12.dp)
-                                .padding(2.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Card(
-                                modifier = Modifier.fillMaxSize(),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = when {
-                                        serviceState.isRunning && serviceState.connectedDevices > 0 -> Color.Green
-                                        serviceState.isRunning -> Color.Yellow
-                                        else -> Color.Gray
-                                    }
-                                )
-                            ) {}
-                        }
+                        Text(
+                            text = "STATUS",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextTertiary
+                        )
                     }
                     
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "${serviceState.connectedDevices}",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = if (serviceState.connectedDevices > 0) TechGreen else TextTertiary,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "CONNECTED",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextTertiary
+                        )
+                    }
                     
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column {
-                            Text(
-                                text = "Status:",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = if (serviceState.isRunning) "Active" else "Inactive",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                        }
-                        
-                        Column {
-                            Text(
-                                text = "Connected:",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = "${serviceState.connectedDevices} devices",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                        }
-                        
-                        Column {
-                            Text(
-                                text = "Recording:",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = if (serviceState.isRecording) "Yes" else "No",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                        }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = if (serviceState.isRecording) "REC" else "---",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = if (serviceState.isRecording) TechRed else TextTertiary,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "RECORDING",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextTertiary
+                        )
                     }
                 }
             }
             
-            // Discovered Devices (when not connected)
+            // Device Discovery/Connection Panel
             if (!serviceState.isRunning || serviceState.connectedDevices == 0) {
-                Card(
+                TechnicalStatusCard(
+                    title = "DEVICE DISCOVERY",
+                    status = if (serviceState.isRunning) "SCANNING FOR NEARBY DEVICES..." else "START NETWORK TO DISCOVER DEVICES",
+                    isActive = discoveredDevices.isNotEmpty(),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp)
-                    ) {
-                        Text(
-                            text = "Nearby Devices",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        
-                        if (discoveredDevices.isEmpty()) {
-                            Text(
-                                text = if (serviceState.isRunning) "Searching for devices..." else "Start the network to discover devices",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        } else {
-                            LazyColumn(
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                items(discoveredDevices) { (deviceName, deviceAddress) ->
-                                    Card(
-                                        onClick = {
-                                            meshService?.connectToDevice(deviceAddress)
-                                        },
-                                        colors = CardDefaults.cardColors(
-                                            containerColor = MaterialTheme.colorScheme.surfaceVariant
-                                        )
-                                    ) {
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(12.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Icon(
-                                                Icons.Default.Settings,
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.primary
-                                            )
-                                            Spacer(modifier = Modifier.width(12.dp))
-                                            Column(modifier = Modifier.weight(1f)) {
-                                                Text(
-                                                    text = deviceName,
-                                                    style = MaterialTheme.typography.bodyMedium,
-                                                    fontWeight = FontWeight.Medium
-                                                )
-                                                Text(
-                                                    text = deviceAddress,
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                            }
-                                            Icon(
-                                                Icons.Default.KeyboardArrowRight,
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
+                    if (discoveredDevices.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        LazyColumn(
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.heightIn(max = 200.dp)
+                        ) {
+                            items(discoveredDevices) { (deviceName, deviceAddress) ->
+                                DeviceCard(
+                                    deviceName = deviceName,
+                                    deviceAddress = deviceAddress,
+                                    isConnected = false,
+                                    signalStrength = kotlin.random.Random.nextInt(50, 101),
+                                    onClick = {
+                                        meshService?.connectToDevice(deviceAddress)
                                     }
-                                }
+                                )
                             }
+                        }
+                    }
+                }
+            } else {
+                // Connected Devices Panel
+                TechnicalStatusCard(
+                    title = "CONNECTED DEVICES",
+                    status = "MESH NETWORK ACTIVE - ${serviceState.connectedDevices} NODES CONNECTED",
+                    isActive = true,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    // This would be populated with actual connected device data
+                    repeat(serviceState.connectedDevices) { index ->
+                        DeviceCard(
+                            deviceName = "BIKE-COMM-${1000 + index}",
+                            deviceAddress = "00:11:22:33:44:${55 + index}",
+                            isConnected = true,
+                            signalStrength = kotlin.random.Random.nextInt(70, 101),
+                            onClick = { }
+                        )
+                        if (index < serviceState.connectedDevices - 1) {
+                            Spacer(modifier = Modifier.height(8.dp))
                         }
                     }
                 }
