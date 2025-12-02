@@ -18,13 +18,19 @@
     
     <!-- Wake lock for keeping connections alive -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- Vibration for haptic feedback -->
+    <uses-permission android:name="android.permission.VIBRATE" />
     
     <!-- Foreground service for background operation -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
-    
+
     <!-- Nearby devices permission for WiFi Direct discovery (Android 12+) -->
     <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" />
+
+    <!-- Notification permission (Android 13+) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- WiFi Direct feature requirement -->
     <uses-feature

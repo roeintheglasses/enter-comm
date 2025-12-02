@@ -36,9 +36,9 @@ import com.entercomm.bikeintercom.ui.theme.EnterCommTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
 class MainActivity : ComponentActivity() {
-    
+
     private var meshService: MeshNetworkService? = null
-    private var isServiceBound = false
+    private var isServiceBound by mutableStateOf(false)
     
     private val requiredPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         arrayOf(

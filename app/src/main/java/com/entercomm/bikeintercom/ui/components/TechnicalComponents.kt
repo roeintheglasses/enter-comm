@@ -6,6 +6,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -23,10 +25,14 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.entercomm.bikeintercom.config.AppConfig
 import com.entercomm.bikeintercom.ui.theme.*
+import com.entercomm.bikeintercom.util.rememberHapticFeedback
 
 /**
  * Technical Status Card with border glow effect
@@ -106,68 +112,105 @@ fun TechnicalStatusCard(
 }
 
 /**
- * Large Push-To-Talk button with pulsing animation when active
+ * Large Push-To-Talk button with pulsing animation when active.
+ * Optimized for cycling with large touch target (140dp default) and haptic feedback.
  */
 @Composable
 fun PTTButton(
     isRecording: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    size: Dp = AppConfig.UI.PTT_BUTTON_SIZE_DP.dp
 ) {
+    val haptic = rememberHapticFeedback()
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    // Trigger haptic on press
+    LaunchedEffect(isPressed) {
+        if (isPressed && enabled) {
+            haptic.heavyClick()
+        }
+    }
+
     val scale by animateFloatAsState(
-        targetValue = if (isRecording) 1.1f else 1.0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1000),
-            repeatMode = RepeatMode.Reverse
-        ),
+        targetValue = when {
+            isPressed -> 0.95f
+            isRecording -> 1.05f
+            else -> 1.0f
+        },
+        animationSpec = if (isRecording) {
+            infiniteRepeatable(
+                animation = tween(1000),
+                repeatMode = RepeatMode.Reverse
+            )
+        } else {
+            tween(100)
+        },
         label = "scale"
     )
-    
+
     val buttonColor by animateColorAsState(
         targetValue = if (isRecording) TechRed else TechGreen,
         animationSpec = tween(200),
         label = "buttonColor"
     )
-    
+
+    // Outer touch target area (larger than visible button)
     Box(
         modifier = modifier
-            .size(120.dp)
-            .scale(scale)
-            .clip(CircleShape)
-            .background(
-                color = buttonColor.copy(alpha = 0.2f)
-            )
-            .border(
-                width = 3.dp,
-                color = buttonColor,
-                shape = CircleShape
-            )
-            .clickable(enabled = enabled) { onClick() },
+            .size(AppConfig.UI.PTT_TOUCH_TARGET_DP.dp)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                enabled = enabled,
+                role = Role.Button
+            ) {
+                onClick()
+            },
         contentAlignment = Alignment.Center
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally
+        // Visible button
+        Box(
+            modifier = Modifier
+                .size(size)
+                .scale(scale)
+                .clip(CircleShape)
+                .background(
+                    color = buttonColor.copy(alpha = 0.2f)
+                )
+                .border(
+                    width = 4.dp, // Thicker border for visibility
+                    color = buttonColor,
+                    shape = CircleShape
+                ),
+            contentAlignment = Alignment.Center
         ) {
-            Icon(
-                imageVector = if (isRecording) Icons.Default.Stop else Icons.Default.Mic,
-                contentDescription = null,
-                tint = buttonColor,
-                modifier = Modifier.size(32.dp)
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = if (isRecording) "PTT" else "TALK",
-                style = MaterialTheme.typography.labelMedium,
-                color = buttonColor,
-                fontWeight = FontWeight.Bold
-            )
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(
+                    imageVector = if (isRecording) Icons.Default.Stop else Icons.Default.Mic,
+                    contentDescription = if (isRecording) "Stop Recording" else "Start Recording",
+                    tint = buttonColor,
+                    modifier = Modifier.size(40.dp) // Larger icon
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = if (isRecording) "STOP" else "TALK",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = buttonColor,
+                    fontWeight = FontWeight.Bold
+                )
+            }
         }
     }
 }
 
 /**
- * Technical button with custom styling
+ * Technical button with custom styling.
+ * Optimized for cycling with larger touch target (min 64dp height) and haptic feedback.
  */
 @Composable
 fun TechnicalButton(
@@ -177,8 +220,11 @@ fun TechnicalButton(
     icon: ImageVector? = null,
     isActive: Boolean = false,
     buttonType: TechnicalButtonType = TechnicalButtonType.PRIMARY,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    minHeight: Dp = AppConfig.UI.MIN_BUTTON_HEIGHT_DP.dp
 ) {
+    val haptic = rememberHapticFeedback()
+
     val colors = when (buttonType) {
         TechnicalButtonType.PRIMARY -> ButtonDefaults.buttonColors(
             containerColor = if (isActive) TechGreen else DarkSurfaceVariant,
@@ -193,15 +239,18 @@ fun TechnicalButton(
             contentColor = if (isActive) TextPrimary else TechRed
         )
     }
-    
+
     Button(
-        onClick = onClick,
-        modifier = modifier.heightIn(min = 48.dp),
+        onClick = {
+            haptic.click()
+            onClick()
+        },
+        modifier = modifier.heightIn(min = minHeight),
         colors = colors,
         enabled = enabled,
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(12.dp), // Slightly larger radius
         border = BorderStroke(
-            width = 1.dp,
+            width = 2.dp, // Thicker border for visibility
             color = when (buttonType) {
                 TechnicalButtonType.PRIMARY -> TechGreen
                 TechnicalButtonType.SECONDARY -> TechCyan
@@ -217,14 +266,14 @@ fun TechnicalButton(
                 Icon(
                     imageVector = it,
                     contentDescription = null,
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(24.dp) // Larger icon
                 )
                 Spacer(modifier = Modifier.width(8.dp))
             }
             Text(
                 text = text,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold
+                style = MaterialTheme.typography.titleSmall, // Larger text
+                fontWeight = FontWeight.Bold
             )
         }
     }
@@ -235,7 +284,8 @@ enum class TechnicalButtonType {
 }
 
 /**
- * Device card showing connection status with technical styling
+ * Device card showing connection status with technical styling.
+ * Includes haptic feedback and larger touch target for cycling use.
  */
 @Composable
 fun DeviceCard(
@@ -246,21 +296,26 @@ fun DeviceCard(
     onClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val haptic = rememberHapticFeedback()
     val borderColor = if (isConnected) TechGreen else DarkBorder
-    
+
     Card(
         modifier = modifier
             .fillMaxWidth()
+            .heightIn(min = 72.dp) // Minimum height for touch target
             .border(
-                width = 1.dp,
+                width = if (isConnected) 2.dp else 1.dp,
                 color = borderColor,
-                shape = RoundedCornerShape(8.dp)
+                shape = RoundedCornerShape(12.dp)
             )
-            .clickable { onClick() },
+            .clickable {
+                haptic.click()
+                onClick()
+            },
         colors = CardDefaults.cardColors(
             containerColor = DarkSurface
         ),
-        shape = RoundedCornerShape(8.dp)
+        shape = RoundedCornerShape(12.dp)
     ) {
         Row(
             modifier = Modifier
@@ -271,10 +326,10 @@ fun DeviceCard(
             // Device icon with status
             Box(
                 modifier = Modifier
-                    .size(40.dp)
+                    .size(48.dp) // Larger icon area
                     .clip(CircleShape)
                     .background(
-                        if (isConnected) TechGreen.copy(alpha = 0.2f) 
+                        if (isConnected) TechGreen.copy(alpha = 0.2f)
                         else DarkSurfaceVariant
                     ),
                 contentAlignment = Alignment.Center
@@ -283,46 +338,49 @@ fun DeviceCard(
                     imageVector = Icons.Default.DeviceHub,
                     contentDescription = null,
                     tint = if (isConnected) TechGreen else TextTertiary,
-                    modifier = Modifier.size(24.dp)
+                    modifier = Modifier.size(28.dp)
                 )
             }
-            
-            Spacer(modifier = Modifier.width(12.dp))
-            
+
+            Spacer(modifier = Modifier.width(16.dp))
+
             // Device info
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = deviceName,
-                    style = MaterialTheme.typography.bodyLarge,
+                    style = MaterialTheme.typography.titleMedium,
                     color = TextPrimary,
                     fontWeight = FontWeight.Medium
                 )
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = deviceAddress,
                     style = MaterialTheme.typography.bodySmall,
                     color = TextSecondary
                 )
                 if (isConnected) {
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = "CONNECTED",
-                        style = MaterialTheme.typography.labelSmall,
+                        style = MaterialTheme.typography.labelMedium,
                         color = TechGreen,
                         fontWeight = FontWeight.Bold
                     )
                 }
             }
-            
+
             // Signal strength indicator
             if (isConnected) {
                 SignalStrengthIndicator(
                     strength = signalStrength,
-                    modifier = Modifier.size(24.dp)
+                    modifier = Modifier.size(28.dp)
                 )
             } else {
                 Icon(
                     imageVector = Icons.Default.ChevronRight,
-                    contentDescription = null,
-                    tint = TextTertiary
+                    contentDescription = "Connect to device",
+                    tint = TextTertiary,
+                    modifier = Modifier.size(28.dp)
                 )
             }
         }
@@ -418,28 +476,253 @@ fun AudioLevelMeter(
         animationSpec = tween(100),
         label = "audioLevel"
     )
-    
+
     Canvas(modifier = modifier) {
         val barCount = 20
         val barWidth = size.width / (barCount * 1.5f)
         val barSpacing = barWidth * 0.5f
         val maxBarHeight = size.height
-        
+
         for (i in 0 until barCount) {
             val barHeight = maxBarHeight * animatedLevel * (i + 1) / barCount
             val x = i * (barWidth + barSpacing)
             val y = size.height - barHeight
-            
+
             val color = when {
                 i < barCount * 0.6 -> TechGreen
                 i < barCount * 0.8 -> TechOrange
                 else -> TechRed
             }
-            
+
             drawRect(
                 color = color.copy(alpha = if (barHeight > 0) 1f else 0.3f),
                 topLeft = Offset(x, y),
                 size = Size(barWidth, barHeight)
+            )
+        }
+    }
+}
+
+/**
+ * Loading indicator with technical styling
+ */
+@Composable
+fun LoadingIndicator(
+    message: String = "Loading...",
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        CircularProgressIndicator(
+            modifier = Modifier.size(48.dp),
+            color = TechCyan,
+            strokeWidth = 4.dp
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            text = message.uppercase(),
+            style = MaterialTheme.typography.labelLarge,
+            color = TextSecondary,
+            fontWeight = FontWeight.Medium
+        )
+    }
+}
+
+/**
+ * Error display with retry option
+ */
+@Composable
+fun ErrorDisplay(
+    message: String,
+    onRetry: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    val haptic = rememberHapticFeedback()
+
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .border(
+                width = 2.dp,
+                color = TechRed,
+                shape = RoundedCornerShape(12.dp)
+            ),
+        colors = CardDefaults.cardColors(
+            containerColor = TechRed.copy(alpha = 0.1f)
+        ),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Icon(
+                imageVector = Icons.Default.Warning,
+                contentDescription = "Error",
+                tint = TechRed,
+                modifier = Modifier.size(40.dp)
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                text = "ERROR",
+                style = MaterialTheme.typography.titleMedium,
+                color = TechRed,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextSecondary,
+                modifier = Modifier.padding(horizontal = 8.dp)
+            )
+            onRetry?.let {
+                Spacer(modifier = Modifier.height(16.dp))
+                TechnicalButton(
+                    text = "RETRY",
+                    onClick = {
+                        haptic.click()
+                        it()
+                    },
+                    icon = Icons.Default.Refresh,
+                    buttonType = TechnicalButtonType.DANGER,
+                    modifier = Modifier.fillMaxWidth(0.6f)
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Empty state display for when no content is available
+ */
+@Composable
+fun EmptyStateDisplay(
+    title: String,
+    message: String,
+    icon: ImageVector = Icons.Default.Info,
+    actionText: String? = null,
+    onAction: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    val haptic = rememberHapticFeedback()
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = TextTertiary,
+            modifier = Modifier.size(64.dp)
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            text = title.uppercase(),
+            style = MaterialTheme.typography.titleMedium,
+            color = TextSecondary,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = message,
+            style = MaterialTheme.typography.bodyMedium,
+            color = TextTertiary
+        )
+        if (actionText != null && onAction != null) {
+            Spacer(modifier = Modifier.height(24.dp))
+            TechnicalButton(
+                text = actionText,
+                onClick = {
+                    haptic.click()
+                    onAction()
+                },
+                buttonType = TechnicalButtonType.SECONDARY
+            )
+        }
+    }
+}
+
+/**
+ * Connection status banner for quick feedback
+ */
+@Composable
+fun ConnectionStatusBanner(
+    isConnected: Boolean,
+    isConnecting: Boolean = false,
+    deviceCount: Int = 0,
+    modifier: Modifier = Modifier
+) {
+    val backgroundColor by animateColorAsState(
+        targetValue = when {
+            isConnecting -> TechOrange.copy(alpha = 0.2f)
+            isConnected -> TechGreen.copy(alpha = 0.2f)
+            else -> TechRed.copy(alpha = 0.2f)
+        },
+        animationSpec = tween(300),
+        label = "bannerColor"
+    )
+
+    val textColor = when {
+        isConnecting -> TechOrange
+        isConnected -> TechGreen
+        else -> TechRed
+    }
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(backgroundColor)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (isConnecting) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    color = textColor,
+                    strokeWidth = 2.dp
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(12.dp)
+                        .clip(CircleShape)
+                        .background(textColor)
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(
+                text = when {
+                    isConnecting -> "CONNECTING..."
+                    isConnected -> "CONNECTED"
+                    else -> "DISCONNECTED"
+                },
+                style = MaterialTheme.typography.labelLarge,
+                color = textColor,
+                fontWeight = FontWeight.Bold
+            )
+        }
+
+        if (isConnected && deviceCount > 0) {
+            Text(
+                text = "$deviceCount DEVICE${if (deviceCount > 1) "S" else ""}",
+                style = MaterialTheme.typography.labelMedium,
+                color = textColor
             )
         }
     }
