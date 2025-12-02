@@ -1,14 +1,19 @@
 package com.entercomm.bikeintercom.mesh
 
+import android.Manifest
+import android.annotation.SuppressLint
 import android.app.*
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.wifi.p2p.WifiP2pManager
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.app.ServiceCompat
+import androidx.core.content.ContextCompat
 import com.entercomm.bikeintercom.R
 import com.entercomm.bikeintercom.audio.AudioManager
 import com.entercomm.bikeintercom.wifidirect.WiFiDirectManager
@@ -53,7 +58,19 @@ class MeshNetworkService : Service() {
     
     private val nodeId = "node-${UUID.randomUUID().toString().take(8)}"
     private val deviceName = "BikeIntercom-${Build.MODEL}"
-    
+
+    /**
+     * Check if notification permission is granted (required for Android 13+)
+     */
+    private fun hasNotificationPermission(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
+                PackageManager.PERMISSION_GRANTED
+        } else {
+            true // Permission not required before Android 13
+        }
+    }
+
     // Callbacks for UI updates
     var onStateChanged: ((ServiceState) -> Unit)? = null
     var onDeviceDiscovered: ((String, String) -> Unit)? = null
@@ -334,10 +351,10 @@ class MeshNetworkService : Service() {
                 updateServiceState {
                     ServiceState() // Reset to default state
                 }
-                
-                // Stop foreground service
-                stopForeground(true)
-                
+
+                // Stop foreground service (use ServiceCompat for compatibility)
+                ServiceCompat.stopForeground(this@MeshNetworkService, ServiceCompat.STOP_FOREGROUND_REMOVE)
+
                 Log.d(TAG, "Mesh network stopped")
                 
             } catch (e: Exception) {
@@ -558,13 +575,14 @@ class MeshNetworkService : Service() {
         }
     }
     
+    @SuppressLint("NotificationPermission") // Permission is checked in hasNotificationPermission() above
     private fun updateServiceState(update: ServiceState.() -> ServiceState) {
         val newState = _serviceState.value.update()
         _serviceState.value = newState
         onStateChanged?.invoke(newState)
-        
-        // Update notification
-        if (newState.isRunning) {
+
+        // Update notification (check permission on Android 13+)
+        if (newState.isRunning && hasNotificationPermission()) {
             val notification = createNotification()
             val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.notify(NOTIFICATION_ID, notification)

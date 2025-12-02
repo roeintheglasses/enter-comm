@@ -11,6 +11,9 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -180,32 +183,30 @@ class MainActivity : ComponentActivity() {
         try {
             val intent = Intent(this, MeshNetworkService::class.java)
             Log.d("MainActivity", "Created intent for service: ${intent.component}")
-            
+
             // Start the service first to ensure it's created
             val startResult = startService(intent)
             Log.d("MainActivity", "Start service result: $startResult")
-            
-            // Add a small delay to ensure service is ready
-            Thread.sleep(100)
-            
-            // Then bind to it
-            val bound = bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
-            Log.d("MainActivity", "Service binding attempted: $bound")
-            
-            if (!bound) {
-                Log.e("MainActivity", "Failed to bind to service")
-                Toast.makeText(this, "Failed to bind to service", Toast.LENGTH_LONG).show()
-            } else {
-                // Set a timeout to detect if service connection fails
-                Thread {
-                    Thread.sleep(3000) // Wait 3 seconds
+
+            // Use coroutine for non-blocking delay and service binding
+            lifecycleScope.launch {
+                delay(100) // Non-blocking delay to let service initialize
+
+                // Bind to service
+                val bound = bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+                Log.d("MainActivity", "Service binding attempted: $bound")
+
+                if (!bound) {
+                    Log.e("MainActivity", "Failed to bind to service")
+                    Toast.makeText(this@MainActivity, "Failed to bind to service", Toast.LENGTH_LONG).show()
+                } else {
+                    // Set a timeout to detect if service connection fails
+                    delay(3000) // Wait 3 seconds
                     if (!isServiceBound) {
                         Log.w("MainActivity", "Service connection timeout")
-                        runOnUiThread {
-                            Toast.makeText(this@MainActivity, "Service connection timeout. Check logs for errors.", Toast.LENGTH_LONG).show()
-                        }
+                        Toast.makeText(this@MainActivity, "Service connection timeout. Check logs for errors.", Toast.LENGTH_LONG).show()
                     }
-                }.start()
+                }
             }
         } catch (e: Exception) {
             Log.e("MainActivity", "Error initializing service", e)

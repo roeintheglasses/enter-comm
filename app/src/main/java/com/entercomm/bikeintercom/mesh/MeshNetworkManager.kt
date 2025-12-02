@@ -56,19 +56,28 @@ class MeshNetworkManager(
         private const val HEARTBEAT_INTERVAL = 5000L
         private const val NODE_TIMEOUT = 15000L
         private const val MAX_ROUTE_AGE = 30000L
+        private const val MAX_MESSAGE_CACHE_SIZE = 1000
     }
-    
-    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    
+
+    private val supervisorJob = SupervisorJob()
+    private val scope = CoroutineScope(Dispatchers.IO + supervisorJob)
+    private var networkJob: Job? = null
+
     private val _connectedNodes = MutableStateFlow<List<MeshNode>>(emptyList())
     val connectedNodes: StateFlow<List<MeshNode>> = _connectedNodes.asStateFlow()
-    
+
     private val _isActive = MutableStateFlow(false)
     val isActive: StateFlow<Boolean> = _isActive.asStateFlow()
-    
+
     private val nodes = ConcurrentHashMap<String, MeshNode>()
     private val routingTable = ConcurrentHashMap<String, MeshRoute>()
-    private val messageCache = ConcurrentHashMap<String, Long>()
+    // LRU cache for message deduplication with max size to prevent unbounded growth
+    private val messageCache = object : LinkedHashMap<String, Long>(100, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Long>?): Boolean {
+            return size > MAX_MESSAGE_CACHE_SIZE
+        }
+    }
+    private val messageCacheLock = Any()
     private val discoveryResponseCache = ConcurrentHashMap<String, Long>() // Rate limit discovery responses
     
     private var discoverySocket: DatagramSocket? = null
@@ -84,51 +93,81 @@ class MeshNetworkManager(
             Log.d(TAG, "Mesh network already running")
             return
         }
-        
-        scope.launch {
+
+        // Cancel any existing network job
+        networkJob?.cancel()
+
+        networkJob = scope.launch {
             try {
                 Log.d(TAG, "Starting mesh network on port $localPort...")
                 isRunning = true
                 _isActive.value = true
-                
-                // Initialize sockets
-                discoverySocket = DatagramSocket(localPort)
-                audioSocket = DatagramSocket(localPort + 1)
-                
+
+                // Close existing sockets first to prevent leaks
+                discoverySocket?.close()
+                audioSocket?.close()
+
+                // Initialize sockets with proper configuration
+                discoverySocket = DatagramSocket(localPort).apply {
+                    reuseAddress = true
+                    broadcast = true
+                }
+                audioSocket = DatagramSocket(localPort + 1).apply {
+                    reuseAddress = true
+                }
+
                 Log.d(TAG, "Mesh network sockets created: discovery=$localPort, audio=${localPort + 1}")
                 Log.d(TAG, "Node ID: $nodeId, Device name: $deviceName")
-                
+
                 // Start discovery and routing services
                 launch { startDiscoveryService() }
                 launch { startRoutingService() }
                 launch { startHeartbeatService() }
                 launch { startMessageListener() }
                 launch { startAudioListener() }
-                
+
                 Log.d(TAG, "Mesh network services started successfully on port $localPort")
-                
+
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to start mesh network on port $localPort", e)
                 e.printStackTrace()
                 stopMeshNetwork()
-                throw e
             }
         }
     }
     
     fun stopMeshNetwork() {
+        Log.d(TAG, "Stopping mesh network...")
         isRunning = false
         _isActive.value = false
-        
-        discoverySocket?.close()
-        audioSocket?.close()
-        
+
+        // Cancel all network coroutines first
+        networkJob?.cancel()
+        networkJob = null
+
+        // Close sockets safely
+        try {
+            discoverySocket?.close()
+        } catch (e: Exception) {
+            Log.w(TAG, "Error closing discovery socket", e)
+        }
+        try {
+            audioSocket?.close()
+        } catch (e: Exception) {
+            Log.w(TAG, "Error closing audio socket", e)
+        }
+        discoverySocket = null
+        audioSocket = null
+
+        // Clear all data structures
         nodes.clear()
         routingTable.clear()
-        messageCache.clear()
+        synchronized(messageCacheLock) {
+            messageCache.clear()
+        }
         discoveryResponseCache.clear()
         _connectedNodes.value = emptyList()
-        
+
         Log.d(TAG, "Mesh network stopped")
     }
     
@@ -379,12 +418,14 @@ class MeshNetworkManager(
             Log.d(TAG, "Ignoring message from self: ${message.messageId}")
             return
         }
-        
-        // Check message cache to avoid processing duplicates
-        if (messageCache.containsKey(message.messageId)) {
-            return
+
+        // Check message cache to avoid processing duplicates (synchronized for LRU map)
+        synchronized(messageCacheLock) {
+            if (messageCache.containsKey(message.messageId)) {
+                return
+            }
+            messageCache[message.messageId] = System.currentTimeMillis()
         }
-        messageCache[message.messageId] = System.currentTimeMillis()
         
         when (message.messageType) {
             MeshMessage.MessageType.DISCOVERY -> {
@@ -477,10 +518,13 @@ class MeshNetworkManager(
     
     private fun handleRouteUpdate(message: MeshMessage) {
         // Update routing table based on received route information
-        val routeInfo = String(message.payload)
         // Parse and update routes (implementation depends on route format)
+        val routeData = String(message.payload)
+        Log.d(TAG, "Received route update: $routeData")
+        // TODO: Implement route parsing and table updates
     }
-    
+
+    @Suppress("UNUSED_PARAMETER")
     private fun handleHeartbeat(message: MeshMessage, senderIp: String) {
         nodes[message.sourceId]?.let { node ->
             nodes[message.sourceId] = node.copy(lastSeen = System.currentTimeMillis())
@@ -671,13 +715,15 @@ class MeshNetworkManager(
             routingTable.remove(destinationId)
         }
         
-        // Remove old message cache entries
-        val expiredMessages = messageCache.filter { (_, timestamp) ->
-            currentTime - timestamp > 60000 // 1 minute
-        }.keys
-        
-        expiredMessages.forEach { messageId ->
-            messageCache.remove(messageId)
+        // Remove old message cache entries (synchronized for LRU map)
+        synchronized(messageCacheLock) {
+            val expiredMessages = messageCache.filter { (_, timestamp) ->
+                currentTime - timestamp > 60000 // 1 minute
+            }.keys.toList() // Create a copy to avoid ConcurrentModification
+
+            expiredMessages.forEach { messageId ->
+                messageCache.remove(messageId)
+            }
         }
         
         // Remove old discovery response cache entries

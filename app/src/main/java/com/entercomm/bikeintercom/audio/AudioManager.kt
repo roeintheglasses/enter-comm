@@ -1,11 +1,15 @@
 package com.entercomm.bikeintercom.audio
 
+import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Context
+import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.AudioTrack
 import android.media.MediaRecorder
 import android.util.Log
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -73,15 +77,25 @@ class AudioManager(
     
     fun startRecording() {
         if (_isRecording.value) return
-        
+
+        if (!hasAudioPermission()) {
+            Log.e(TAG, "Cannot start recording: RECORD_AUDIO permission not granted")
+            return
+        }
+
+        if (audioRecord == null) {
+            Log.e(TAG, "Cannot start recording: AudioRecord not initialized")
+            return
+        }
+
         scope.launch {
             try {
                 audioRecord?.startRecording()
                 _isRecording.value = true
                 isProcessing = true
-                
+
                 launch { processAudioInput() }
-                
+
                 Log.d(TAG, "Audio recording started")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to start recording", e)
@@ -228,13 +242,24 @@ class AudioManager(
     }
     */
     
+    private fun hasAudioPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
+    }
+
+    @SuppressLint("MissingPermission") // Permission is checked in hasAudioPermission() above
     private fun setupAudioCapture() {
+        if (!hasAudioPermission()) {
+            Log.e(TAG, "RECORD_AUDIO permission not granted, skipping audio capture setup")
+            return
+        }
+
         val bufferSize = AudioRecord.getMinBufferSize(
             audioConfig.sampleRate,
             AudioFormat.CHANNEL_IN_MONO,
             audioConfig.audioFormat
         )
-        
+
         audioRecord = AudioRecord(
             MediaRecorder.AudioSource.MIC,
             audioConfig.sampleRate,
@@ -242,9 +267,11 @@ class AudioManager(
             audioConfig.audioFormat,
             bufferSize * 2
         )
-        
+
         if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
-            throw RuntimeException("AudioRecord initialization failed")
+            Log.e(TAG, "AudioRecord initialization failed")
+            audioRecord?.release()
+            audioRecord = null
         }
     }
     
@@ -324,46 +351,35 @@ class AudioManager(
         return (rms / Short.MAX_VALUE).toFloat()
     }
     
-    // Inner class for per-source audio processing
+    // Inner class for per-source audio processing with improved thread safety
     private inner class AudioProcessor(private val sourceId: String) {
-        @Volatile
         private var audioTrack: AudioTrack? = null
         private val trackLock = Any()
-        @Volatile
         private var isInitialized = false
-        
+
         init {
             setupAudioTrack()
         }
-        
+
         private fun setupAudioTrack() {
             synchronized(trackLock) {
                 try {
-                    // Clean up existing track
-                    audioTrack?.let { track ->
-                        try {
-                            if (track.playState == AudioTrack.PLAYSTATE_PLAYING) {
-                                track.stop()
-                            }
-                            track.release()
-                        } catch (e: Exception) {
-                            Log.w(TAG, "Error cleaning up previous AudioTrack for $sourceId", e)
-                        }
-                    }
-                    
+                    // Clean up existing track safely
+                    releaseTrackUnsafe()
+
                     val bufferSize = AudioTrack.getMinBufferSize(
                         audioConfig.sampleRate,
                         AudioFormat.CHANNEL_OUT_MONO,
                         audioConfig.audioFormat
                     )
-                    
+
                     if (bufferSize == AudioTrack.ERROR_BAD_VALUE || bufferSize == AudioTrack.ERROR) {
                         Log.e(TAG, "Invalid buffer size for AudioTrack: $bufferSize")
                         isInitialized = false
                         return
                     }
-                    
-                    audioTrack = AudioTrack(
+
+                    val newTrack = AudioTrack(
                         android.media.AudioManager.STREAM_MUSIC,
                         audioConfig.sampleRate,
                         AudioFormat.CHANNEL_OUT_MONO,
@@ -371,14 +387,15 @@ class AudioManager(
                         bufferSize * 4, // Larger buffer to prevent underruns
                         AudioTrack.MODE_STREAM
                     )
-                    
-                    val track = audioTrack
-                    if (track?.state == AudioTrack.STATE_INITIALIZED) {
-                        track.play()
+
+                    if (newTrack.state == AudioTrack.STATE_INITIALIZED) {
+                        newTrack.play()
+                        audioTrack = newTrack
                         isInitialized = true
                         Log.d(TAG, "AudioTrack initialized and started for $sourceId")
                     } else {
-                        Log.e(TAG, "AudioTrack initialization failed for $sourceId, state: ${track?.state}")
+                        Log.e(TAG, "AudioTrack initialization failed for $sourceId, state: ${newTrack.state}")
+                        newTrack.release()
                         isInitialized = false
                     }
                 } catch (e: Exception) {
@@ -387,78 +404,83 @@ class AudioManager(
                 }
             }
         }
-        
+
+        // Must be called while holding trackLock
+        private fun releaseTrackUnsafe() {
+            val track = audioTrack ?: return
+            audioTrack = null
+
+            // Stop if playing
+            try {
+                if (track.playState == AudioTrack.PLAYSTATE_PLAYING) {
+                    track.stop()
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Error stopping AudioTrack for $sourceId", e)
+            }
+
+            // Always release
+            try {
+                track.release()
+            } catch (e: Exception) {
+                Log.w(TAG, "Error releasing AudioTrack for $sourceId", e)
+            }
+        }
+
         fun processAndPlay(audioData: ShortArray) {
             if (audioData.isEmpty()) {
-                Log.w(TAG, "Empty audio data for $sourceId")
                 return
             }
-            
+
             synchronized(trackLock) {
                 try {
                     val track = audioTrack
                     if (!isInitialized || track == null) {
                         Log.w(TAG, "AudioTrack not initialized for $sourceId, attempting to reinitialize")
                         setupAudioTrack()
-                        return
+                        return // Don't attempt to play this buffer
                     }
-                    
-                    // Double-check track state after potential reinitialize
-                    val currentTrack = audioTrack
-                    if (currentTrack == null) {
-                        Log.e(TAG, "AudioTrack is still null for $sourceId after reinitialize attempt")
-                        return
-                    }
-                    
-                    if (currentTrack.state != AudioTrack.STATE_INITIALIZED) {
-                        Log.e(TAG, "AudioTrack not in initialized state for $sourceId, state: ${currentTrack.state}")
+
+                    if (track.state != AudioTrack.STATE_INITIALIZED) {
+                        Log.e(TAG, "AudioTrack not in initialized state for $sourceId")
+                        isInitialized = false
                         setupAudioTrack()
                         return
                     }
-                    
-                    if (currentTrack.playState != AudioTrack.PLAYSTATE_PLAYING) {
-                        Log.d(TAG, "Starting AudioTrack playback for $sourceId")
-                        currentTrack.play()
+
+                    if (track.playState != AudioTrack.PLAYSTATE_PLAYING) {
+                        track.play()
                     }
-                    
-                    // Validate audio data size
-                    if (audioData.size > 0 && audioData.size <= 8192) { // Reasonable size limit
-                        val bytesWritten = currentTrack.write(audioData, 0, audioData.size)
-                        if (bytesWritten > 0) {
-                            Log.d(TAG, "Audio playback: wrote $bytesWritten samples for $sourceId")
-                        } else {
-                            Log.w(TAG, "AudioTrack write returned $bytesWritten for $sourceId")
-                        }
-                    } else {
-                        Log.e(TAG, "Invalid audio data size: ${audioData.size} for $sourceId")
-                    }
-                    
+
+                    // Validate and write audio data
+                    writeAudioData(track, audioData)
+
                 } catch (e: IllegalStateException) {
                     Log.e(TAG, "IllegalStateException playing audio for $sourceId", e)
                     isInitialized = false
-                    // Try to recover on next call
                 } catch (e: Exception) {
-                    Log.e(TAG, "Unexpected error playing audio for $sourceId", e)
-                    e.printStackTrace()
+                    Log.e(TAG, "Error playing audio for $sourceId", e)
                     isInitialized = false
                 }
             }
         }
-        
+
+        private fun writeAudioData(track: AudioTrack, audioData: ShortArray) {
+            val dataSize = audioData.size
+            if (dataSize < 1 || dataSize > 8192) {
+                Log.e(TAG, "Invalid audio data size: $dataSize for $sourceId")
+                return
+            }
+            val samplesWritten = track.write(audioData, 0, dataSize)
+            if (samplesWritten < 0) {
+                Log.w(TAG, "AudioTrack write error: $samplesWritten for $sourceId")
+            }
+        }
+
         fun cleanup() {
             synchronized(trackLock) {
                 isInitialized = false
-                audioTrack?.let { track ->
-                    try {
-                        if (track.playState == AudioTrack.PLAYSTATE_PLAYING) {
-                            track.stop()
-                        }
-                        track.release()
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Error during AudioTrack cleanup for $sourceId", e)
-                    }
-                }
-                audioTrack = null
+                releaseTrackUnsafe()
             }
         }
     }
