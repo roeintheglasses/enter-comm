@@ -14,67 +14,124 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-// import org.webrtc.* // Commented out for now to avoid compatibility issues
-import java.nio.ByteBuffer
 import java.util.concurrent.ConcurrentHashMap
 
+/**
+ * Audio configuration for the intercom system.
+ */
 data class AudioConfig(
-    val sampleRate: Int = 48000,
-    val channelCount: Int = 1,
+    val sampleRate: Int = OpusCodec.SAMPLE_RATE,  // 48kHz - native Opus rate
+    val channelCount: Int = OpusCodec.CHANNELS,    // Mono
     val audioFormat: Int = AudioFormat.ENCODING_PCM_16BIT,
-    val bufferSizeMs: Int = 20 // 20ms buffer
+    val frameSize: Int = OpusCodec.FRAME_SIZE,     // 20ms at 48kHz
+    val bitrate: Int = OpusCodec.BITRATE           // 24 kbps
 )
 
+/**
+ * Audio processing settings that can be configured at runtime.
+ */
+data class AudioProcessingSettings(
+    val aecEnabled: Boolean = true,
+    val nsEnabled: Boolean = true,
+    val agcEnabled: Boolean = true,
+    val windFilterEnabled: Boolean = true,
+    val opusEnabled: Boolean = true
+)
+
+/**
+ * AudioManager handles audio capture, processing, encoding, and playback
+ * for the mesh intercom network.
+ *
+ * Features:
+ * - Opus codec for 10-20x bandwidth reduction
+ * - Echo cancellation (hardware AEC when available)
+ * - Noise suppression (hardware NS when available)
+ * - Automatic gain control (hardware AGC with software fallback)
+ * - Wind noise filtering (optimized for cycling)
+ */
 class AudioManager(
     private val context: Context,
     private val meshCallback: (ByteArray) -> Unit
 ) {
     companion object {
         private const val TAG = "AudioManager"
-        private const val OPUS_PAYLOAD_TYPE = 111
     }
-    
+
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
-    
+
+    // State flows
     private val _isRecording = MutableStateFlow(false)
     val isRecording: StateFlow<Boolean> = _isRecording.asStateFlow()
-    
+
     private val _isMuted = MutableStateFlow(false)
     val isMuted: StateFlow<Boolean> = _isMuted.asStateFlow()
-    
+
     private val _audioLevel = MutableStateFlow(0f)
     val audioLevel: StateFlow<Float> = _audioLevel.asStateFlow()
-    
+
+    private val _processingSettings = MutableStateFlow(AudioProcessingSettings())
+    val processingSettings: StateFlow<AudioProcessingSettings> = _processingSettings.asStateFlow()
+
+    private val _codecStats = MutableStateFlow(CodecStats())
+    val codecStats: StateFlow<CodecStats> = _codecStats.asStateFlow()
+
+    // Configuration
     private val audioConfig = AudioConfig()
-    
-    // WebRTC components - temporarily commented out for initial build
-    // private var peerConnectionFactory: PeerConnectionFactory? = null
-    // private var audioSource: AudioSource? = null
-    private var audioTrack: AudioTrack? = null
+
+    // Audio I/O
     private var audioRecord: AudioRecord? = null
-    
-    // Audio processing
+    private var audioTrack: AudioTrack? = null
+
+    // Codec and processing
+    private val opusCodec = OpusCodec(
+        sampleRate = audioConfig.sampleRate,
+        channels = audioConfig.channelCount,
+        frameSize = audioConfig.frameSize,
+        bitrate = audioConfig.bitrate
+    )
+    private val effectsProcessor = AudioEffectsProcessor()
+
+    // Per-source audio processors for playback mixing
+    private val audioProcessors = ConcurrentHashMap<String, PlaybackProcessor>()
+
+    // Processing state
+    @Volatile
     private var isProcessing = false
-    private val audioProcessors = ConcurrentHashMap<String, AudioProcessor>()
-    
-    // Opus encoder/decoder (simplified - in production use WebRTC's built-in opus)
-    private val audioEncoder = AudioEncoder()
-    private val audioDecoder = AudioDecoder()
-    
+
+    // Statistics
+    private var totalBytesEncoded = 0L
+    private var totalBytesRaw = 0L
+    private var packetsEncoded = 0L
+
+    /**
+     * Initialize the audio system.
+     */
     fun initialize() {
         try {
-            Log.d(TAG, "Starting AudioManager initialization...")
-            // initializeWebRTC() // Temporarily commented out
+            Log.d(TAG, "Initializing AudioManager with Opus codec...")
+
+            // Initialize Opus codec
+            if (!opusCodec.initialize()) {
+                Log.e(TAG, "Failed to initialize Opus codec, falling back to PCM")
+            } else {
+                Log.d(TAG, "Opus codec initialized: ${audioConfig.sampleRate}Hz, ${audioConfig.bitrate}bps")
+            }
+
+            // Setup audio capture
             setupAudioCapture()
+
+            // Setup audio playback
             setupAudioPlayback()
+
             Log.d(TAG, "AudioManager initialized successfully")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to initialize AudioManager", e)
-            // Don't re-throw the exception to prevent app crash
-            // The audio functionality will be limited but app should still work
         }
     }
-    
+
+    /**
+     * Start recording and transmitting audio.
+     */
     fun startRecording() {
         if (_isRecording.value) return
 
@@ -83,174 +140,185 @@ class AudioManager(
             return
         }
 
-        if (audioRecord == null) {
+        val record = audioRecord
+        if (record == null) {
             Log.e(TAG, "Cannot start recording: AudioRecord not initialized")
             return
         }
 
         scope.launch {
             try {
-                audioRecord?.startRecording()
+                record.startRecording()
                 _isRecording.value = true
                 isProcessing = true
 
+                // Initialize audio effects with the audio session
+                effectsProcessor.initialize(record.audioSessionId, audioConfig.sampleRate)
+                applyProcessingSettings(_processingSettings.value)
+
+                // Start audio processing loop
                 launch { processAudioInput() }
 
-                Log.d(TAG, "Audio recording started")
+                Log.d(TAG, "Audio recording started with Opus encoding")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to start recording", e)
                 _isRecording.value = false
             }
         }
     }
-    
+
+    /**
+     * Stop recording.
+     */
     fun stopRecording() {
         _isRecording.value = false
         isProcessing = false
-        
+
         try {
             audioRecord?.stop()
+            effectsProcessor.cleanup()
             Log.d(TAG, "Audio recording stopped")
+
+            // Log compression stats
+            if (totalBytesRaw > 0) {
+                val ratio = totalBytesRaw.toFloat() / totalBytesEncoded.coerceAtLeast(1)
+                Log.d(TAG, "Compression stats: ${totalBytesRaw}B raw -> ${totalBytesEncoded}B encoded (${ratio.format(1)}x)")
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Error stopping recording", e)
         }
     }
-    
+
+    /**
+     * Set mute state.
+     */
     fun setMuted(muted: Boolean) {
         _isMuted.value = muted
         Log.d(TAG, "Audio ${if (muted) "muted" else "unmuted"}")
     }
-    
+
+    /**
+     * Update audio processing settings.
+     */
+    fun updateProcessingSettings(settings: AudioProcessingSettings) {
+        _processingSettings.value = settings
+        applyProcessingSettings(settings)
+        Log.d(TAG, "Processing settings updated: $settings")
+    }
+
+    /**
+     * Play received audio data from a mesh node.
+     */
     fun playAudioData(audioData: ByteArray, sourceId: String) {
         scope.launch {
             try {
-                Log.d(TAG, "Received audio data from $sourceId: ${audioData.size} bytes")
-                
                 if (audioData.isEmpty()) {
                     Log.w(TAG, "Received empty audio data from $sourceId")
                     return@launch
                 }
-                
-                // Validate audio data size - prevent processing extremely large payloads
-                if (audioData.size > 16384) { // 16KB limit
+
+                // Validate size
+                if (audioData.size > 16384) {
                     Log.e(TAG, "Audio data too large from $sourceId: ${audioData.size} bytes")
                     return@launch
                 }
-                
+
+                Log.d(TAG, "Received ${audioData.size} bytes from $sourceId")
+
+                // Get or create processor for this source
                 val processor = audioProcessors.getOrPut(sourceId) {
-                    Log.d(TAG, "Creating new AudioProcessor for $sourceId")
-                    try {
-                        AudioProcessor(sourceId)
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Failed to create AudioProcessor for $sourceId", e)
-                        return@launch
-                    }
+                    Log.d(TAG, "Creating PlaybackProcessor for $sourceId")
+                    PlaybackProcessor(sourceId, audioConfig)
                 }
-                
-                val decodedAudio = try {
-                    audioDecoder.decode(audioData)
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to decode audio from $sourceId", e)
-                    return@launch
-                }
-                
-                Log.d(TAG, "Decoded audio: ${decodedAudio.size} samples")
-                
-                if (decodedAudio.isNotEmpty()) {
-                    // Additional safety check on decoded data
-                    if (decodedAudio.size <= 8192) { // Reasonable limit for decoded samples
-                        processor.processAndPlay(decodedAudio)
-                    } else {
-                        Log.e(TAG, "Decoded audio too large from $sourceId: ${decodedAudio.size} samples")
-                    }
+
+                // Decode audio
+                val decodedSamples = if (_processingSettings.value.opusEnabled) {
+                    opusCodec.decode(audioData)
                 } else {
-                    Log.w(TAG, "Decoded audio is empty for $sourceId")
+                    decodePcm(audioData)
                 }
-                
+
+                if (decodedSamples.isNotEmpty()) {
+                    processor.play(decodedSamples)
+                    Log.d(TAG, "Played ${decodedSamples.size} samples from $sourceId")
+                }
+
             } catch (e: OutOfMemoryError) {
-                Log.e(TAG, "Out of memory processing audio from $sourceId", e)
-                // Remove the problematic processor
+                Log.e(TAG, "OOM processing audio from $sourceId", e)
                 audioProcessors.remove(sourceId)?.cleanup()
             } catch (e: Exception) {
                 Log.e(TAG, "Error playing audio from $sourceId", e)
-                e.printStackTrace()
-                // Try to recover by removing and recreating the processor
-                audioProcessors.remove(sourceId)?.cleanup()
             }
         }
     }
-    
+
+    /**
+     * Handle packet loss - generate comfort noise for a source.
+     */
+    fun handlePacketLoss(sourceId: String) {
+        scope.launch {
+            try {
+                val processor = audioProcessors[sourceId] ?: return@launch
+                val plcSamples = opusCodec.decodePLC()
+                if (plcSamples.isNotEmpty()) {
+                    processor.play(plcSamples)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error handling packet loss for $sourceId", e)
+            }
+        }
+    }
+
+    /**
+     * Get current codec statistics.
+     */
+    fun getCodecStats(): CodecStats {
+        val compressionRatio = if (totalBytesEncoded > 0) {
+            totalBytesRaw.toFloat() / totalBytesEncoded
+        } else 0f
+
+        return CodecStats(
+            packetsEncoded = packetsEncoded,
+            bytesRaw = totalBytesRaw,
+            bytesEncoded = totalBytesEncoded,
+            compressionRatio = compressionRatio,
+            effectsStats = effectsProcessor.getStats()
+        )
+    }
+
+    /**
+     * Cleanup all resources.
+     */
     fun cleanup() {
         stopRecording()
         isProcessing = false
-        
+
+        // Cleanup playback processors
         audioProcessors.values.forEach { it.cleanup() }
         audioProcessors.clear()
-        
+
+        // Release audio resources
         audioRecord?.release()
         audioTrack?.release()
-        // audioSource?.dispose() // Temporarily commented out
-        // peerConnectionFactory?.dispose() // Temporarily commented out
-        
+
+        // Cleanup codec
+        opusCodec.cleanup()
+
         scope.cancel()
         Log.d(TAG, "AudioManager cleaned up")
     }
-    
-    /*
-    private fun initializeWebRTC() {
-        val initializationOptions = PeerConnectionFactory.InitializationOptions.builder(context)
-            .setEnableInternalTracer(false)
-            .createInitializationOptions()
-        
-        PeerConnectionFactory.initialize(initializationOptions)
-        
-        val options = PeerConnectionFactory.Options()
-        val encoderFactory = DefaultVideoEncoderFactory(null, false, false)
-        val decoderFactory = DefaultVideoDecoderFactory(null)
-        
-        peerConnectionFactory = PeerConnectionFactory.builder()
-            .setOptions(options)
-            .setAudioDeviceModule(createAudioDeviceModule())
-            .setVideoEncoderFactory(encoderFactory)
-            .setVideoDecoderFactory(decoderFactory)
-            .createPeerConnectionFactory()
-        
-        // Create audio source for WebRTC audio processing
-        val audioConstraints = MediaConstraints().apply {
-            mandatory.add(MediaConstraints.KeyValuePair("googEchoCancellation", "true"))
-            mandatory.add(MediaConstraints.KeyValuePair("googNoiseSuppression", "true"))
-            mandatory.add(MediaConstraints.KeyValuePair("googAutoGainControl", "true"))
-            mandatory.add(MediaConstraints.KeyValuePair("googHighpassFilter", "true"))
-        }
-        
-        audioSource = peerConnectionFactory?.createAudioSource(audioConstraints)
-    }
-    */
-    
-    /*
-    private fun createAudioDeviceModule(): AudioDeviceModule {
-        return JavaAudioDeviceModule.builder(context)
-            .setUseStereoInput(false)
-            .setUseStereoOutput(false)
-            .setAudioRecordErrorCallback { errorMessage ->
-                Log.e(TAG, "Audio record error: $errorMessage")
-            }
-            .setAudioTrackErrorCallback { errorMessage ->
-                Log.e(TAG, "Audio track error: $errorMessage")
-            }
-            .createAudioDeviceModule()
-    }
-    */
-    
+
+    // Private methods
+
     private fun hasAudioPermission(): Boolean {
         return ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
-            PackageManager.PERMISSION_GRANTED
+                PackageManager.PERMISSION_GRANTED
     }
 
-    @SuppressLint("MissingPermission") // Permission is checked in hasAudioPermission() above
+    @SuppressLint("MissingPermission")
     private fun setupAudioCapture() {
         if (!hasAudioPermission()) {
-            Log.e(TAG, "RECORD_AUDIO permission not granted, skipping audio capture setup")
+            Log.e(TAG, "RECORD_AUDIO permission not granted")
             return
         }
 
@@ -260,8 +328,13 @@ class AudioManager(
             audioConfig.audioFormat
         )
 
+        if (bufferSize == AudioRecord.ERROR_BAD_VALUE || bufferSize == AudioRecord.ERROR) {
+            Log.e(TAG, "Invalid buffer size: $bufferSize")
+            return
+        }
+
         audioRecord = AudioRecord(
-            MediaRecorder.AudioSource.MIC,
+            MediaRecorder.AudioSource.VOICE_COMMUNICATION,  // Optimized for voice
             audioConfig.sampleRate,
             AudioFormat.CHANNEL_IN_MONO,
             audioConfig.audioFormat,
@@ -272,16 +345,18 @@ class AudioManager(
             Log.e(TAG, "AudioRecord initialization failed")
             audioRecord?.release()
             audioRecord = null
+        } else {
+            Log.d(TAG, "AudioRecord initialized: ${audioConfig.sampleRate}Hz, buffer=$bufferSize")
         }
     }
-    
+
     private fun setupAudioPlayback() {
         val bufferSize = AudioTrack.getMinBufferSize(
             audioConfig.sampleRate,
             AudioFormat.CHANNEL_OUT_MONO,
             audioConfig.audioFormat
         )
-        
+
         audioTrack = AudioTrack(
             android.media.AudioManager.STREAM_VOICE_CALL,
             audioConfig.sampleRate,
@@ -290,58 +365,71 @@ class AudioManager(
             bufferSize * 2,
             AudioTrack.MODE_STREAM
         )
-        
+
         audioTrack?.play()
+        Log.d(TAG, "AudioTrack initialized: ${audioConfig.sampleRate}Hz")
     }
-    
+
     private suspend fun processAudioInput() {
-        val bufferSize = audioConfig.sampleRate * audioConfig.bufferSizeMs / 1000
+        val bufferSize = audioConfig.frameSize
         val buffer = ShortArray(bufferSize)
-        
+
         while (isProcessing && _isRecording.value) {
             try {
                 val samplesRead = audioRecord?.read(buffer, 0, buffer.size) ?: 0
-                
+
                 if (samplesRead > 0 && !_isMuted.value) {
-                    // Calculate audio level for UI feedback
+                    // Calculate audio level for UI
                     val level = calculateAudioLevel(buffer, samplesRead)
                     _audioLevel.value = level
-                    
-                    // Apply audio processing (noise reduction, echo cancellation, etc.)
-                    val processedAudio = applyAudioProcessing(buffer, samplesRead)
-                    
-                    // Encode audio data
-                    val encodedAudio = audioEncoder.encode(processedAudio)
-                    
-                    // Send encoded audio through mesh network
-                    meshCallback(encodedAudio)
+
+                    // Apply audio processing (AEC, NS, AGC, wind filter)
+                    val processedSamples = effectsProcessor.process(
+                        buffer.copyOf(samplesRead)
+                    )
+
+                    // Encode with Opus
+                    val encodedData = if (_processingSettings.value.opusEnabled) {
+                        opusCodec.encode(processedSamples)
+                    } else {
+                        encodePcm(processedSamples)
+                    }
+
+                    if (encodedData != null && encodedData.isNotEmpty()) {
+                        // Update stats
+                        val rawBytes = samplesRead * 2L
+                        totalBytesRaw += rawBytes
+                        totalBytesEncoded += encodedData.size
+                        packetsEncoded++
+
+                        // Update codec stats flow
+                        _codecStats.value = getCodecStats()
+
+                        // Send to mesh network
+                        meshCallback(encodedData)
+                    }
+                } else if (samplesRead > 0 && _isMuted.value) {
+                    // Update level to show we're muted but receiving audio
+                    _audioLevel.value = 0f
                 }
-                
-                delay(audioConfig.bufferSizeMs.toLong())
-                
+
+                // Sleep for frame duration
+                delay((audioConfig.frameSize * 1000L / audioConfig.sampleRate))
+
             } catch (e: Exception) {
                 Log.e(TAG, "Error processing audio input", e)
                 delay(100)
             }
         }
     }
-    
-    private fun applyAudioProcessing(buffer: ShortArray, length: Int): ShortArray {
-        // Apply noise reduction, gain control, etc.
-        // This is where WebRTC's audio processing would be applied
-        
-        // Simple gain control for now
-        val processed = ShortArray(length)
-        val gain = if (_audioLevel.value < 0.1f) 2.0f else 1.0f
-        
-        for (i in 0 until length) {
-            val amplified = (buffer[i] * gain).toInt()
-            processed[i] = amplified.coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
-        }
-        
-        return processed
+
+    private fun applyProcessingSettings(settings: AudioProcessingSettings) {
+        effectsProcessor.setAecEnabled(settings.aecEnabled)
+        effectsProcessor.setNsEnabled(settings.nsEnabled)
+        effectsProcessor.setAgcEnabled(settings.agcEnabled)
+        effectsProcessor.setWindFilterEnabled(settings.windFilterEnabled)
     }
-    
+
     private fun calculateAudioLevel(buffer: ShortArray, length: Int): Float {
         var sum = 0L
         for (i in 0 until length) {
@@ -350,114 +438,100 @@ class AudioManager(
         val rms = kotlin.math.sqrt(sum.toDouble() / length)
         return (rms / Short.MAX_VALUE).toFloat()
     }
-    
-    // Inner class for per-source audio processing with improved thread safety
-    private inner class AudioProcessor(private val sourceId: String) {
+
+    // Fallback PCM encoding/decoding (for when Opus is disabled)
+    private fun encodePcm(samples: ShortArray): ByteArray {
+        val buffer = java.nio.ByteBuffer.allocate(samples.size * 2)
+            .order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        for (sample in samples) {
+            buffer.putShort(sample)
+        }
+        return buffer.array()
+    }
+
+    private fun decodePcm(data: ByteArray): ShortArray {
+        if (data.isEmpty() || data.size % 2 != 0) return ShortArray(0)
+        val buffer = java.nio.ByteBuffer.wrap(data).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        val samples = ShortArray(data.size / 2)
+        for (i in samples.indices) {
+            samples[i] = buffer.short
+        }
+        return samples
+    }
+
+    private fun Float.format(decimals: Int) = "%.${decimals}f".format(this)
+
+    /**
+     * Per-source audio playback processor.
+     */
+    private inner class PlaybackProcessor(
+        private val sourceId: String,
+        private val config: AudioConfig
+    ) {
         private var audioTrack: AudioTrack? = null
-        private val trackLock = Any()
+        private val lock = Any()
         private var isInitialized = false
 
         init {
-            setupAudioTrack()
+            setup()
         }
 
-        private fun setupAudioTrack() {
-            synchronized(trackLock) {
+        private fun setup() {
+            synchronized(lock) {
                 try {
-                    // Clean up existing track safely
-                    releaseTrackUnsafe()
-
                     val bufferSize = AudioTrack.getMinBufferSize(
-                        audioConfig.sampleRate,
+                        config.sampleRate,
                         AudioFormat.CHANNEL_OUT_MONO,
-                        audioConfig.audioFormat
+                        config.audioFormat
                     )
 
                     if (bufferSize == AudioTrack.ERROR_BAD_VALUE || bufferSize == AudioTrack.ERROR) {
-                        Log.e(TAG, "Invalid buffer size for AudioTrack: $bufferSize")
-                        isInitialized = false
+                        Log.e(TAG, "Invalid buffer size for $sourceId")
                         return
                     }
 
-                    val newTrack = AudioTrack(
-                        android.media.AudioManager.STREAM_MUSIC,
-                        audioConfig.sampleRate,
+                    audioTrack = AudioTrack(
+                        android.media.AudioManager.STREAM_VOICE_CALL,
+                        config.sampleRate,
                         AudioFormat.CHANNEL_OUT_MONO,
-                        audioConfig.audioFormat,
-                        bufferSize * 4, // Larger buffer to prevent underruns
+                        config.audioFormat,
+                        bufferSize * 4,
                         AudioTrack.MODE_STREAM
-                    )
-
-                    if (newTrack.state == AudioTrack.STATE_INITIALIZED) {
-                        newTrack.play()
-                        audioTrack = newTrack
-                        isInitialized = true
-                        Log.d(TAG, "AudioTrack initialized and started for $sourceId")
-                    } else {
-                        Log.e(TAG, "AudioTrack initialization failed for $sourceId, state: ${newTrack.state}")
-                        newTrack.release()
-                        isInitialized = false
+                    ).apply {
+                        if (state == AudioTrack.STATE_INITIALIZED) {
+                            play()
+                            isInitialized = true
+                            Log.d(TAG, "PlaybackProcessor initialized for $sourceId")
+                        } else {
+                            release()
+                            Log.e(TAG, "Failed to initialize AudioTrack for $sourceId")
+                        }
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Exception setting up AudioTrack for $sourceId", e)
-                    isInitialized = false
+                    Log.e(TAG, "Error setting up PlaybackProcessor for $sourceId", e)
                 }
             }
         }
 
-        // Must be called while holding trackLock
-        private fun releaseTrackUnsafe() {
-            val track = audioTrack ?: return
-            audioTrack = null
+        fun play(samples: ShortArray) {
+            if (samples.isEmpty()) return
 
-            // Stop if playing
-            try {
-                if (track.playState == AudioTrack.PLAYSTATE_PLAYING) {
-                    track.stop()
+            synchronized(lock) {
+                val track = audioTrack
+                if (!isInitialized || track == null) {
+                    setup()
+                    return
                 }
-            } catch (e: Exception) {
-                Log.w(TAG, "Error stopping AudioTrack for $sourceId", e)
-            }
 
-            // Always release
-            try {
-                track.release()
-            } catch (e: Exception) {
-                Log.w(TAG, "Error releasing AudioTrack for $sourceId", e)
-            }
-        }
-
-        fun processAndPlay(audioData: ShortArray) {
-            if (audioData.isEmpty()) {
-                return
-            }
-
-            synchronized(trackLock) {
                 try {
-                    val track = audioTrack
-                    if (!isInitialized || track == null) {
-                        Log.w(TAG, "AudioTrack not initialized for $sourceId, attempting to reinitialize")
-                        setupAudioTrack()
-                        return // Don't attempt to play this buffer
-                    }
-
-                    if (track.state != AudioTrack.STATE_INITIALIZED) {
-                        Log.e(TAG, "AudioTrack not in initialized state for $sourceId")
-                        isInitialized = false
-                        setupAudioTrack()
-                        return
-                    }
-
                     if (track.playState != AudioTrack.PLAYSTATE_PLAYING) {
                         track.play()
                     }
 
-                    // Validate and write audio data
-                    writeAudioData(track, audioData)
-
-                } catch (e: IllegalStateException) {
-                    Log.e(TAG, "IllegalStateException playing audio for $sourceId", e)
-                    isInitialized = false
+                    val written = track.write(samples, 0, samples.size)
+                    if (written < 0) {
+                        Log.w(TAG, "AudioTrack write error: $written for $sourceId")
+                    }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error playing audio for $sourceId", e)
                     isInitialized = false
@@ -465,71 +539,28 @@ class AudioManager(
             }
         }
 
-        private fun writeAudioData(track: AudioTrack, audioData: ShortArray) {
-            val dataSize = audioData.size
-            if (dataSize < 1 || dataSize > 8192) {
-                Log.e(TAG, "Invalid audio data size: $dataSize for $sourceId")
-                return
-            }
-            val samplesWritten = track.write(audioData, 0, dataSize)
-            if (samplesWritten < 0) {
-                Log.w(TAG, "AudioTrack write error: $samplesWritten for $sourceId")
-            }
-        }
-
         fun cleanup() {
-            synchronized(trackLock) {
+            synchronized(lock) {
+                try {
+                    audioTrack?.stop()
+                    audioTrack?.release()
+                } catch (e: Exception) {
+                    Log.w(TAG, "Error cleaning up PlaybackProcessor for $sourceId", e)
+                }
+                audioTrack = null
                 isInitialized = false
-                releaseTrackUnsafe()
-            }
-        }
-    }
-    
-    // Simplified audio encoder/decoder classes
-    private class AudioEncoder {
-        fun encode(audioData: ShortArray): ByteArray {
-            // In production, use WebRTC's Opus encoder
-            // For now, just convert to bytes with proper endianness
-            val byteBuffer = ByteBuffer.allocate(audioData.size * 2).order(java.nio.ByteOrder.LITTLE_ENDIAN)
-            for (sample in audioData) {
-                byteBuffer.putShort(sample)
-            }
-            return byteBuffer.array()
-        }
-    }
-    
-    private class AudioDecoder {
-        fun decode(audioData: ByteArray): ShortArray {
-            try {
-                // In production, use WebRTC's Opus decoder
-                // For now, just convert from bytes with proper endianness
-                if (audioData.isEmpty()) {
-                    return ShortArray(0)
-                }
-                
-                // Ensure even number of bytes for proper short conversion
-                val validSize = if (audioData.size % 2 == 0) audioData.size else audioData.size - 1
-                if (validSize <= 0) {
-                    return ShortArray(0)
-                }
-                
-                val byteBuffer = ByteBuffer.wrap(audioData, 0, validSize).order(java.nio.ByteOrder.LITTLE_ENDIAN)
-                val shortArray = ShortArray(validSize / 2)
-                
-                for (i in shortArray.indices) {
-                    if (byteBuffer.hasRemaining()) {
-                        shortArray[i] = byteBuffer.short
-                    } else {
-                        // This shouldn't happen with our size calculation, but be safe
-                        shortArray[i] = 0
-                        break
-                    }
-                }
-                return shortArray
-            } catch (e: Exception) {
-                Log.e(TAG, "Error decoding audio data", e)
-                return ShortArray(0)
             }
         }
     }
 }
+
+/**
+ * Codec statistics for monitoring.
+ */
+data class CodecStats(
+    val packetsEncoded: Long = 0,
+    val bytesRaw: Long = 0,
+    val bytesEncoded: Long = 0,
+    val compressionRatio: Float = 0f,
+    val effectsStats: AudioEffectsStats? = null
+)

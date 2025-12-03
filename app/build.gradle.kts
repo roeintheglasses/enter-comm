@@ -63,7 +63,8 @@ dependencies {
     // AppCompat for theme support
     implementation("androidx.appcompat:appcompat:1.6.1")
     
-    // WebRTC - temporarily disabled due to compatibility issues
+    // Audio codec - using built-in ADPCM implementation (no external dependencies)
+    // For Opus codec, uncomment the WebRTC SDK when available:
     // implementation("io.github.webrtc-sdk:android:125.6422.07")
     
     // Coroutines
