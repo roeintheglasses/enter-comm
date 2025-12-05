@@ -10,6 +10,7 @@ import android.os.IBinder
 import androidx.core.app.ServiceCompat
 import com.entercomm.bikeintercom.audio.AudioManager
 import com.entercomm.bikeintercom.config.AppConfig
+import com.entercomm.bikeintercom.location.LocationManager
 import com.entercomm.bikeintercom.service.ConnectionCoordinator
 import com.entercomm.bikeintercom.service.ConnectionEvent
 import com.entercomm.bikeintercom.service.NotificationHelper
@@ -47,6 +48,8 @@ class MeshNetworkService : Service() {
     private lateinit var wifiDirectManager: WiFiDirectManager
     private lateinit var meshNetworkManager: MeshNetworkManager
     private lateinit var audioManager: AudioManager
+    private lateinit var groupManager: GroupManager
+    private lateinit var locationManager: LocationManager
 
     // Extracted components
     private lateinit var notificationHelper: NotificationHelper
@@ -186,6 +189,41 @@ class MeshNetworkService : Service() {
                 android.util.Log.d("MeshNetworkService", "Audio Manager initialized successfully")
             } catch (e: Exception) {
                 android.util.Log.e("MeshNetworkService", "Failed to initialize Audio Manager", e)
+            }
+
+            // Initialize Group Manager
+            try {
+                android.util.Log.d("MeshNetworkService", "Initializing Group Manager...")
+                groupManager = GroupManager(this, nodeId, deviceName)
+                // Connect group manager to mesh network
+                groupManager.sendGroupMessage = { type, destination, payload ->
+                    meshNetworkManager.sendGroupMessage(type, destination, payload)
+                }
+                // Handle incoming group messages
+                meshNetworkManager.onGroupMessageReceived = { type, senderId, payload ->
+                    groupManager.processGroupMessage(type, senderId, payload)
+                }
+                android.util.Log.d("MeshNetworkService", "Group Manager initialized successfully")
+            } catch (e: Exception) {
+                android.util.Log.e("MeshNetworkService", "Failed to initialize Group Manager", e)
+            }
+
+            // Initialize Location Manager
+            try {
+                android.util.Log.d("MeshNetworkService", "Initializing Location Manager...")
+                locationManager = LocationManager(this)
+                locationManager.initialize(nodeId, deviceName)
+                // Connect location manager to mesh network
+                locationManager.sendLocationMessage = { type, destination, payload ->
+                    meshNetworkManager.sendLocationMessage(type, destination, payload)
+                }
+                // Handle incoming location messages
+                meshNetworkManager.onLocationMessageReceived = { type, senderId, payload ->
+                    locationManager.processLocationMessage(type, senderId, payload)
+                }
+                android.util.Log.d("MeshNetworkService", "Location Manager initialized successfully")
+            } catch (e: Exception) {
+                android.util.Log.e("MeshNetworkService", "Failed to initialize Location Manager", e)
             }
 
             android.util.Log.d("MeshNetworkService", "Manager initialization completed")
@@ -446,6 +484,106 @@ class MeshNetworkService : Service() {
         }
     }
 
+    /**
+     * Get the group manager for UI access.
+     */
+    fun getGroupManager(): GroupManager? {
+        return if (::groupManager.isInitialized) groupManager else null
+    }
+
+    /**
+     * Get the mesh network manager for topology access.
+     */
+    fun getMeshNetworkManager(): MeshNetworkManager? {
+        return if (::meshNetworkManager.isInitialized) meshNetworkManager else null
+    }
+
+    /**
+     * Get current mesh topology for visualization.
+     */
+    fun getMeshTopology(): MeshTopology? {
+        return if (::meshNetworkManager.isInitialized) {
+            meshNetworkManager.getMeshTopology()
+        } else null
+    }
+
+    /**
+     * Get the location manager for radar access.
+     */
+    fun getLocationManager(): LocationManager? {
+        return if (::locationManager.isInitialized) locationManager else null
+    }
+
+    /**
+     * Set the group code for mesh filtering.
+     * Only nodes with matching group codes will connect.
+     */
+    fun setGroupCode(code: String?) {
+        if (::meshNetworkManager.isInitialized) {
+            meshNetworkManager.setGroupCode(code)
+            logD { "Group code set to: $code" }
+        } else {
+            logW { "Cannot set group code - mesh network manager not initialized" }
+        }
+    }
+
+    /**
+     * Get the current group code.
+     */
+    fun getGroupCode(): String? {
+        return if (::meshNetworkManager.isInitialized) {
+            meshNetworkManager.getGroupCode()
+        } else null
+    }
+
+    /**
+     * Enable or disable group mode filtering.
+     * When enabled (default), only connects with nodes that have matching group codes.
+     * When disabled (open mode), connects with all nearby nodes.
+     */
+    fun setGroupModeEnabled(enabled: Boolean) {
+        if (::meshNetworkManager.isInitialized) {
+            meshNetworkManager.setGroupModeEnabled(enabled)
+            logD { "Group mode ${if (enabled) "enabled" else "disabled"}" }
+        } else {
+            logW { "Cannot set group mode - mesh network manager not initialized" }
+        }
+    }
+
+    /**
+     * Check if group mode is enabled.
+     */
+    fun isGroupModeEnabled(): Boolean {
+        return if (::meshNetworkManager.isInitialized) {
+            meshNetworkManager.isGroupModeEnabled()
+        } else true  // Default to group mode for safety
+    }
+
+    /**
+     * Start location tracking.
+     */
+    fun startLocationTracking(): Boolean {
+        android.util.Log.d("MeshNetworkService", "startLocationTracking() called")
+        return if (::locationManager.isInitialized) {
+            android.util.Log.d("MeshNetworkService", "LocationManager is initialized, starting tracking...")
+            val result = locationManager.startTracking()
+            android.util.Log.d("MeshNetworkService", "startTracking() returned: $result")
+            result
+        } else {
+            android.util.Log.e("MeshNetworkService", "LocationManager is NOT initialized!")
+            false
+        }
+    }
+
+    /**
+     * Stop location tracking.
+     */
+    fun stopLocationTracking() {
+        if (::locationManager.isInitialized) {
+            locationManager.stopTracking()
+        }
+    }
+
     private fun updateServiceState(update: ServiceState.() -> ServiceState) {
         val newState = _serviceState.value.update()
         _serviceState.value = newState
@@ -460,6 +598,10 @@ class MeshNetworkService : Service() {
     
     private fun cleanupManagers() {
         try {
+            if (::locationManager.isInitialized) {
+                locationManager.stopTracking()
+                logD { "Location manager cleaned up" }
+            }
             if (::audioManager.isInitialized) {
                 audioManager.cleanup()
                 logD { "Audio manager cleaned up" }

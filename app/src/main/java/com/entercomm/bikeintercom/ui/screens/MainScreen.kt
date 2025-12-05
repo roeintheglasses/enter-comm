@@ -1,21 +1,24 @@
 package com.entercomm.bikeintercom.ui.screens
 
-import android.util.Log
 import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -35,11 +38,13 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.entercomm.bikeintercom.mesh.MeshNetworkService
-import com.entercomm.bikeintercom.mesh.ServiceState
+import com.entercomm.bikeintercom.location.RadarData
+import com.entercomm.bikeintercom.mesh.*
+import com.entercomm.bikeintercom.onboarding.ConnectionMode
+import com.entercomm.bikeintercom.onboarding.OnboardingManager
+import com.entercomm.bikeintercom.ui.components.*
 import com.entercomm.bikeintercom.ui.theme.*
 import com.entercomm.bikeintercom.util.rememberHapticFeedback
 import kotlinx.coroutines.delay
@@ -56,16 +61,51 @@ enum class AppMode {
 }
 
 /**
+ * Navigation tabs for the app
+ */
+enum class NavigationTab {
+    INTERCOM,
+    GROUP,
+    RADAR,
+    SETTINGS
+}
+
+/**
  * Main screen with PTT-centric design and cohesive animations
  */
 @Composable
 fun IntercomMainScreen(
     meshService: MeshNetworkService?,
-    isServiceBound: Boolean
+    isServiceBound: Boolean,
+    onboardingManager: OnboardingManager? = null
 ) {
     val context = LocalContext.current
     var serviceState by remember { mutableStateOf(ServiceState()) }
-    var audioLevel by remember { mutableStateOf(0f) }
+    var audioLevel by remember { mutableFloatStateOf(0f) }
+    var selectedTab by remember { mutableStateOf(NavigationTab.INTERCOM) }
+
+    // Log tab changes
+    LaunchedEffect(selectedTab) {
+        android.util.Log.d("MainScreen", "Tab changed to: $selectedTab")
+    }
+
+    // Group state
+    val groupManager = meshService?.getGroupManager()
+    val currentGroup by groupManager?.currentGroup?.collectAsState() ?: remember { mutableStateOf(null) }
+    val members by groupManager?.members?.collectAsState() ?: remember { mutableStateOf(emptyList()) }
+    val nickname by groupManager?.nickname?.collectAsState() ?: remember { mutableStateOf("Rider") }
+
+    // Radar state
+    val locationManager = meshService?.getLocationManager()
+    val radarData by locationManager?.radarData?.collectAsState() ?: remember { mutableStateOf(RadarData.EMPTY) }
+    val isLocationTracking by locationManager?.isTracking?.collectAsState() ?: remember { mutableStateOf(false) }
+
+    // Topology state
+    var meshTopology by remember { mutableStateOf<MeshTopology?>(null) }
+
+    // Dialog states
+    var showCreateGroupDialog by remember { mutableStateOf(false) }
+    var showJoinGroupDialog by remember { mutableStateOf<MeshGroup?>(null) }
 
     // Derive app mode from state - this drives all animations
     val appMode by remember(isServiceBound, serviceState) {
@@ -86,6 +126,14 @@ fun IntercomMainScreen(
         }
     }
 
+    // Update topology periodically
+    LaunchedEffect(serviceState.isRunning, meshService) {
+        while (serviceState.isRunning) {
+            meshTopology = meshService?.getMeshTopology()
+            delay(2000)
+        }
+    }
+
     // Simulate audio level when transmitting
     LaunchedEffect(serviceState.isRecording) {
         if (serviceState.isRecording) {
@@ -103,7 +151,184 @@ fun IntercomMainScreen(
         }
     }
 
-    // Main UI
+    // Main UI with bottom navigation
+    Scaffold(
+        containerColor = PitchBlack,
+        bottomBar = {
+            NavigationBar(
+                containerColor = DarkSurface,
+                contentColor = TextPrimary
+            ) {
+                NavigationBarItem(
+                    selected = selectedTab == NavigationTab.INTERCOM,
+                    onClick = { selectedTab = NavigationTab.INTERCOM },
+                    icon = { Icon(Icons.Rounded.Mic, contentDescription = "Intercom") },
+                    label = { Text("Intercom") },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = TechGreen,
+                        selectedTextColor = TechGreen,
+                        indicatorColor = TechGreen.copy(alpha = 0.2f),
+                        unselectedIconColor = TextTertiary,
+                        unselectedTextColor = TextTertiary
+                    )
+                )
+                NavigationBarItem(
+                    selected = selectedTab == NavigationTab.GROUP,
+                    onClick = { selectedTab = NavigationTab.GROUP },
+                    icon = { Icon(Icons.Rounded.Group, contentDescription = "Group") },
+                    label = { Text("Group") },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = TechCyan,
+                        selectedTextColor = TechCyan,
+                        indicatorColor = TechCyan.copy(alpha = 0.2f),
+                        unselectedIconColor = TextTertiary,
+                        unselectedTextColor = TextTertiary
+                    )
+                )
+                NavigationBarItem(
+                    selected = selectedTab == NavigationTab.RADAR,
+                    onClick = { selectedTab = NavigationTab.RADAR },
+                    icon = { Icon(Icons.Rounded.MyLocation, contentDescription = "Radar") },
+                    label = { Text("Radar") },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = TechOrange,
+                        selectedTextColor = TechOrange,
+                        indicatorColor = TechOrange.copy(alpha = 0.2f),
+                        unselectedIconColor = TextTertiary,
+                        unselectedTextColor = TextTertiary
+                    )
+                )
+                NavigationBarItem(
+                    selected = selectedTab == NavigationTab.SETTINGS,
+                    onClick = { selectedTab = NavigationTab.SETTINGS },
+                    icon = { Icon(Icons.Rounded.Settings, contentDescription = "Settings") },
+                    label = { Text("Settings") },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = TextSecondary,
+                        selectedTextColor = TextSecondary,
+                        indicatorColor = TextSecondary.copy(alpha = 0.2f),
+                        unselectedIconColor = TextTertiary,
+                        unselectedTextColor = TextTertiary
+                    )
+                )
+            }
+        }
+    ) { paddingValues ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+        ) {
+            when (selectedTab) {
+                NavigationTab.INTERCOM -> {
+                    IntercomContent(
+                        appMode = appMode,
+                        audioLevel = audioLevel,
+                        serviceState = serviceState,
+                        meshTopology = meshTopology,
+                        onPTTPress = {
+                            if (serviceState.isRecording) {
+                                meshService?.stopRecording()
+                            } else {
+                                meshService?.startRecording()
+                            }
+                        },
+                        onStartStop = {
+                            if (serviceState.isRunning) {
+                                meshService?.stopMeshNetwork()
+                            } else {
+                                meshService?.startMeshNetwork()
+                                Toast.makeText(context, "Starting mesh network...", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    )
+                }
+                NavigationTab.GROUP -> {
+                    val userPrefs by onboardingManager?.userPreferences?.collectAsState()
+                        ?: remember { mutableStateOf(null) }
+                    val formattedGroupCode = userPrefs?.currentGroupCode?.let {
+                        onboardingManager?.formatGroupCode(it)
+                    }
+
+                    GroupContent(
+                        currentGroup = currentGroup,
+                        members = members,
+                        nickname = nickname,
+                        groupCode = formattedGroupCode,
+                        availableGroups = groupManager?.getAvailableGroups() ?: emptyList(),
+                        isOwner = groupManager?.isOwner() ?: false,
+                        localNodeId = meshService?.getMeshNetworkManager()?.let { "" } ?: "",
+                        onCreateGroup = { showCreateGroupDialog = true },
+                        onLeaveGroup = { groupManager?.leaveGroup() },
+                        onJoinGroup = { group -> showJoinGroupDialog = group },
+                        onKickMember = { nodeId -> groupManager?.kickMember(nodeId) },
+                        onBanMember = { nodeId -> groupManager?.banMember(nodeId) },
+                        onChannelChange = { channel -> groupManager?.changeChannel(channel) }
+                    )
+                }
+                NavigationTab.RADAR -> {
+                    // Debug log when radar tab is displayed
+                    SideEffect {
+                        android.util.Log.d("MainScreen", "Rendering RADAR tab: isLocationTracking=$isLocationTracking, meshService=${meshService != null}, locationManager=${locationManager != null}")
+                    }
+                    RadarContent(
+                        radarData = radarData,
+                        isTracking = isLocationTracking,
+                        onStartTracking = {
+                            android.util.Log.d("MainScreen", "onStartTracking called, meshService=${meshService != null}")
+                            val result = meshService?.startLocationTracking()
+                            android.util.Log.d("MainScreen", "startLocationTracking result: $result")
+                        },
+                        onStopTracking = {
+                            android.util.Log.d("MainScreen", "onStopTracking called")
+                            meshService?.stopLocationTracking()
+                        },
+                        onRangeChange = { locationManager?.cycleRadarRange() }
+                    )
+                }
+                NavigationTab.SETTINGS -> {
+                    SettingsContent(
+                        meshTopology = meshTopology,
+                        onboardingManager = onboardingManager
+                    )
+                }
+            }
+        }
+    }
+
+    // Dialogs
+    if (showCreateGroupDialog) {
+        CreateGroupDialog(
+            onDismiss = { showCreateGroupDialog = false },
+            onCreate = { name, channel, password, maxSize ->
+                groupManager?.createGroup(name, channel, password, maxSize)
+            }
+        )
+    }
+
+    showJoinGroupDialog?.let { group ->
+        JoinGroupDialog(
+            group = group,
+            onDismiss = { showJoinGroupDialog = null },
+            onJoin = { password ->
+                groupManager?.joinGroup(group.groupId, password)
+            }
+        )
+    }
+}
+
+/**
+ * Intercom tab content
+ */
+@Composable
+private fun IntercomContent(
+    appMode: AppMode,
+    audioLevel: Float,
+    serviceState: ServiceState,
+    @Suppress("UNUSED_PARAMETER") meshTopology: MeshTopology?,
+    onPTTPress: () -> Unit,
+    onStartStop: () -> Unit
+) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -132,21 +357,8 @@ fun IntercomMainScreen(
                 appMode = appMode,
                 audioLevel = audioLevel,
                 isRecording = serviceState.isRecording,
-                onPTTPress = {
-                    if (serviceState.isRecording) {
-                        meshService?.stopRecording()
-                    } else {
-                        meshService?.startRecording()
-                    }
-                },
-                onStartStop = {
-                    if (serviceState.isRunning) {
-                        meshService?.stopMeshNetwork()
-                    } else {
-                        meshService?.startMeshNetwork()
-                        Toast.makeText(context, "Starting mesh network...", Toast.LENGTH_SHORT).show()
-                    }
-                },
+                onPTTPress = onPTTPress,
+                onStartStop = onStartStop,
                 modifier = Modifier.weight(0.5f)
             )
 
@@ -159,6 +371,395 @@ fun IntercomMainScreen(
                 isRunning = serviceState.isRunning,
                 modifier = Modifier.fillMaxWidth()
             )
+        }
+    }
+}
+
+/**
+ * Group tab content
+ */
+@Composable
+private fun GroupContent(
+    currentGroup: MeshGroup?,
+    members: List<GroupMember>,
+    nickname: String,
+    groupCode: String?,
+    availableGroups: List<MeshGroup>,
+    isOwner: Boolean,
+    localNodeId: String,
+    onCreateGroup: () -> Unit,
+    onLeaveGroup: () -> Unit,
+    onJoinGroup: (MeshGroup) -> Unit,
+    onKickMember: (String) -> Unit,
+    onBanMember: (String) -> Unit,
+    onChannelChange: (Int) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(PitchBlack)
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Text(
+            text = "Group & Channel",
+            style = MaterialTheme.typography.headlineMedium,
+            color = TextPrimary,
+            fontWeight = FontWeight.Bold
+        )
+
+        // Group info card
+        GroupInfoCard(
+            group = currentGroup,
+            memberCount = members.size,
+            nickname = nickname,
+            groupCode = groupCode,
+            onLeaveGroup = onLeaveGroup,
+            onCreateGroup = onCreateGroup
+        )
+
+        // Channel selector (if in group and owner)
+        if (currentGroup != null && isOwner) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = DarkSurface)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    ChannelSelector(
+                        currentChannel = currentGroup.channelNumber,
+                        onChannelChange = onChannelChange,
+                        enabled = isOwner
+                    )
+                }
+            }
+        }
+
+        // Member list
+        if (currentGroup != null && members.isNotEmpty()) {
+            MemberList(
+                members = members,
+                localNodeId = localNodeId,
+                isOwner = isOwner,
+                onKickMember = onKickMember,
+                onBanMember = onBanMember
+            )
+        }
+
+        // Available groups (if not in a group)
+        if (currentGroup == null && availableGroups.isNotEmpty()) {
+            AvailableGroupsList(
+                groups = availableGroups,
+                onJoinGroup = onJoinGroup
+            )
+        }
+    }
+}
+
+/**
+ * Radar tab content
+ */
+@Composable
+private fun RadarContent(
+    radarData: RadarData,
+    isTracking: Boolean,
+    onStartTracking: () -> Unit,
+    onStopTracking: () -> Unit,
+    onRangeChange: () -> Unit
+) {
+    val hasLocation = radarData.localLocation != null
+
+    // Debug logging on composition
+    LaunchedEffect(Unit) {
+        android.util.Log.d("RadarContent", "RadarContent composed! isTracking=$isTracking, hasLocation=$hasLocation")
+    }
+
+    // Log when isTracking changes
+    LaunchedEffect(isTracking) {
+        android.util.Log.d("RadarContent", "isTracking state changed to: $isTracking")
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(PitchBlack)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Rider Radar",
+                style = MaterialTheme.typography.headlineMedium,
+                color = TextPrimary,
+                fontWeight = FontWeight.Bold
+            )
+
+            // Location tracking toggle
+            Button(
+                onClick = {
+                    android.util.Log.d("RadarContent", "Button clicked! isTracking=$isTracking")
+                    if (isTracking) onStopTracking() else onStartTracking()
+                },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = when {
+                        isTracking && hasLocation -> TechGreen
+                        isTracking -> TechOrange
+                        else -> DarkSurfaceElevated
+                    },
+                    contentColor = when {
+                        isTracking -> Color.White
+                        else -> TechCyan
+                    }
+                ),
+                border = if (!isTracking) BorderStroke(1.dp, TechCyan.copy(alpha = 0.5f)) else null
+            ) {
+                Icon(
+                    imageVector = when {
+                        isTracking && hasLocation -> Icons.Default.LocationOn
+                        isTracking -> Icons.Default.GpsNotFixed
+                        else -> Icons.Default.LocationOff
+                    },
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    when {
+                        isTracking && hasLocation -> "GPS Active"
+                        isTracking -> "Acquiring..."
+                        else -> "Start GPS"
+                    }
+                )
+            }
+        }
+
+        // Status message when tracking but no location yet
+        if (isTracking && !hasLocation) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = TechOrange.copy(alpha = 0.2f))
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                        color = TechOrange
+                    )
+                    Text(
+                        text = "Waiting for GPS signal... Make sure you're outdoors.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TechOrange
+                    )
+                }
+            }
+        }
+
+        // Show location coordinates when available
+        if (hasLocation) {
+            radarData.localLocation?.let { loc ->
+                Text(
+                    text = "Your location: %.5f, %.5f".format(loc.latitude, loc.longitude),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextTertiary
+                )
+            }
+        }
+
+        // Radar view
+        RadarWithPeerList(
+            radarData = radarData,
+            onRangeChange = onRangeChange,
+            modifier = Modifier.fillMaxSize()
+        )
+    }
+}
+
+/**
+ * Settings tab content
+ */
+@Composable
+private fun SettingsContent(
+    meshTopology: MeshTopology?,
+    onboardingManager: OnboardingManager?
+) {
+    val userPrefs by onboardingManager?.userPreferences?.collectAsState()
+        ?: remember { mutableStateOf(null) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(PitchBlack)
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Text(
+            text = "Settings",
+            style = MaterialTheme.typography.headlineMedium,
+            color = TextPrimary,
+            fontWeight = FontWeight.Bold
+        )
+
+        // Profile section
+        Card(
+            colors = CardDefaults.cardColors(containerColor = DarkSurface)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Person,
+                        contentDescription = null,
+                        tint = TechCyan,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Profile",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = TextPrimary,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Nickname
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Nickname",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextSecondary
+                    )
+                    Text(
+                        text = userPrefs?.nickname ?: "Rider",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextPrimary,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Group Code
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Group Code",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextSecondary
+                    )
+                    Text(
+                        text = userPrefs?.currentGroupCode?.let {
+                            onboardingManager?.formatGroupCode(it)
+                        } ?: "None",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (userPrefs?.currentGroupCode != null) TechCyan else TextTertiary,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Connection Mode
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Connection Mode",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextSecondary
+                    )
+                    Text(
+                        text = when (userPrefs?.connectionMode) {
+                            ConnectionMode.GROUP_MODE -> "Group Only"
+                            ConnectionMode.OPEN_MODE -> "Open Mode"
+                            else -> "Group Only"
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = when (userPrefs?.connectionMode) {
+                            ConnectionMode.OPEN_MODE -> TechOrange
+                            else -> TechGreen
+                        },
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+        }
+
+        // Network topology section
+        Card(
+            colors = CardDefaults.cardColors(containerColor = DarkSurface)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = "Network Topology",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = TextPrimary,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+
+                if (meshTopology != null && meshTopology.nodes.isNotEmpty()) {
+                    EnhancedNetworkTopology(
+                        topology = meshTopology,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(300.dp)
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "No network connections",
+                            color = TextTertiary
+                        )
+                    }
+                }
+            }
+        }
+
+        // About section
+        Card(
+            colors = CardDefaults.cardColors(containerColor = DarkSurface)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = "About",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = TextPrimary,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Enter-Comm v1.0",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary
+                )
+                Text(
+                    text = "WiFi Direct Mesh Intercom for Cyclists",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextTertiary
+                )
+            }
         }
     }
 }

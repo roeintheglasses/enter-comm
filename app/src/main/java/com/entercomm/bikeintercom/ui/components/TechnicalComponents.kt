@@ -37,8 +37,14 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.entercomm.bikeintercom.config.AppConfig
+import com.entercomm.bikeintercom.mesh.MeshTopology
+import com.entercomm.bikeintercom.mesh.TopologyNode
 import com.entercomm.bikeintercom.ui.theme.*
 import com.entercomm.bikeintercom.util.rememberHapticFeedback
+import kotlin.math.cos
+import kotlin.math.sin
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
 
 /**
  * Technical Status Card with animated border glow effect
@@ -744,6 +750,217 @@ fun NetworkTopology(
         }
     }
 }
+
+/**
+ * Enhanced Network topology visualization with full mesh data.
+ * Shows nodes with signal strength colors, multi-hop connections,
+ * and route paths.
+ */
+@Composable
+fun EnhancedNetworkTopology(
+    topology: MeshTopology,
+    modifier: Modifier = Modifier,
+    onNodeClick: ((TopologyNode) -> Unit)? = null
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "enhancedTopology")
+
+    val pulse by infiniteTransition.animateFloat(
+        initialValue = 0.85f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1500, easing = EaseInOutCubic),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "topologyPulse"
+    )
+
+    val dataFlowOffset by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "dataFlow"
+    )
+
+    Canvas(modifier = modifier) {
+        val centerX = size.width / 2
+        val centerY = size.height / 2
+        val maxRadius = minOf(size.width, size.height) * 0.42f
+
+        // Draw concentric rings for hop levels
+        for (hop in 1..topology.maxHopCount.coerceAtLeast(2)) {
+            val ringRadius = maxRadius * (hop.toFloat() / (topology.maxHopCount.coerceAtLeast(2) + 1))
+            drawCircle(
+                color = TechGreen.copy(alpha = 0.1f),
+                radius = ringRadius,
+                center = Offset(centerX, centerY),
+                style = Stroke(width = 1.dp.toPx())
+            )
+        }
+
+        // Group nodes by hop count for positioning
+        val directNeighbors = topology.nodes.filter { it.isDirectNeighbor }
+        val multiHopNodes = topology.nodes.filter { !it.isDirectNeighbor }
+
+        // Calculate positions for all nodes
+        val nodePositions = mutableMapOf<String, Offset>()
+
+        // Position direct neighbors in inner ring
+        directNeighbors.forEachIndexed { index, node ->
+            val angle = (index * 360f / directNeighbors.size.coerceAtLeast(1) - 90) * (Math.PI / 180f)
+            val radius = maxRadius * 0.5f
+            val x = centerX + (radius * cos(angle)).toFloat()
+            val y = centerY + (radius * sin(angle)).toFloat()
+            nodePositions[node.nodeId] = Offset(x, y)
+        }
+
+        // Position multi-hop nodes in outer ring
+        multiHopNodes.forEachIndexed { index, node ->
+            val angle = (index * 360f / multiHopNodes.size.coerceAtLeast(1) - 90 + 30) * (Math.PI / 180f)
+            val radius = maxRadius * 0.85f
+            val x = centerX + (radius * cos(angle)).toFloat()
+            val y = centerY + (radius * sin(angle)).toFloat()
+            nodePositions[node.nodeId] = Offset(x, y)
+        }
+
+        // Draw connections
+        topology.connections.forEach { connection ->
+            val fromPos = if (connection.fromNodeId == topology.localNodeId) {
+                Offset(centerX, centerY)
+            } else {
+                nodePositions[connection.fromNodeId]
+            }
+            val toPos = nodePositions[connection.toNodeId]
+
+            if (fromPos != null && toPos != null) {
+                val lineColor = getSignalColor(connection.linkQuality)
+
+                if (connection.isDirect) {
+                    // Solid line for direct connections
+                    drawLine(
+                        brush = Brush.linearGradient(
+                            colors = listOf(TechGreen, lineColor),
+                            start = fromPos,
+                            end = toPos
+                        ),
+                        start = fromPos,
+                        end = toPos,
+                        strokeWidth = 2.5.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
+
+                    // Animated data flow dots
+                    val dotPos = Offset(
+                        fromPos.x + (toPos.x - fromPos.x) * dataFlowOffset,
+                        fromPos.y + (toPos.y - fromPos.y) * dataFlowOffset
+                    )
+                    drawCircle(
+                        color = TechGreen.copy(alpha = 0.8f),
+                        radius = 3.dp.toPx(),
+                        center = dotPos
+                    )
+                } else {
+                    // Dashed line for multi-hop connections
+                    drawLine(
+                        color = lineColor.copy(alpha = 0.6f),
+                        start = fromPos,
+                        end = toPos,
+                        strokeWidth = 1.5.dp.toPx(),
+                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f))
+                    )
+                }
+            }
+        }
+
+        // Draw multi-hop route paths
+        topology.routePaths.forEach { (dest, path) ->
+            if (path.isNotEmpty()) {
+                var currentPos = Offset(centerX, centerY)
+                path.forEach { hopId ->
+                    val nextPos = nodePositions[hopId]
+                    if (nextPos != null) {
+                        // Route path indicator (subtle)
+                        drawLine(
+                            color = TechCyan.copy(alpha = 0.2f),
+                            start = currentPos,
+                            end = nextPos,
+                            strokeWidth = 4.dp.toPx(),
+                            cap = StrokeCap.Round
+                        )
+                        currentPos = nextPos
+                    }
+                }
+            }
+        }
+
+        // Draw center node (this device) with pulsing effect
+        drawCircle(
+            color = TechGreen.copy(alpha = 0.2f * pulse),
+            radius = 18.dp.toPx() * pulse,
+            center = Offset(centerX, centerY)
+        )
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(TechGreen, TechGreenDark),
+                center = Offset(centerX, centerY)
+            ),
+            radius = 12.dp.toPx() * pulse,
+            center = Offset(centerX, centerY)
+        )
+
+        // Draw device nodes with signal-based colors
+        topology.nodes.forEach { node ->
+            val pos = nodePositions[node.nodeId] ?: return@forEach
+            val nodeColor = getSignalColor(node.signalStrength)
+            val nodeRadius = if (node.isDirectNeighbor) 8.dp.toPx() else 6.dp.toPx()
+
+            // Outer glow based on signal
+            drawCircle(
+                color = nodeColor.copy(alpha = 0.3f),
+                radius = nodeRadius + 4.dp.toPx(),
+                center = pos
+            )
+
+            // Node circle
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(nodeColor, nodeColor.copy(alpha = 0.7f)),
+                    center = pos
+                ),
+                radius = nodeRadius,
+                center = pos
+            )
+
+            // Hop count indicator for multi-hop nodes
+            if (!node.isDirectNeighbor && node.hopCount > 1) {
+                drawCircle(
+                    color = DarkSurface,
+                    radius = 4.dp.toPx(),
+                    center = Offset(pos.x + nodeRadius, pos.y - nodeRadius)
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Get color based on signal strength.
+ */
+private fun getSignalColor(strength: Float): Color {
+    return when {
+        strength >= 0.8f -> TechGreen
+        strength >= 0.6f -> TechCyan
+        strength >= 0.4f -> TechYellow
+        strength >= 0.2f -> TechOrange
+        else -> TechRed
+    }
+}
+
+// Define missing colors if not in theme
+private val TechYellow = Color(0xFFFFD54F)
+private val TechOrange = Color(0xFFFF9800)
 
 /**
  * Audio level meter with smooth animated bars

@@ -22,13 +22,18 @@ import androidx.compose.ui.Modifier
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.entercomm.bikeintercom.mesh.MeshNetworkService
+import com.entercomm.bikeintercom.onboarding.ConnectionMode
+import com.entercomm.bikeintercom.onboarding.OnboardingManager
 import com.entercomm.bikeintercom.ui.screens.IntercomMainScreen
+import com.entercomm.bikeintercom.ui.screens.OnboardingScreen
 import com.entercomm.bikeintercom.ui.theme.EnterCommTheme
 
 class MainActivity : ComponentActivity() {
 
     private var meshService: MeshNetworkService? = null
     private var isServiceBound by mutableStateOf(false)
+    private lateinit var onboardingManager: OnboardingManager
+    private var showOnboarding by mutableStateOf(true)
     
     private val requiredPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         arrayOf(
@@ -92,6 +97,10 @@ class MainActivity : ComponentActivity() {
                     meshService = binder.getService()
                     isServiceBound = true
                     Log.d("MainActivity", "Service connected successfully")
+
+                    // Apply saved group settings from OnboardingManager
+                    applyGroupSettingsToService()
+
                     Toast.makeText(this@MainActivity, "Mesh service connected - Ready to start!", Toast.LENGTH_SHORT).show()
                 } else {
                     Log.e("MainActivity", "Failed to get service binder")
@@ -102,7 +111,7 @@ class MainActivity : ComponentActivity() {
                 Toast.makeText(this@MainActivity, "Service connection error: ${e.message}", Toast.LENGTH_LONG).show()
             }
         }
-        
+
         override fun onServiceDisconnected(name: ComponentName?) {
             Log.d("MainActivity", "Service disconnected")
             meshService = null
@@ -110,11 +119,36 @@ class MainActivity : ComponentActivity() {
             Toast.makeText(this@MainActivity, "Service disconnected", Toast.LENGTH_SHORT).show()
         }
     }
+
+    /**
+     * Apply group settings from OnboardingManager to MeshNetworkService.
+     */
+    private fun applyGroupSettingsToService() {
+        val prefs = onboardingManager.userPreferences.value
+
+        // Set group code
+        meshService?.setGroupCode(prefs.currentGroupCode)
+        Log.d("MainActivity", "Applied group code: ${prefs.currentGroupCode}")
+
+        // Set group mode (GROUP_MODE = true, OPEN_MODE = false)
+        val groupModeEnabled = prefs.connectionMode == ConnectionMode.GROUP_MODE
+        meshService?.setGroupModeEnabled(groupModeEnabled)
+        Log.d("MainActivity", "Applied group mode enabled: $groupModeEnabled")
+
+        // Set nickname to group manager
+        meshService?.getGroupManager()?.setNickname(prefs.nickname)
+        Log.d("MainActivity", "Applied nickname: ${prefs.nickname}")
+    }
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Log.d("MainActivity", "onCreate() started")
-        
+
+        // Initialize onboarding manager
+        onboardingManager = OnboardingManager(this)
+        showOnboarding = onboardingManager.needsOnboarding()
+        Log.d("MainActivity", "Onboarding needed: $showOnboarding")
+
         // Check permissions
         if (hasAllPermissions()) {
             Log.d("MainActivity", "All critical permissions granted, initializing service")
@@ -124,7 +158,7 @@ class MainActivity : ComponentActivity() {
             Log.d("MainActivity", "Missing critical permissions, requesting them")
             requestPermissions()
         }
-        
+
         Log.d("MainActivity", "Setting up UI content")
         setContent {
             EnterCommTheme {
@@ -132,10 +166,40 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    IntercomMainScreen(
-                        meshService = meshService,
-                        isServiceBound = isServiceBound
-                    )
+                    if (showOnboarding) {
+                        OnboardingScreen(
+                            onboardingManager = onboardingManager,
+                            onComplete = { groupCode, isCreator ->
+                                Log.d("MainActivity", "Onboarding complete: groupCode=$groupCode, isCreator=$isCreator")
+                                showOnboarding = false
+
+                                // Store group code for mesh filtering (must be done before applying settings)
+                                if (groupCode != null) {
+                                    onboardingManager.setCurrentGroupCode(groupCode)
+                                }
+
+                                // Apply all settings to service immediately
+                                applyGroupSettingsToService()
+
+                                // Create group if this user is the creator
+                                if (groupCode != null && isCreator) {
+                                    val prefs = onboardingManager.userPreferences.value
+                                    meshService?.getGroupManager()?.createGroup(
+                                        name = "${prefs.nickname}'s Group",
+                                        channel = 1,
+                                        password = null,
+                                        maxSize = 10
+                                    )
+                                }
+                            }
+                        )
+                    } else {
+                        IntercomMainScreen(
+                            meshService = meshService,
+                            isServiceBound = isServiceBound,
+                            onboardingManager = onboardingManager
+                        )
+                    }
                 }
             }
         }

@@ -9,6 +9,7 @@ import java.net.*
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.collections.HashMap
+import com.entercomm.bikeintercom.location.LocationMessageType
 
 data class MeshNode(
     val nodeId: String,
@@ -17,7 +18,8 @@ data class MeshNode(
     val port: Int,
     val isDirectConnection: Boolean,
     val lastSeen: Long = System.currentTimeMillis(),
-    val hopCount: Int = 1
+    val hopCount: Int = 1,
+    val linkQuality: Float = 1.0f
 )
 
 data class MeshRoute(
@@ -41,7 +43,9 @@ data class MeshMessage(
         ROUTE_UPDATE,
         AUDIO_DATA,
         CONTROL,
-        HEARTBEAT
+        HEARTBEAT,
+        GROUP,          // Group management messages
+        LOCATION        // Location sharing messages
     }
 }
 
@@ -57,6 +61,7 @@ class MeshNetworkManager(
         private const val NODE_TIMEOUT = 15000L
         private const val MAX_ROUTE_AGE = 30000L
         private const val MAX_MESSAGE_CACHE_SIZE = 1000
+        private const val ROUTE_UPDATE_INTERVAL = 10000L  // Send route updates every 10s
     }
 
     private val supervisorJob = SupervisorJob()
@@ -69,8 +74,15 @@ class MeshNetworkManager(
     private val _isActive = MutableStateFlow(false)
     val isActive: StateFlow<Boolean> = _isActive.asStateFlow()
 
+    // Routing statistics
+    private val _routingStats = MutableStateFlow(RoutingStats())
+    val routingStats: StateFlow<RoutingStats> = _routingStats.asStateFlow()
+
     private val nodes = ConcurrentHashMap<String, MeshNode>()
     private val routingTable = ConcurrentHashMap<String, MeshRoute>()
+
+    // Distance vector router for multi-hop routing
+    private val router = DistanceVectorRouter(nodeId)
     // LRU cache for message deduplication with max size to prevent unbounded growth
     private val messageCache = object : LinkedHashMap<String, Long>(100, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Long>?): Boolean {
@@ -83,10 +95,44 @@ class MeshNetworkManager(
     private var discoverySocket: DatagramSocket? = null
     private var audioSocket: DatagramSocket? = null
     private var isRunning = false
-    
-    // Callbacks for audio and control messages
+
+    // Group filtering - only connect with nodes in the same group
+    private var groupCode: String? = null
+    private var groupModeEnabled = true  // Default to group mode for privacy
+
+    /**
+     * Set the group code for filtering connections.
+     * Only nodes with matching group codes will connect.
+     */
+    fun setGroupCode(code: String?) {
+        groupCode = code?.uppercase()?.replace("-", "")
+        Log.d(TAG, "Group code set to: $groupCode")
+    }
+
+    /**
+     * Get the current group code.
+     */
+    fun getGroupCode(): String? = groupCode
+
+    /**
+     * Enable or disable group mode filtering.
+     * When disabled, connects to all nearby nodes (open mode).
+     */
+    fun setGroupModeEnabled(enabled: Boolean) {
+        groupModeEnabled = enabled
+        Log.d(TAG, "Group mode ${if (enabled) "enabled" else "disabled"}")
+    }
+
+    /**
+     * Check if group mode is enabled.
+     */
+    fun isGroupModeEnabled(): Boolean = groupModeEnabled
+
+    // Callbacks for audio, control, group, and location messages
     var onAudioDataReceived: ((ByteArray, String) -> Unit)? = null
     var onControlMessageReceived: ((String, String) -> Unit)? = null
+    var onGroupMessageReceived: ((GroupMessageType, String, ByteArray) -> Unit)? = null
+    var onLocationMessageReceived: ((LocationMessageType, String, ByteArray) -> Unit)? = null
     
     fun startMeshNetwork(localPort: Int = DISCOVERY_PORT) {
         if (isRunning) {
@@ -119,12 +165,17 @@ class MeshNetworkManager(
                 Log.d(TAG, "Mesh network sockets created: discovery=$localPort, audio=${localPort + 1}")
                 Log.d(TAG, "Node ID: $nodeId, Device name: $deviceName")
 
+                // Initialize the distance vector router
+                router.initialize()
+                Log.d(TAG, "Distance vector router initialized")
+
                 // Start discovery and routing services
                 launch { startDiscoveryService() }
                 launch { startRoutingService() }
                 launch { startHeartbeatService() }
                 launch { startMessageListener() }
                 launch { startAudioListener() }
+                launch { startRouteAdvertisementService() }  // Multi-hop routing
 
                 Log.d(TAG, "Mesh network services started successfully on port $localPort")
 
@@ -162,6 +213,7 @@ class MeshNetworkManager(
         // Clear all data structures
         nodes.clear()
         routingTable.clear()
+        router.clear()
         synchronized(messageCacheLock) {
             messageCache.clear()
         }
@@ -447,24 +499,49 @@ class MeshNetworkManager(
             MeshMessage.MessageType.AUDIO_DATA -> {
                 // Audio is handled in audio listener
             }
+            MeshMessage.MessageType.GROUP -> {
+                if (message.destinationId == nodeId || message.destinationId == "broadcast") {
+                    handleGroupMessage(message)
+                } else {
+                    forwardMessage(message)
+                }
+            }
+            MeshMessage.MessageType.LOCATION -> {
+                if (message.destinationId == nodeId || message.destinationId == "broadcast") {
+                    handleLocationMessage(message)
+                } else {
+                    forwardMessage(message)
+                }
+            }
         }
     }
     
     private fun handleDiscoveryMessage(message: MeshMessage, senderIp: String) {
         Log.d(TAG, "Handling discovery message from $senderIp")
         Log.d(TAG, "Message payload: ${String(message.payload)}")
-        
+
         val nodeInfo = String(message.payload).split("|")
         if (nodeInfo.size >= 2) {
             val remoteNodeId = nodeInfo[0]
             val deviceName = nodeInfo[1]
-            
-            Log.d(TAG, "Parsed discovery: nodeId=$remoteNodeId, deviceName=$deviceName, senderIp=$senderIp")
-            
+            val remoteGroupCode = if (nodeInfo.size >= 3) nodeInfo[2] else "OPEN"
+
+            Log.d(TAG, "Parsed discovery: nodeId=$remoteNodeId, deviceName=$deviceName, groupCode=$remoteGroupCode, senderIp=$senderIp")
+
             // Ignore messages from ourselves
             if (remoteNodeId == nodeId) {
                 Log.d(TAG, "Ignoring discovery message from self: $remoteNodeId")
                 return
+            }
+
+            // Group filtering: Only accept nodes with matching group code when group mode is enabled
+            if (groupModeEnabled && groupCode != null) {
+                val ourCode = groupCode!!
+                val theirCode = remoteGroupCode.uppercase()
+                if (ourCode != theirCode && theirCode != "OPEN" && ourCode != "OPEN") {
+                    Log.d(TAG, "Ignoring node $remoteNodeId - group code mismatch (ours=$ourCode, theirs=$theirCode)")
+                    return
+                }
             }
             
             // Check if we should respond (rate limiting)
@@ -497,54 +574,253 @@ class MeshNetworkManager(
                 port = DISCOVERY_PORT,
                 isDirectConnection = true,
                 hopCount = 1,
-                lastSeen = System.currentTimeMillis()
+                lastSeen = System.currentTimeMillis(),
+                linkQuality = 1.0f
             )
-            
+
             nodes[remoteNodeId] = node
             routingTable[remoteNodeId] = MeshRoute(
                 destinationId = remoteNodeId,
                 nextHop = remoteNodeId,
                 hopCount = 1
             )
-            
+
+            // Add to distance vector router for multi-hop routing
+            router.addNeighbor(remoteNodeId, senderIp, DISCOVERY_PORT, 1.0f)
+
             updateConnectedNodesList()
-            
+
             Log.d(TAG, "Mesh network updated: discovered $deviceName ($remoteNodeId) at $senderIp")
             Log.d(TAG, "Total connected nodes: ${nodes.size}")
+            Log.d(TAG, "Reachable destinations: ${router.getReachableDestinations().size}")
         } else {
             Log.w(TAG, "Invalid discovery message format from $senderIp: ${String(message.payload)}")
         }
     }
     
     private fun handleRouteUpdate(message: MeshMessage) {
-        // Update routing table based on received route information
-        // Parse and update routes (implementation depends on route format)
-        val routeData = String(message.payload)
-        Log.d(TAG, "Received route update: $routeData")
-        // TODO: Implement route parsing and table updates
+        // Parse route advertisement from neighbor
+        val advertisement = router.deserializeAdvertisement(message.payload)
+        if (advertisement == null) {
+            Log.w(TAG, "Failed to parse route advertisement from ${message.sourceId}")
+            return
+        }
+
+        Log.d(TAG, "Processing route update from ${message.sourceId} with ${advertisement.routes.size} routes")
+
+        // Get sender's IP for verification
+        val senderNode = nodes[message.sourceId]
+        if (senderNode == null) {
+            Log.w(TAG, "Received route update from unknown node: ${message.sourceId}")
+            return
+        }
+
+        // Process the route advertisement (Bellman-Ford update)
+        val changed = router.processRouteAdvertisement(advertisement, senderNode.ipAddress)
+
+        if (changed) {
+            // Update our routing table from the router
+            syncRoutingTableFromRouter()
+
+            // Update connected nodes list to reflect new reachable nodes
+            updateConnectedNodesList()
+
+            // Update routing statistics
+            updateRoutingStats()
+
+            Log.d(TAG, "Routing table updated from ${message.sourceId}")
+            Log.d(TAG, router.dumpRoutingTable())
+        }
+    }
+
+    /**
+     * Handle incoming group messages.
+     */
+    private fun handleGroupMessage(message: MeshMessage) {
+        // Parse group message type from payload prefix
+        val payload = message.payload
+        if (payload.isEmpty()) return
+
+        // Format: groupMessageType|actualPayload
+        val payloadString = String(payload)
+        val pipeIndex = payloadString.indexOf('|')
+        if (pipeIndex == -1) return
+
+        val typeString = payloadString.substring(0, pipeIndex)
+        val actualPayload = payload.copyOfRange(pipeIndex + 1, payload.size)
+
+        try {
+            val groupMessageType = GroupMessageType.valueOf(typeString)
+            onGroupMessageReceived?.invoke(groupMessageType, message.sourceId, actualPayload)
+        } catch (e: IllegalArgumentException) {
+            Log.w(TAG, "Unknown group message type: $typeString")
+        }
+    }
+
+    /**
+     * Send a group management message.
+     */
+    fun sendGroupMessage(type: GroupMessageType, destinationId: String, payload: ByteArray) {
+        // Prefix payload with message type
+        val typePrefix = "${type.name}|".toByteArray()
+        val fullPayload = typePrefix + payload
+
+        val message = MeshMessage(
+            sourceId = nodeId,
+            destinationId = destinationId,
+            messageType = MeshMessage.MessageType.GROUP,
+            payload = fullPayload
+        )
+
+        if (destinationId == "broadcast") {
+            broadcastToAllNeighbors(message)
+        } else {
+            sendMessage(message)
+        }
+    }
+
+    /**
+     * Handle incoming location messages.
+     */
+    private fun handleLocationMessage(message: MeshMessage) {
+        val payload = message.payload
+        if (payload.isEmpty()) return
+
+        // Format: locationMessageType|actualPayload
+        val payloadString = String(payload)
+        val pipeIndex = payloadString.indexOf('|')
+        if (pipeIndex == -1) return
+
+        val typeString = payloadString.substring(0, pipeIndex)
+        val actualPayload = payload.copyOfRange(pipeIndex + 1, payload.size)
+
+        try {
+            val locationMessageType = LocationMessageType.valueOf(typeString)
+            onLocationMessageReceived?.invoke(locationMessageType, message.sourceId, actualPayload)
+        } catch (e: IllegalArgumentException) {
+            Log.w(TAG, "Unknown location message type: $typeString")
+        }
+    }
+
+    /**
+     * Send a location message.
+     */
+    fun sendLocationMessage(type: LocationMessageType, destinationId: String, payload: ByteArray) {
+        val typePrefix = "${type.name}|".toByteArray()
+        val fullPayload = typePrefix + payload
+
+        val message = MeshMessage(
+            sourceId = nodeId,
+            destinationId = destinationId,
+            messageType = MeshMessage.MessageType.LOCATION,
+            payload = fullPayload,
+            ttl = 3  // Location messages don't need many hops
+        )
+
+        if (destinationId == "broadcast") {
+            broadcastToAllNeighbors(message)
+        } else {
+            sendMessage(message)
+        }
     }
 
     @Suppress("UNUSED_PARAMETER")
     private fun handleHeartbeat(message: MeshMessage, senderIp: String) {
-        nodes[message.sourceId]?.let { node ->
-            nodes[message.sourceId] = node.copy(lastSeen = System.currentTimeMillis())
+        val sourceId = message.sourceId
+
+        // Update node's last seen time
+        nodes[sourceId]?.let { node ->
+            nodes[sourceId] = node.copy(lastSeen = System.currentTimeMillis())
         }
+
+        // Update router's neighbor tracking
+        router.updateNeighborHeartbeat(sourceId)
     }
     
     private fun sendMessage(message: MeshMessage) {
-        val route = routingTable[message.destinationId]
-        if (route != null) {
-            val targetNode = nodes[route.nextHop]
-            if (targetNode != null) {
+        // Use the distance vector router for next hop lookup
+        val nextHopId = router.getNextHop(message.destinationId)
+
+        if (nextHopId != null) {
+            // Get the neighbor info for the next hop
+            val neighbor = router.getNeighbor(nextHopId)
+            if (neighbor != null) {
+                val targetNode = MeshNode(
+                    nodeId = nextHopId,
+                    deviceName = nextHopId,
+                    ipAddress = neighbor.ipAddress,
+                    port = neighbor.port,
+                    isDirectConnection = true,
+                    hopCount = 1
+                )
                 sendMessageToNode(message, targetNode)
+                _routingStats.value = _routingStats.value.copy(
+                    messagesRouted = _routingStats.value.messagesRouted + 1
+                )
+            } else {
+                // Fallback to legacy routing table
+                val route = routingTable[message.destinationId]
+                val targetNode = route?.let { nodes[it.nextHop] }
+                if (targetNode != null) {
+                    sendMessageToNode(message, targetNode)
+                } else {
+                    Log.w(TAG, "No route to destination: ${message.destinationId}")
+                    _routingStats.value = _routingStats.value.copy(
+                        messagesDropped = _routingStats.value.messagesDropped + 1
+                    )
+                }
+            }
+        } else {
+            // Try broadcasting if destination is "broadcast"
+            if (message.destinationId == "broadcast") {
+                broadcastToAllNeighbors(message)
+            } else {
+                Log.w(TAG, "No route to destination: ${message.destinationId}")
+                _routingStats.value = _routingStats.value.copy(
+                    messagesDropped = _routingStats.value.messagesDropped + 1
+                )
             }
         }
     }
-    
+
     private fun forwardMessage(message: MeshMessage) {
-        if (message.ttl > 0) {
-            val forwardedMessage = message.copy(ttl = message.ttl - 1)
+        if (message.ttl <= 0) {
+            Log.d(TAG, "Dropping message ${message.messageId} - TTL expired")
+            _routingStats.value = _routingStats.value.copy(
+                messagesDropped = _routingStats.value.messagesDropped + 1
+            )
+            return
+        }
+
+        // Decrement TTL and forward
+        val forwardedMessage = message.copy(ttl = message.ttl - 1)
+
+        // Check if we have a route to the destination
+        if (router.isReachable(message.destinationId)) {
             sendMessage(forwardedMessage)
+            _routingStats.value = _routingStats.value.copy(
+                messagesForwarded = _routingStats.value.messagesForwarded + 1
+            )
+            Log.d(TAG, "Forwarded message to ${message.destinationId} via ${router.getNextHop(message.destinationId)}")
+        } else {
+            Log.w(TAG, "Cannot forward - no route to ${message.destinationId}")
+            _routingStats.value = _routingStats.value.copy(
+                messagesDropped = _routingStats.value.messagesDropped + 1
+            )
+        }
+    }
+
+    private fun broadcastToAllNeighbors(message: MeshMessage) {
+        router.getNeighbors().forEach { neighbor ->
+            val targetNode = MeshNode(
+                nodeId = neighbor.nodeId,
+                deviceName = neighbor.nodeId,
+                ipAddress = neighbor.ipAddress,
+                port = neighbor.port,
+                isDirectConnection = true,
+                hopCount = 1
+            )
+            sendMessageToNode(message, targetNode)
         }
     }
     
@@ -569,7 +845,9 @@ class MeshNetworkManager(
     
     private fun broadcastDiscovery() {
         scope.launch {
-            val payload = "$nodeId|$deviceName".toByteArray()
+            // Include group code in discovery payload for filtering
+            val groupCodePart = groupCode ?: "OPEN"
+            val payload = "$nodeId|$deviceName|$groupCodePart".toByteArray()
             val message = MeshMessage(
                 sourceId = nodeId,
                 destinationId = "broadcast",
@@ -606,8 +884,10 @@ class MeshNetworkManager(
         scope.launch {
             try {
                 Log.d(TAG, "Preparing discovery message to $ipAddress:$port")
-                
-                val payload = "$nodeId|$deviceName".toByteArray()
+
+                // Include group code in discovery payload for filtering
+                val groupCodePart = groupCode ?: "OPEN"
+                val payload = "$nodeId|$deviceName|$groupCodePart".toByteArray()
                 val message = MeshMessage(
                     sourceId = nodeId,
                     destinationId = "discovery",
@@ -689,32 +969,144 @@ class MeshNetworkManager(
     }
     
     private fun updateRoutingTable() {
-        // Implement distance vector routing algorithm
-        // This is a simplified version - a full implementation would be more complex
+        // Perform router maintenance (expire routes, remove dead neighbors)
+        val removedDestinations = router.performMaintenance()
+
+        // Remove expired nodes from our node map
+        removedDestinations.forEach { destId ->
+            nodes.remove(destId)
+        }
+
+        // Sync our legacy routing table with the router
+        syncRoutingTableFromRouter()
+
+        // Check for triggered updates
+        if (router.hasPendingUpdate()) {
+            // Send triggered route advertisements to all neighbors
+            sendRouteAdvertisements()
+            router.clearPendingUpdate()
+        }
+
+        // Update statistics
+        updateRoutingStats()
+    }
+
+    /**
+     * Route advertisement service - sends periodic route updates to neighbors.
+     */
+    private suspend fun startRouteAdvertisementService() {
+        Log.d(TAG, "Starting route advertisement service...")
+        while (isRunning) {
+            try {
+                // Send route advertisements to all neighbors
+                sendRouteAdvertisements()
+
+                delay(ROUTE_UPDATE_INTERVAL)
+            } catch (e: Exception) {
+                Log.e(TAG, "Route advertisement service error", e)
+                delay(5000)
+            }
+        }
+    }
+
+    /**
+     * Send route advertisements to all direct neighbors.
+     */
+    private fun sendRouteAdvertisements() {
+        val neighbors = router.getNeighbors()
+        if (neighbors.isEmpty()) {
+            return
+        }
+
+        Log.d(TAG, "Sending route advertisements to ${neighbors.size} neighbors")
+
+        for (neighbor in neighbors) {
+            // Generate advertisement with split-horizon poison-reverse
+            val advertisement = router.generateRouteAdvertisement(neighbor.nodeId)
+            val payload = router.serializeAdvertisement(advertisement)
+
+            val message = MeshMessage(
+                sourceId = nodeId,
+                destinationId = neighbor.nodeId,
+                messageType = MeshMessage.MessageType.ROUTE_UPDATE,
+                payload = payload,
+                ttl = 1  // Route updates are single-hop only
+            )
+
+            val targetNode = MeshNode(
+                nodeId = neighbor.nodeId,
+                deviceName = neighbor.nodeId,
+                ipAddress = neighbor.ipAddress,
+                port = neighbor.port,
+                isDirectConnection = true,
+                hopCount = 1
+            )
+
+            sendMessageToNode(message, targetNode)
+        }
+
+        _routingStats.value = _routingStats.value.copy(
+            routeAdvertisementsSent = _routingStats.value.routeAdvertisementsSent + neighbors.size
+        )
+    }
+
+    /**
+     * Sync our legacy routing table with the distance vector router.
+     */
+    private fun syncRoutingTableFromRouter() {
+        // Clear and rebuild from router
+        routingTable.clear()
+
+        router.getAllRoutes().forEach { routeEntry ->
+            routingTable[routeEntry.destination] = MeshRoute(
+                destinationId = routeEntry.destination,
+                nextHop = routeEntry.nextHop,
+                hopCount = routeEntry.hopCount,
+                lastUpdated = routeEntry.lastUpdated
+            )
+        }
+    }
+
+    /**
+     * Update routing statistics.
+     */
+    private fun updateRoutingStats() {
+        val routes = router.getAllRoutes()
+        val neighbors = router.getNeighbors()
+
+        _routingStats.value = _routingStats.value.copy(
+            totalRoutes = routes.size,
+            directNeighbors = neighbors.size,
+            multiHopRoutes = routes.count { !it.isDirectNeighbor },
+            maxHopCount = routes.maxOfOrNull { it.hopCount } ?: 0
+        )
     }
     
     private fun cleanupOldEntries() {
         val currentTime = System.currentTimeMillis()
-        
-        // Remove old nodes
+
+        // Remove old nodes and notify router
         val expiredNodes = nodes.filter { (_, node) ->
             currentTime - node.lastSeen > NODE_TIMEOUT
         }.keys
-        
-        expiredNodes.forEach { nodeId ->
-            nodes.remove(nodeId)
-            routingTable.remove(nodeId)
+
+        expiredNodes.forEach { expiredNodeId ->
+            nodes.remove(expiredNodeId)
+            routingTable.remove(expiredNodeId)
+            // Notify router about removed neighbor
+            router.removeNeighbor(expiredNodeId)
+            Log.d(TAG, "Removed expired node: $expiredNodeId")
         }
-        
-        // Remove old routes
+
+        // Remove old routes (router handles its own route expiration)
         val expiredRoutes = routingTable.filter { (_, route) ->
             currentTime - route.lastUpdated > MAX_ROUTE_AGE
         }.keys
-        
+
         expiredRoutes.forEach { destinationId ->
             routingTable.remove(destinationId)
         }
-        
+
         // Remove old message cache entries (synchronized for LRU map)
         synchronized(messageCacheLock) {
             val expiredMessages = messageCache.filter { (_, timestamp) ->
@@ -725,16 +1117,16 @@ class MeshNetworkManager(
                 messageCache.remove(messageId)
             }
         }
-        
+
         // Remove old discovery response cache entries
         val expiredResponses = discoveryResponseCache.filter { (_, timestamp) ->
             currentTime - timestamp > 300000 // 5 minutes
         }.keys
-        
+
         expiredResponses.forEach { ipAddress ->
             discoveryResponseCache.remove(ipAddress)
         }
-        
+
         if (expiredNodes.isNotEmpty() || expiredRoutes.isNotEmpty()) {
             updateConnectedNodesList()
         }
@@ -878,4 +1270,86 @@ class MeshNetworkManager(
             return null
         }
     }
+
+    /**
+     * Get routing table debug information.
+     */
+    fun getRoutingTableDump(): String {
+        return router.dumpRoutingTable()
+    }
+
+    /**
+     * Get path information to a destination.
+     */
+    fun getPathInfo(destinationId: String): PathInfo? {
+        return router.getPathInfo(destinationId)
+    }
+
+    /**
+     * Check if a destination is reachable via multi-hop routing.
+     */
+    fun isReachable(destinationId: String): Boolean {
+        return router.isReachable(destinationId)
+    }
+
+    /**
+     * Get all reachable destinations.
+     */
+    fun getReachableDestinations(): Set<String> {
+        return router.getReachableDestinations()
+    }
+
+    /**
+     * Generate current mesh topology for visualization.
+     */
+    fun getMeshTopology(): MeshTopology {
+        val builder = TopologyBuilder(nodeId, deviceName)
+
+        // Add all nodes from our node map
+        nodes.forEach { (id, node) ->
+            val routeEntry = router.getRoute(id)
+            builder.addNode(
+                nodeId = id,
+                displayName = node.deviceName,
+                isDirectNeighbor = routeEntry?.isDirectNeighbor ?: node.isDirectConnection,
+                hopCount = routeEntry?.hopCount ?: node.hopCount,
+                linkQuality = routeEntry?.linkQuality ?: node.linkQuality,
+                lastSeen = node.lastSeen
+            )
+        }
+
+        // Add connections from router
+        router.getNeighbors().forEach { neighbor ->
+            builder.addConnection(
+                fromNodeId = nodeId,
+                toNodeId = neighbor.nodeId,
+                linkQuality = neighbor.linkQuality,
+                isDirect = true
+            )
+        }
+
+        // Add route paths
+        router.getAllRoutes().forEach { route ->
+            if (!route.isDirectNeighbor) {
+                // For multi-hop routes, show path through next hop
+                builder.addRoutePath(route.destination, listOf(route.nextHop, route.destination))
+            }
+        }
+
+        return builder.build()
+    }
 }
+
+/**
+ * Routing statistics for monitoring and debugging.
+ */
+data class RoutingStats(
+    val totalRoutes: Int = 0,
+    val directNeighbors: Int = 0,
+    val multiHopRoutes: Int = 0,
+    val maxHopCount: Int = 0,
+    val messagesRouted: Long = 0,
+    val messagesForwarded: Long = 0,
+    val messagesDropped: Long = 0,
+    val routeAdvertisementsSent: Long = 0
+)
