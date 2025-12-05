@@ -30,7 +30,7 @@ jobs:
         run: chmod +x gradlew
 
       - name: Validate Gradle wrapper
-        uses: gradle/actions/wrapper-validation@v3
+        uses: gradle/actions/wrapper-validation@v4
 
       - name: Run Spotless check
         run: ./gradlew spotlessCheck --no-daemon
@@ -67,6 +67,9 @@ jobs:
   code-quality:
     name: Code Quality
     runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
 
     steps:
       - name: Checkout code
@@ -87,8 +90,8 @@ jobs:
         continue-on-error: true
 
       - name: Upload Detekt SARIF to GitHub
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        uses: github/codeql-action/upload-sarif@v4
+        if: always() && hashFiles('app/build/reports/detekt/detekt.sarif') != ''
         with:
           sarif_file: app/build/reports/detekt/detekt.sarif
           category: detekt

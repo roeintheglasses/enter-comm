@@ -128,8 +128,7 @@ Desktop.ini
 .vscode/
 *.sublime-*
 
-# Gradle Wrapper JAR (keep properties file)
-/gradle/wrapper/gradle-wrapper.jar
+# Note: gradle-wrapper.jar is committed to repo for CI builds
 
 # Generated WebRTC files
 /app/src/main/jniLibs/
