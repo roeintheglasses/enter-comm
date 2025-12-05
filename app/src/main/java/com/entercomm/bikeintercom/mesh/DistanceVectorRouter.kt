@@ -1,6 +1,6 @@
 package com.entercomm.bikeintercom.mesh
 
-import android.util.Log
+import com.entercomm.bikeintercom.util.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -26,8 +26,6 @@ class DistanceVectorRouter(
     private val localNodeId: String
 ) {
     companion object {
-        private const val TAG = "DVRouter"
-
         // Routing constants
         const val INFINITY = 16              // Maximum hop count (unreachable)
         const val MAX_HOP_COUNT = 15         // Maximum valid hop count
@@ -119,7 +117,7 @@ class DistanceVectorRouter(
      * Initialize the router.
      */
     fun initialize() {
-        Log.d(TAG, "Distance Vector Router initialized for node: $localNodeId")
+        logD { "Distance Vector Router initialized for node: $localNodeId" }
         routingTable.clear()
         neighbors.clear()
         localSequenceNumber = 0
@@ -165,7 +163,7 @@ class DistanceVectorRouter(
                 sequenceNumber = ++localSequenceNumber
             )
 
-            Log.d(TAG, "Added/updated neighbor route: $nodeId via direct, metric=$metric")
+            logD { "Added/updated neighbor route: $nodeId via direct, metric=$metric" }
             notifyRouteChange()
         } else {
             // Just refresh the existing route
@@ -189,7 +187,7 @@ class DistanceVectorRouter(
                     metric = INFINITY,
                     lastUpdated = System.currentTimeMillis()
                 )
-                Log.d(TAG, "Poisoned route to $dest (neighbor $nodeId disconnected)")
+                logD { "Poisoned route to $dest (neighbor $nodeId disconnected)" }
             }
         }
 
@@ -228,11 +226,11 @@ class DistanceVectorRouter(
         // Verify sender is a known neighbor
         val neighbor = neighbors[senderId]
         if (neighbor == null) {
-            Log.w(TAG, "Received route ad from unknown neighbor: $senderId")
+            logW { "Received route ad from unknown neighbor: $senderId" }
             return false
         }
 
-        Log.d(TAG, "Processing route advertisement from $senderId with ${advertisement.routes.size} routes")
+        logD { "Processing route advertisement from $senderId with ${advertisement.routes.size} routes" }
 
         var tableChanged = false
 
@@ -284,8 +282,8 @@ class DistanceVectorRouter(
                     sequenceNumber = advertisement.sequenceNumber
                 )
 
-                Log.d(TAG, "Updated route: ${advertisedRoute.destination} via $senderId, " +
-                        "metric=$newMetric, hops=$newHopCount")
+                logD { "Updated route: ${advertisedRoute.destination} via $senderId, " +
+                        "metric=$newMetric, hops=$newHopCount" }
                 tableChanged = true
             }
         }
@@ -409,7 +407,7 @@ class DistanceVectorRouter(
         val deadNeighbors = neighbors.filter { !it.value.isAlive }.keys
         deadNeighbors.forEach { nodeId ->
             neighbors.remove(nodeId)
-            Log.d(TAG, "Removed dead neighbor: $nodeId")
+            logD { "Removed dead neighbor: $nodeId" }
         }
 
         // Process routes
@@ -419,7 +417,7 @@ class DistanceVectorRouter(
                 route.shouldFlush -> {
                     routingTable.remove(destination)
                     removedDestinations.add(destination)
-                    Log.d(TAG, "Flushed route to $destination")
+                    logD { "Flushed route to $destination" }
                 }
 
                 // Poison expired routes
@@ -428,7 +426,7 @@ class DistanceVectorRouter(
                         metric = INFINITY,
                         lastUpdated = now
                     )
-                    Log.d(TAG, "Poisoned expired route to $destination")
+                    logD { "Poisoned expired route to $destination" }
                     pendingTriggeredUpdate = true
                 }
 
@@ -438,7 +436,7 @@ class DistanceVectorRouter(
                         metric = INFINITY,
                         lastUpdated = now
                     )
-                    Log.d(TAG, "Poisoned route to $destination (dead next hop)")
+                    logD { "Poisoned route to $destination (dead next hop)" }
                     pendingTriggeredUpdate = true
                 }
             }
@@ -565,7 +563,7 @@ class DistanceVectorRouter(
                 timestamp = timestamp
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to deserialize route advertisement", e)
+            logE({ "Failed to deserialize route advertisement" }, e)
             null
         }
     }

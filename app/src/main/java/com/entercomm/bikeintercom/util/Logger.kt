@@ -7,6 +7,7 @@ import android.util.Log
  * - Only logs in debug builds
  * - Provides consistent tag formatting
  * - Avoids string concatenation when logging is disabled
+ * - Supports test mode (no actual logging)
  */
 object Logger {
     private const val APP_TAG = "EnterComm"
@@ -14,38 +15,45 @@ object Logger {
     // Controlled by BuildConfig - check once at init
     var isDebugEnabled: Boolean = true
 
+    // Test mode - disables actual Android logging for unit tests
+    var isTestMode: Boolean = false
+
     fun d(tag: String, message: () -> String) {
-        if (isDebugEnabled) {
+        if (isDebugEnabled && !isTestMode) {
             Log.d("$APP_TAG:$tag", message())
         }
     }
 
     fun i(tag: String, message: () -> String) {
-        if (isDebugEnabled) {
+        if (isDebugEnabled && !isTestMode) {
             Log.i("$APP_TAG:$tag", message())
         }
     }
 
     fun w(tag: String, message: () -> String) {
-        if (isDebugEnabled) {
+        if (isDebugEnabled && !isTestMode) {
             Log.w("$APP_TAG:$tag", message())
         }
     }
 
     fun w(tag: String, message: () -> String, throwable: Throwable) {
-        if (isDebugEnabled) {
+        if (isDebugEnabled && !isTestMode) {
             Log.w("$APP_TAG:$tag", message(), throwable)
         }
     }
 
     fun e(tag: String, message: () -> String) {
-        // Always log errors, even in release builds
-        Log.e("$APP_TAG:$tag", message())
+        // Always log errors, even in release builds (unless in test mode)
+        if (!isTestMode) {
+            Log.e("$APP_TAG:$tag", message())
+        }
     }
 
     fun e(tag: String, message: () -> String, throwable: Throwable) {
-        // Always log errors, even in release builds
-        Log.e("$APP_TAG:$tag", message(), throwable)
+        // Always log errors, even in release builds (unless in test mode)
+        if (!isTestMode) {
+            Log.e("$APP_TAG:$tag", message(), throwable)
+        }
     }
 }
 

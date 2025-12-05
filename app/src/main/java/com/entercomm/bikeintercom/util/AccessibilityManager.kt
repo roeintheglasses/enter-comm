@@ -5,7 +5,6 @@ import android.content.SharedPreferences
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.os.Build
-import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -40,7 +39,6 @@ enum class BoneConductionMode {
 class AccessibilityManager(private val context: Context) {
 
     companion object {
-        private const val TAG = "AccessibilityManager"
         private const val PREFS_NAME = "accessibility_prefs"
         private const val KEY_VOICE_ENABLED = "voice_enabled"
         private const val KEY_VOICE_VOLUME = "voice_volume"
@@ -76,7 +74,7 @@ class AccessibilityManager(private val context: Context) {
         voiceFeedback.initialize()
         applySettings(_settings.value)
         detectBoneConductionHeadset()
-        Log.d(TAG, "AccessibilityManager initialized")
+        logD { "AccessibilityManager initialized" }
     }
 
     /**
@@ -120,7 +118,7 @@ class AccessibilityManager(private val context: Context) {
                     device.type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
                     isBoneConductionDevice(device)) {
                     _isBoneConductionDetected.value = true
-                    Log.d(TAG, "Bone conduction headset detected: ${device.productName}")
+                    logD { "Bone conduction headset detected: ${device.productName}" }
                     return true
                 }
             }
@@ -181,7 +179,7 @@ class AccessibilityManager(private val context: Context) {
      */
     fun shutdown() {
         voiceFeedback.shutdown()
-        Log.d(TAG, "AccessibilityManager shutdown")
+        logD { "AccessibilityManager shutdown" }
     }
 
     private fun loadSettings(): AccessibilitySettings {
@@ -226,7 +224,7 @@ class AccessibilityManager(private val context: Context) {
         voiceFeedback.setVolume(settings.voiceVolume)
         voiceFeedback.setSpeechRate(settings.speechRate)
 
-        Log.d(TAG, "Applied accessibility settings: $settings")
+        logD { "Applied accessibility settings: $settings" }
     }
 }
 

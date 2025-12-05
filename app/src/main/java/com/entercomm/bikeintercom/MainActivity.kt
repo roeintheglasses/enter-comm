@@ -6,8 +6,8 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
-import android.util.Log
 import android.widget.Toast
+import com.entercomm.bikeintercom.util.*
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -60,31 +60,31 @@ class MainActivity : ComponentActivity() {
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
-        Log.d("MainActivity", "Permission result received: $permissions")
+        logD { "Permission result received: $permissions" }
         
         // Check critical permissions (exclude POST_NOTIFICATIONS as it's optional)
         val criticalPermissions = permissions.filterKeys { it != Manifest.permission.POST_NOTIFICATIONS }
         val allCriticalGranted = criticalPermissions.values.all { it }
         val allGranted = permissions.values.all { it }
         
-        Log.d("MainActivity", "All permissions granted: $allGranted")
-        Log.d("MainActivity", "All critical permissions granted: $allCriticalGranted")
+        logD { "All permissions granted: $allGranted" }
+        logD { "All critical permissions granted: $allCriticalGranted" }
         
         if (allCriticalGranted) {
             if (!allGranted) {
-                Log.d("MainActivity", "Non-critical permissions denied, but proceeding normally")
+                logD { "Non-critical permissions denied, but proceeding normally" }
                 Toast.makeText(this, "App ready! (Some optional permissions denied)", Toast.LENGTH_SHORT).show()
             } else {
-                Log.d("MainActivity", "All permissions granted!")
+                logD { "All permissions granted!" }
                 Toast.makeText(this, "All permissions granted! App ready.", Toast.LENGTH_SHORT).show()
             }
             initializeService()
         } else {
-            Log.w("MainActivity", "Critical permissions denied: $permissions")
+            logW { "Critical permissions denied: $permissions" }
             Toast.makeText(this, "Critical permissions required for mesh networking", Toast.LENGTH_LONG).show()
             
             // Still try to initialize service for debugging
-            Log.d("MainActivity", "Attempting to initialize service with missing critical permissions")
+            logD { "Attempting to initialize service with missing critical permissions" }
             initializeService()
         }
     }
@@ -96,24 +96,24 @@ class MainActivity : ComponentActivity() {
                 if (binder != null) {
                     meshService = binder.getService()
                     isServiceBound = true
-                    Log.d("MainActivity", "Service connected successfully")
+                    logD { "Service connected successfully" }
 
                     // Apply saved group settings from OnboardingManager
                     applyGroupSettingsToService()
 
                     Toast.makeText(this@MainActivity, "Mesh service connected - Ready to start!", Toast.LENGTH_SHORT).show()
                 } else {
-                    Log.e("MainActivity", "Failed to get service binder")
+                    logE { "Failed to get service binder" }
                     Toast.makeText(this@MainActivity, "Failed to connect to service", Toast.LENGTH_LONG).show()
                 }
             } catch (e: Exception) {
-                Log.e("MainActivity", "Error connecting to service", e)
+                logE({ "Error connecting to service" }, e)
                 Toast.makeText(this@MainActivity, "Service connection error: ${e.message}", Toast.LENGTH_LONG).show()
             }
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
-            Log.d("MainActivity", "Service disconnected")
+            logD { "Service disconnected" }
             meshService = null
             isServiceBound = false
             Toast.makeText(this@MainActivity, "Service disconnected", Toast.LENGTH_SHORT).show()
@@ -128,38 +128,38 @@ class MainActivity : ComponentActivity() {
 
         // Set group code
         meshService?.setGroupCode(prefs.currentGroupCode)
-        Log.d("MainActivity", "Applied group code: ${prefs.currentGroupCode}")
+        logD { "Applied group code: ${prefs.currentGroupCode}" }
 
         // Set group mode (GROUP_MODE = true, OPEN_MODE = false)
         val groupModeEnabled = prefs.connectionMode == ConnectionMode.GROUP_MODE
         meshService?.setGroupModeEnabled(groupModeEnabled)
-        Log.d("MainActivity", "Applied group mode enabled: $groupModeEnabled")
+        logD { "Applied group mode enabled: $groupModeEnabled" }
 
         // Set nickname to group manager
         meshService?.getGroupManager()?.setNickname(prefs.nickname)
-        Log.d("MainActivity", "Applied nickname: ${prefs.nickname}")
+        logD { "Applied nickname: ${prefs.nickname}" }
     }
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Log.d("MainActivity", "onCreate() started")
+        logD { "onCreate() started" }
 
         // Initialize onboarding manager
         onboardingManager = OnboardingManager(this)
         showOnboarding = onboardingManager.needsOnboarding()
-        Log.d("MainActivity", "Onboarding needed: $showOnboarding")
+        logD { "Onboarding needed: $showOnboarding" }
 
         // Check permissions
         if (hasAllPermissions()) {
-            Log.d("MainActivity", "All critical permissions granted, initializing service")
+            logD { "All critical permissions granted, initializing service" }
             Toast.makeText(this, "All permissions ready! Starting app...", Toast.LENGTH_SHORT).show()
             initializeService()
         } else {
-            Log.d("MainActivity", "Missing critical permissions, requesting them")
+            logD { "Missing critical permissions, requesting them" }
             requestPermissions()
         }
 
-        Log.d("MainActivity", "Setting up UI content")
+        logD { "Setting up UI content" }
         setContent {
             EnterCommTheme {
                 Surface(
@@ -170,7 +170,7 @@ class MainActivity : ComponentActivity() {
                         OnboardingScreen(
                             onboardingManager = onboardingManager,
                             onComplete = { groupCode, isCreator ->
-                                Log.d("MainActivity", "Onboarding complete: groupCode=$groupCode, isCreator=$isCreator")
+                                logD { "Onboarding complete: groupCode=$groupCode, isCreator=$isCreator" }
                                 showOnboarding = false
 
                                 // Store group code for mesh filtering (must be done before applying settings)
@@ -217,33 +217,33 @@ class MainActivity : ComponentActivity() {
         val permissionStatus = requiredPermissions.associateWith { permission ->
             ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
         }
-        Log.d("MainActivity", "Permission status: $permissionStatus")
+        logD { "Permission status: $permissionStatus" }
         
         // Check critical permissions (exclude POST_NOTIFICATIONS as it's optional)
         val criticalPermissions = permissionStatus.filterKeys { it != Manifest.permission.POST_NOTIFICATIONS }
         val allCriticalGranted = criticalPermissions.values.all { it }
         val allGranted = permissionStatus.values.all { it }
         
-        Log.d("MainActivity", "All permissions granted: $allGranted")
-        Log.d("MainActivity", "All critical permissions granted: $allCriticalGranted")
+        logD { "All permissions granted: $allGranted" }
+        logD { "All critical permissions granted: $allCriticalGranted" }
         
         return allCriticalGranted
     }
     
     private fun requestPermissions() {
-        Log.d("MainActivity", "Requesting permissions: ${requiredPermissions.toList()}")
+        logD { "Requesting permissions: ${requiredPermissions.toList()}" }
         permissionLauncher.launch(requiredPermissions)
     }
     
     private fun initializeService() {
-        Log.d("MainActivity", "Initializing service...")
+        logD { "Initializing service..." }
         try {
             val intent = Intent(this, MeshNetworkService::class.java)
-            Log.d("MainActivity", "Created intent for service: ${intent.component}")
+            logD { "Created intent for service: ${intent.component}" }
 
             // Start the service first to ensure it's created
             val startResult = startService(intent)
-            Log.d("MainActivity", "Start service result: $startResult")
+            logD { "Start service result: $startResult" }
 
             // Use coroutine for non-blocking delay and service binding
             lifecycleScope.launch {
@@ -251,22 +251,22 @@ class MainActivity : ComponentActivity() {
 
                 // Bind to service
                 val bound = bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
-                Log.d("MainActivity", "Service binding attempted: $bound")
+                logD { "Service binding attempted: $bound" }
 
                 if (!bound) {
-                    Log.e("MainActivity", "Failed to bind to service")
+                    logE { "Failed to bind to service" }
                     Toast.makeText(this@MainActivity, "Failed to bind to service", Toast.LENGTH_LONG).show()
                 } else {
                     // Set a timeout to detect if service connection fails
                     delay(3000) // Wait 3 seconds
                     if (!isServiceBound) {
-                        Log.w("MainActivity", "Service connection timeout")
+                        logW { "Service connection timeout" }
                         Toast.makeText(this@MainActivity, "Service connection timeout. Check logs for errors.", Toast.LENGTH_LONG).show()
                     }
                 }
             }
         } catch (e: Exception) {
-            Log.e("MainActivity", "Error initializing service", e)
+            logE({ "Error initializing service" }, e)
             Toast.makeText(this, "Service initialization error: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }

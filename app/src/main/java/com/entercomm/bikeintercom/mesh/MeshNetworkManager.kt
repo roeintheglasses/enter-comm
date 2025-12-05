@@ -1,6 +1,6 @@
 package com.entercomm.bikeintercom.mesh
 
-import android.util.Log
+import com.entercomm.bikeintercom.util.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -54,7 +54,6 @@ class MeshNetworkManager(
     private val deviceName: String
 ) {
     companion object {
-        private const val TAG = "MeshNetworkManager"
         const val DISCOVERY_PORT = 8888
         private const val AUDIO_PORT = 8889
         private const val HEARTBEAT_INTERVAL = 5000L
@@ -106,7 +105,7 @@ class MeshNetworkManager(
      */
     fun setGroupCode(code: String?) {
         groupCode = code?.uppercase()?.replace("-", "")
-        Log.d(TAG, "Group code set to: $groupCode")
+        logD { "Group code set to: $groupCode" }
     }
 
     /**
@@ -120,7 +119,7 @@ class MeshNetworkManager(
      */
     fun setGroupModeEnabled(enabled: Boolean) {
         groupModeEnabled = enabled
-        Log.d(TAG, "Group mode ${if (enabled) "enabled" else "disabled"}")
+        logD { "Group mode ${if (enabled) "enabled" else "disabled"}" }
     }
 
     /**
@@ -136,7 +135,7 @@ class MeshNetworkManager(
     
     fun startMeshNetwork(localPort: Int = DISCOVERY_PORT) {
         if (isRunning) {
-            Log.d(TAG, "Mesh network already running")
+            logD { "Mesh network already running" }
             return
         }
 
@@ -145,7 +144,7 @@ class MeshNetworkManager(
 
         networkJob = scope.launch {
             try {
-                Log.d(TAG, "Starting mesh network on port $localPort...")
+                logD { "Starting mesh network on port $localPort..." }
                 isRunning = true
                 _isActive.value = true
 
@@ -162,12 +161,12 @@ class MeshNetworkManager(
                     reuseAddress = true
                 }
 
-                Log.d(TAG, "Mesh network sockets created: discovery=$localPort, audio=${localPort + 1}")
-                Log.d(TAG, "Node ID: $nodeId, Device name: $deviceName")
+                logD { "Mesh network sockets created: discovery=$localPort, audio=${localPort + 1}" }
+                logD { "Node ID: $nodeId, Device name: $deviceName" }
 
                 // Initialize the distance vector router
                 router.initialize()
-                Log.d(TAG, "Distance vector router initialized")
+                logD { "Distance vector router initialized" }
 
                 // Start discovery and routing services
                 launch { startDiscoveryService() }
@@ -177,10 +176,10 @@ class MeshNetworkManager(
                 launch { startAudioListener() }
                 launch { startRouteAdvertisementService() }  // Multi-hop routing
 
-                Log.d(TAG, "Mesh network services started successfully on port $localPort")
+                logD { "Mesh network services started successfully on port $localPort" }
 
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to start mesh network on port $localPort", e)
+                logE({ "Failed to start mesh network on port $localPort" }, e)
                 e.printStackTrace()
                 stopMeshNetwork()
             }
@@ -188,7 +187,7 @@ class MeshNetworkManager(
     }
     
     fun stopMeshNetwork() {
-        Log.d(TAG, "Stopping mesh network...")
+        logD { "Stopping mesh network..." }
         isRunning = false
         _isActive.value = false
 
@@ -200,12 +199,12 @@ class MeshNetworkManager(
         try {
             discoverySocket?.close()
         } catch (e: Exception) {
-            Log.w(TAG, "Error closing discovery socket", e)
+            logW({ "Error closing discovery socket" }, e)
         }
         try {
             audioSocket?.close()
         } catch (e: Exception) {
-            Log.w(TAG, "Error closing audio socket", e)
+            logW({ "Error closing audio socket" }, e)
         }
         discoverySocket = null
         audioSocket = null
@@ -220,26 +219,26 @@ class MeshNetworkManager(
         discoveryResponseCache.clear()
         _connectedNodes.value = emptyList()
 
-        Log.d(TAG, "Mesh network stopped")
+        logD { "Mesh network stopped" }
     }
     
     fun scanAndConnectToAvailableDevices() {
         scope.launch {
-            Log.d(TAG, "Starting network scan for available devices...")
+            logD { "Starting network scan for available devices..." }
             
             val localIPs = getLocalIPAddresses()
             if (localIPs.isEmpty()) {
-                Log.w(TAG, "No local IP addresses found, cannot scan network")
+                logW { "No local IP addresses found, cannot scan network" }
                 return@launch
             }
             
-            Log.d(TAG, "Local IPs: ${localIPs.joinToString(", ")}")
+            logD { "Local IPs: ${localIPs.joinToString(", ")}" }
             
             // Use the first available local IP to determine network subnet
             val localIP = localIPs.first()
             val subnet = localIP.substringBeforeLast(".")
             
-            Log.d(TAG, "Scanning subnet $subnet.* for Enter-Comm devices (excluding our own IPs)...")
+            logD { "Scanning subnet $subnet.* for Enter-Comm devices (excluding our own IPs)..." }
             
             // Scan common IP ranges in the subnet
             val scanJobs = mutableListOf<Job>()
@@ -258,7 +257,7 @@ class MeshNetworkManager(
                         // Quick check if host is reachable
                         val address = InetAddress.getByName(targetIP)
                         if (address.isReachable(500)) { // 500ms timeout for quick scan
-                            Log.d(TAG, "Found reachable device at $targetIP, sending discovery probe...")
+                            logD { "Found reachable device at $targetIP, sending discovery probe..." }
                             sendDiscoveryProbe(targetIP, DISCOVERY_PORT)
                         }
                     } catch (e: Exception) {
@@ -278,8 +277,8 @@ class MeshNetworkManager(
             // Wait for remaining scan jobs
             scanJobs.joinAll()
             
-            Log.d(TAG, "Network scan completed. Sent discovery probes to all reachable devices.")
-            Log.d(TAG, "Actual mesh connections: ${nodes.size} devices")
+            logD { "Network scan completed. Sent discovery probes to all reachable devices." }
+            logD { "Actual mesh connections: ${nodes.size} devices" }
         }
     }
     
@@ -287,7 +286,7 @@ class MeshNetworkManager(
         // Check if this is our own IP
         val localIPs = getLocalIPAddresses()
         if (localIPs.contains(ipAddress)) {
-            Log.d(TAG, "Skipping direct connection to our own IP: $ipAddress")
+            logD { "Skipping direct connection to our own IP: $ipAddress" }
             return
         }
         
@@ -298,19 +297,19 @@ class MeshNetworkManager(
         if (existingNode != null) {
             val timeSinceUpdate = System.currentTimeMillis() - existingNode.lastSeen
             if (timeSinceUpdate < 30000) { // Don't re-add if updated within last 30 seconds
-                Log.d(TAG, "Node $nodeId at $ipAddress already exists and is recent, skipping...")
+                logD { "Node $nodeId at $ipAddress already exists and is recent, skipping..." }
                 return
             }
         }
         
-        Log.d(TAG, "Attempting direct connection to $ipAddress:$port")
+        logD { "Attempting direct connection to $ipAddress:$port" }
         
         // Only send discovery message - don't create phantom nodes
         // Nodes will be created only when they respond with discovery messages
-        Log.d(TAG, "Sending discovery message to $ipAddress:$port")
+        logD { "Sending discovery message to $ipAddress:$port" }
         sendDiscoveryMessage(ipAddress, port)
         
-        Log.d(TAG, "Discovery message sent to $ipAddress:$port - waiting for response...")
+        logD { "Discovery message sent to $ipAddress:$port - waiting for response..." }
     }
     
     fun sendAudioData(audioData: ByteArray, destinationId: String? = null) {
@@ -336,15 +335,15 @@ class MeshNetworkManager(
     }
     
     private suspend fun startDiscoveryService() {
-        Log.d(TAG, "Starting discovery service - broadcasting every 10 seconds...")
+        logD { "Starting discovery service - broadcasting every 10 seconds..." }
         while (isRunning) {
             try {
                 // Broadcast discovery message to local network
-                Log.d(TAG, "Broadcasting discovery message...")
+                logD { "Broadcasting discovery message..." }
                 broadcastDiscovery()
                 delay(10000) // Discovery every 10 seconds
             } catch (e: Exception) {
-                Log.e(TAG, "Discovery service error", e)
+                logE({ "Discovery service error" }, e)
                 delay(5000)
             }
         }
@@ -361,7 +360,7 @@ class MeshNetworkManager(
                 
                 delay(5000) // Update routing every 5 seconds
             } catch (e: Exception) {
-                Log.e(TAG, "Routing service error", e)
+                logE({ "Routing service error" }, e)
                 delay(5000)
             }
         }
@@ -374,51 +373,51 @@ class MeshNetworkManager(
                 sendHeartbeats()
                 delay(HEARTBEAT_INTERVAL)
             } catch (e: Exception) {
-                Log.e(TAG, "Heartbeat service error", e)
+                logE({ "Heartbeat service error" }, e)
                 delay(5000)
             }
         }
     }
     
     private suspend fun startMessageListener() {
-        Log.d(TAG, "Starting message listener on discovery port...")
+        logD { "Starting message listener on discovery port..." }
         while (isRunning) {
             try {
                 val buffer = ByteArray(1024)
                 val packet = DatagramPacket(buffer, buffer.size)
                 
-                Log.d(TAG, "Waiting for messages on discovery socket...")
+                logD { "Waiting for messages on discovery socket..." }
                 discoverySocket?.receive(packet)
                 
                 val senderAddress = packet.address.hostAddress ?: "unknown"
-                Log.d(TAG, "Received message from $senderAddress, length: ${packet.length}")
+                logD { "Received message from $senderAddress, length: ${packet.length}" }
                 
                 val message = deserializeMessage(packet.data, packet.length)
                 if (message != null) {
-                    Log.d(TAG, "Successfully deserialized message: type=${message.messageType}, source=${message.sourceId}, dest=${message.destinationId}")
+                    logD { "Successfully deserialized message: type=${message.messageType}, source=${message.sourceId}, dest=${message.destinationId}" }
                     handleIncomingMessage(message, senderAddress)
                 } else {
-                    Log.w(TAG, "Failed to deserialize message from $senderAddress")
-                    Log.w(TAG, "Raw data: ${String(packet.data, 0, packet.length)}")
+                    logW { "Failed to deserialize message from $senderAddress" }
+                    logW { "Raw data: ${String(packet.data, 0, packet.length)}" }
                 }
             } catch (e: Exception) {
                 if (isRunning) {
-                    Log.e(TAG, "Message listener error", e)
+                    logE({ "Message listener error" }, e)
                     delay(1000)
                 } else {
-                    Log.d(TAG, "Message listener stopped")
+                    logD { "Message listener stopped" }
                 }
             }
         }
     }
     
     private suspend fun startAudioListener() {
-        Log.d(TAG, "Starting audio listener on port ${DISCOVERY_PORT + 1}...")
+        logD { "Starting audio listener on port ${DISCOVERY_PORT + 1}..." }
         while (isRunning) {
             try {
                 val socket = audioSocket
                 if (socket == null || socket.isClosed) {
-                    Log.e(TAG, "Audio socket is null or closed, cannot receive audio")
+                    logE { "Audio socket is null or closed, cannot receive audio" }
                     delay(1000)
                     continue
                 }
@@ -427,38 +426,38 @@ class MeshNetworkManager(
                 val packet = DatagramPacket(buffer, buffer.size)
                 
                 socket.receive(packet)
-                Log.d(TAG, "Received audio packet from ${packet.address.hostAddress}, length: ${packet.length}")
+                logD { "Received audio packet from ${packet.address.hostAddress}, length: ${packet.length}" }
                 
                 val message = deserializeMessage(packet.data, packet.length)
                 if (message != null) {
-                    Log.d(TAG, "Deserialized audio message: type=${message.messageType}, source=${message.sourceId}")
+                    logD { "Deserialized audio message: type=${message.messageType}, source=${message.sourceId}" }
                     
                     // Don't filter out audio messages from ourselves - we might need to handle echo cancellation differently
                     if (message.messageType == MeshMessage.MessageType.AUDIO_DATA) {
                         if (message.destinationId == nodeId || message.destinationId == "broadcast") {
                             // Audio data for us
-                            Log.d(TAG, "Playing audio data from ${message.sourceId}, size: ${message.payload.size}")
+                            logD { "Playing audio data from ${message.sourceId}, size: ${message.payload.size}" }
                             try {
                                 onAudioDataReceived?.invoke(message.payload, message.sourceId)
                             } catch (e: Exception) {
-                                Log.e(TAG, "Error in audio callback", e)
+                                logE({ "Error in audio callback" }, e)
                             }
                         } else {
                             // Forward audio data
-                            Log.d(TAG, "Forwarding audio data to ${message.destinationId}")
+                            logD { "Forwarding audio data to ${message.destinationId}" }
                             forwardMessage(message)
                         }
                     }
                 } else {
-                    Log.w(TAG, "Failed to deserialize audio message")
+                    logW { "Failed to deserialize audio message" }
                 }
             } catch (e: Exception) {
                 if (isRunning) {
-                    Log.e(TAG, "Audio listener error", e)
+                    logE({ "Audio listener error" }, e)
                     e.printStackTrace()
                     delay(1000)
                 } else {
-                    Log.d(TAG, "Audio listener stopped")
+                    logD { "Audio listener stopped" }
                 }
             }
         }
@@ -467,7 +466,7 @@ class MeshNetworkManager(
     private fun handleIncomingMessage(message: MeshMessage, senderIp: String) {
         // Ignore messages from ourselves
         if (message.sourceId == nodeId) {
-            Log.d(TAG, "Ignoring message from self: ${message.messageId}")
+            logD { "Ignoring message from self: ${message.messageId}" }
             return
         }
 
@@ -517,8 +516,8 @@ class MeshNetworkManager(
     }
     
     private fun handleDiscoveryMessage(message: MeshMessage, senderIp: String) {
-        Log.d(TAG, "Handling discovery message from $senderIp")
-        Log.d(TAG, "Message payload: ${String(message.payload)}")
+        logD { "Handling discovery message from $senderIp" }
+        logD { "Message payload: ${String(message.payload)}" }
 
         val nodeInfo = String(message.payload).split("|")
         if (nodeInfo.size >= 2) {
@@ -526,11 +525,11 @@ class MeshNetworkManager(
             val deviceName = nodeInfo[1]
             val remoteGroupCode = if (nodeInfo.size >= 3) nodeInfo[2] else "OPEN"
 
-            Log.d(TAG, "Parsed discovery: nodeId=$remoteNodeId, deviceName=$deviceName, groupCode=$remoteGroupCode, senderIp=$senderIp")
+            logD { "Parsed discovery: nodeId=$remoteNodeId, deviceName=$deviceName, groupCode=$remoteGroupCode, senderIp=$senderIp" }
 
             // Ignore messages from ourselves
             if (remoteNodeId == nodeId) {
-                Log.d(TAG, "Ignoring discovery message from self: $remoteNodeId")
+                logD { "Ignoring discovery message from self: $remoteNodeId" }
                 return
             }
 
@@ -539,7 +538,7 @@ class MeshNetworkManager(
                 val ourCode = groupCode!!
                 val theirCode = remoteGroupCode.uppercase()
                 if (ourCode != theirCode && theirCode != "OPEN" && ourCode != "OPEN") {
-                    Log.d(TAG, "Ignoring node $remoteNodeId - group code mismatch (ours=$ourCode, theirs=$theirCode)")
+                    logD { "Ignoring node $remoteNodeId - group code mismatch (ours=$ourCode, theirs=$theirCode)" }
                     return
                 }
             }
@@ -550,11 +549,11 @@ class MeshNetworkManager(
             val timeSinceLastResponse = currentTime - lastResponseTime
             
             if (timeSinceLastResponse < 5000) { // Don't respond more than once every 5 seconds to same IP
-                Log.d(TAG, "Rate limiting discovery response to $senderIp (last response ${timeSinceLastResponse}ms ago)")
+                logD { "Rate limiting discovery response to $senderIp (last response ${timeSinceLastResponse}ms ago)" }
                 // Still update the node but don't send another response
             } else {
                 // Send our info back
-                Log.d(TAG, "Sending discovery response to $senderIp")
+                logD { "Sending discovery response to $senderIp" }
                 sendDiscoveryResponse(senderIp)
                 discoveryResponseCache[senderIp] = currentTime
             }
@@ -562,9 +561,9 @@ class MeshNetworkManager(
             // Check if this is a new node or an update
             val existingNode = nodes[remoteNodeId]
             if (existingNode != null) {
-                Log.d(TAG, "Updating existing node: $remoteNodeId")
+                logD { "Updating existing node: $remoteNodeId" }
             } else {
-                Log.d(TAG, "Adding new node: $remoteNodeId")
+                logD { "Adding new node: $remoteNodeId" }
             }
             
             val node = MeshNode(
@@ -590,11 +589,11 @@ class MeshNetworkManager(
 
             updateConnectedNodesList()
 
-            Log.d(TAG, "Mesh network updated: discovered $deviceName ($remoteNodeId) at $senderIp")
-            Log.d(TAG, "Total connected nodes: ${nodes.size}")
-            Log.d(TAG, "Reachable destinations: ${router.getReachableDestinations().size}")
+            logD { "Mesh network updated: discovered $deviceName ($remoteNodeId) at $senderIp" }
+            logD { "Total connected nodes: ${nodes.size}" }
+            logD { "Reachable destinations: ${router.getReachableDestinations().size}" }
         } else {
-            Log.w(TAG, "Invalid discovery message format from $senderIp: ${String(message.payload)}")
+            logW { "Invalid discovery message format from $senderIp: ${String(message.payload)}" }
         }
     }
     
@@ -602,16 +601,16 @@ class MeshNetworkManager(
         // Parse route advertisement from neighbor
         val advertisement = router.deserializeAdvertisement(message.payload)
         if (advertisement == null) {
-            Log.w(TAG, "Failed to parse route advertisement from ${message.sourceId}")
+            logW { "Failed to parse route advertisement from ${message.sourceId}" }
             return
         }
 
-        Log.d(TAG, "Processing route update from ${message.sourceId} with ${advertisement.routes.size} routes")
+        logD { "Processing route update from ${message.sourceId} with ${advertisement.routes.size} routes" }
 
         // Get sender's IP for verification
         val senderNode = nodes[message.sourceId]
         if (senderNode == null) {
-            Log.w(TAG, "Received route update from unknown node: ${message.sourceId}")
+            logW { "Received route update from unknown node: ${message.sourceId}" }
             return
         }
 
@@ -628,8 +627,8 @@ class MeshNetworkManager(
             // Update routing statistics
             updateRoutingStats()
 
-            Log.d(TAG, "Routing table updated from ${message.sourceId}")
-            Log.d(TAG, router.dumpRoutingTable())
+            logD { "Routing table updated from ${message.sourceId}" }
+            logD { router.dumpRoutingTable() }
         }
     }
 
@@ -653,7 +652,7 @@ class MeshNetworkManager(
             val groupMessageType = GroupMessageType.valueOf(typeString)
             onGroupMessageReceived?.invoke(groupMessageType, message.sourceId, actualPayload)
         } catch (e: IllegalArgumentException) {
-            Log.w(TAG, "Unknown group message type: $typeString")
+            logW { "Unknown group message type: $typeString" }
         }
     }
 
@@ -698,7 +697,7 @@ class MeshNetworkManager(
             val locationMessageType = LocationMessageType.valueOf(typeString)
             onLocationMessageReceived?.invoke(locationMessageType, message.sourceId, actualPayload)
         } catch (e: IllegalArgumentException) {
-            Log.w(TAG, "Unknown location message type: $typeString")
+            logW { "Unknown location message type: $typeString" }
         }
     }
 
@@ -764,7 +763,7 @@ class MeshNetworkManager(
                 if (targetNode != null) {
                     sendMessageToNode(message, targetNode)
                 } else {
-                    Log.w(TAG, "No route to destination: ${message.destinationId}")
+                    logW { "No route to destination: ${message.destinationId}" }
                     _routingStats.value = _routingStats.value.copy(
                         messagesDropped = _routingStats.value.messagesDropped + 1
                     )
@@ -775,7 +774,7 @@ class MeshNetworkManager(
             if (message.destinationId == "broadcast") {
                 broadcastToAllNeighbors(message)
             } else {
-                Log.w(TAG, "No route to destination: ${message.destinationId}")
+                logW { "No route to destination: ${message.destinationId}" }
                 _routingStats.value = _routingStats.value.copy(
                     messagesDropped = _routingStats.value.messagesDropped + 1
                 )
@@ -785,7 +784,7 @@ class MeshNetworkManager(
 
     private fun forwardMessage(message: MeshMessage) {
         if (message.ttl <= 0) {
-            Log.d(TAG, "Dropping message ${message.messageId} - TTL expired")
+            logD { "Dropping message ${message.messageId} - TTL expired" }
             _routingStats.value = _routingStats.value.copy(
                 messagesDropped = _routingStats.value.messagesDropped + 1
             )
@@ -801,9 +800,9 @@ class MeshNetworkManager(
             _routingStats.value = _routingStats.value.copy(
                 messagesForwarded = _routingStats.value.messagesForwarded + 1
             )
-            Log.d(TAG, "Forwarded message to ${message.destinationId} via ${router.getNextHop(message.destinationId)}")
+            logD { "Forwarded message to ${message.destinationId} via ${router.getNextHop(message.destinationId)}" }
         } else {
-            Log.w(TAG, "Cannot forward - no route to ${message.destinationId}")
+            logW { "Cannot forward - no route to ${message.destinationId}" }
             _routingStats.value = _routingStats.value.copy(
                 messagesDropped = _routingStats.value.messagesDropped + 1
             )
@@ -838,7 +837,7 @@ class MeshNetworkManager(
                 socket?.send(packet)
                 
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to send message to ${node.deviceName}", e)
+                logE({ "Failed to send message to ${node.deviceName}" }, e)
             }
         }
     }
@@ -858,24 +857,24 @@ class MeshNetworkManager(
             // Broadcast to local network
             try {
                 val data = serializeMessage(message)
-                Log.d(TAG, "Broadcasting discovery: nodeId=$nodeId, deviceName=$deviceName, dataSize=${data.size}")
+                logD { "Broadcasting discovery: nodeId=$nodeId, deviceName=$deviceName, dataSize=${data.size}" }
                 
                 // Dynamically get broadcast addresses for all active network interfaces
                 val broadcastAddresses = getNetworkBroadcastAddresses()
-                Log.d(TAG, "Found ${broadcastAddresses.size} broadcast addresses: ${broadcastAddresses.joinToString(", ")}")
+                logD { "Found ${broadcastAddresses.size} broadcast addresses: ${broadcastAddresses.joinToString(", ")}" }
                 
                 for (broadcastAddr in broadcastAddresses) {
                     try {
                         val broadcastAddress = InetAddress.getByName(broadcastAddr)
                         val packet = DatagramPacket(data, data.size, broadcastAddress, DISCOVERY_PORT)
                         discoverySocket?.send(packet)
-                        Log.d(TAG, "Sent broadcast discovery to $broadcastAddr:$DISCOVERY_PORT")
+                        logD { "Sent broadcast discovery to $broadcastAddr:$DISCOVERY_PORT" }
                     } catch (e: Exception) {
-                        Log.w(TAG, "Failed to broadcast to $broadcastAddr", e)
+                        logW({ "Failed to broadcast to $broadcastAddr" }, e)
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to broadcast discovery", e)
+                logE({ "Failed to broadcast discovery" }, e)
             }
         }
     }
@@ -883,7 +882,7 @@ class MeshNetworkManager(
     private fun sendDiscoveryMessage(ipAddress: String, port: Int) {
         scope.launch {
             try {
-                Log.d(TAG, "Preparing discovery message to $ipAddress:$port")
+                logD { "Preparing discovery message to $ipAddress:$port" }
 
                 // Include group code in discovery payload for filtering
                 val groupCodePart = groupCode ?: "OPEN"
@@ -896,24 +895,24 @@ class MeshNetworkManager(
                 )
                 
                 val data = serializeMessage(message)
-                Log.d(TAG, "Discovery message size: ${data.size} bytes")
+                logD { "Discovery message size: ${data.size} bytes" }
                 
                 val targetAddress = InetAddress.getByName(ipAddress)
-                Log.d(TAG, "Resolved IP address: $ipAddress -> ${targetAddress.hostAddress}")
+                logD { "Resolved IP address: $ipAddress -> ${targetAddress.hostAddress}" }
                 
                 val packet = DatagramPacket(data, data.size, targetAddress, port)
                 
                 val socket = discoverySocket
                 if (socket != null && !socket.isClosed) {
                     socket.send(packet)
-                    Log.d(TAG, "Discovery message sent successfully to $ipAddress:$port")
+                    logD { "Discovery message sent successfully to $ipAddress:$port" }
                 } else {
-                    Log.e(TAG, "Discovery socket is null or closed, cannot send to $ipAddress:$port")
+                    logE { "Discovery socket is null or closed, cannot send to $ipAddress:$port" }
                 }
                 
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to send discovery message to $ipAddress:$port", e)
-                Log.e(TAG, "Exception details: ${e.javaClass.simpleName}: ${e.message}")
+                logE({ "Failed to send discovery message to $ipAddress:$port" }, e)
+                logE { "Exception details: ${e.javaClass.simpleName}: ${e.message}" }
                 e.printStackTrace()
             }
         }
@@ -922,7 +921,7 @@ class MeshNetworkManager(
     private fun sendDiscoveryProbe(ipAddress: String, port: Int) {
         scope.launch {
             try {
-                Log.d(TAG, "Sending discovery probe to $ipAddress:$port")
+                logD { "Sending discovery probe to $ipAddress:$port" }
                 
                 val payload = "$nodeId|$deviceName".toByteArray()
                 val message = MeshMessage(
@@ -939,14 +938,14 @@ class MeshNetworkManager(
                 val socket = discoverySocket
                 if (socket != null && !socket.isClosed) {
                     socket.send(packet)
-                    Log.d(TAG, "Discovery probe sent to $ipAddress:$port")
+                    logD { "Discovery probe sent to $ipAddress:$port" }
                 } else {
-                    Log.w(TAG, "Discovery socket not available for probe to $ipAddress:$port")
+                    logW { "Discovery socket not available for probe to $ipAddress:$port" }
                 }
                 
             } catch (e: Exception) {
                 // Silently fail for probes - most devices won't be running Enter-Comm
-                Log.v(TAG, "Discovery probe failed to $ipAddress:$port: ${e.message}")
+                logD { "Discovery probe failed to $ipAddress:$port: ${e.message}" }
             }
         }
     }
@@ -995,7 +994,7 @@ class MeshNetworkManager(
      * Route advertisement service - sends periodic route updates to neighbors.
      */
     private suspend fun startRouteAdvertisementService() {
-        Log.d(TAG, "Starting route advertisement service...")
+        logD { "Starting route advertisement service..." }
         while (isRunning) {
             try {
                 // Send route advertisements to all neighbors
@@ -1003,7 +1002,7 @@ class MeshNetworkManager(
 
                 delay(ROUTE_UPDATE_INTERVAL)
             } catch (e: Exception) {
-                Log.e(TAG, "Route advertisement service error", e)
+                logE({ "Route advertisement service error" }, e)
                 delay(5000)
             }
         }
@@ -1018,7 +1017,7 @@ class MeshNetworkManager(
             return
         }
 
-        Log.d(TAG, "Sending route advertisements to ${neighbors.size} neighbors")
+        logD { "Sending route advertisements to ${neighbors.size} neighbors" }
 
         for (neighbor in neighbors) {
             // Generate advertisement with split-horizon poison-reverse
@@ -1095,7 +1094,7 @@ class MeshNetworkManager(
             routingTable.remove(expiredNodeId)
             // Notify router about removed neighbor
             router.removeNeighbor(expiredNodeId)
-            Log.d(TAG, "Removed expired node: $expiredNodeId")
+            logD { "Removed expired node: $expiredNodeId" }
         }
 
         // Remove old routes (router handles its own route expiration)
@@ -1160,7 +1159,7 @@ class MeshNetworkManager(
                     continue
                 }
                 
-                Log.d(TAG, "Checking network interface: ${networkInterface.name}")
+                logD { "Checking network interface: ${networkInterface.name}" }
                 
                 for (interfaceAddress in networkInterface.interfaceAddresses) {
                     val broadcast = interfaceAddress.broadcast
@@ -1168,14 +1167,14 @@ class MeshNetworkManager(
                         val broadcastAddr = broadcast.hostAddress
                         if (broadcastAddr != null && !broadcastAddresses.contains(broadcastAddr)) {
                             broadcastAddresses.add(broadcastAddr)
-                            Log.d(TAG, "Found broadcast address: $broadcastAddr for interface ${networkInterface.name}")
+                            logD { "Found broadcast address: $broadcastAddr for interface ${networkInterface.name}" }
                         }
                     }
                 }
             }
             
         } catch (e: Exception) {
-            Log.e(TAG, "Error getting network broadcast addresses", e)
+            logE({ "Error getting network broadcast addresses" }, e)
             // Fallback to common addresses if dynamic detection fails
             if (broadcastAddresses.size <= 1) {
                 broadcastAddresses.add("192.168.49.255") // WiFi Direct common subnet
@@ -1204,14 +1203,14 @@ class MeshNetworkManager(
                         val ipAddress = inetAddress.hostAddress
                         if (ipAddress != null && !ipAddress.startsWith("127.")) {
                             ipAddresses.add(ipAddress)
-                            Log.d(TAG, "Found local IP: $ipAddress on interface ${networkInterface.name}")
+                            logD { "Found local IP: $ipAddress on interface ${networkInterface.name}" }
                         }
                     }
                 }
             }
             
         } catch (e: Exception) {
-            Log.e(TAG, "Error getting local IP addresses", e)
+            logE({ "Error getting local IP addresses" }, e)
         }
         
         return ipAddresses
@@ -1220,7 +1219,7 @@ class MeshNetworkManager(
     private fun deserializeMessage(data: ByteArray, length: Int): MeshMessage? {
         try {
             val dataString = String(data, 0, length)
-            Log.d(TAG, "Deserializing message: $dataString")
+            logD { "Deserializing message: $dataString" }
             
             // Find the position of the 6th pipe character (after timestamp)
             var pipeCount = 0
@@ -1236,20 +1235,20 @@ class MeshNetworkManager(
             }
             
             if (headerEnd == -1) {
-                Log.w(TAG, "Could not find 6 pipe characters in message header")
+                logW { "Could not find 6 pipe characters in message header" }
                 return null
             }
             
             val headerParts = dataString.substring(0, headerEnd).split("|")
-            Log.d(TAG, "Header parts: $headerParts")
+            logD { "Header parts: $headerParts" }
             
             if (headerParts.size != 6) {
-                Log.w(TAG, "Expected 6 header parts, got ${headerParts.size}")
+                logW { "Expected 6 header parts, got ${headerParts.size}" }
                 return null
             }
             
             val payload = data.copyOfRange(headerEnd + 1, length)
-            Log.d(TAG, "Payload size: ${payload.size} bytes")
+            logD { "Payload size: ${payload.size} bytes" }
             
             val message = MeshMessage(
                 messageId = headerParts[0],
@@ -1261,12 +1260,12 @@ class MeshNetworkManager(
                 payload = payload
             )
             
-            Log.d(TAG, "Successfully deserialized message: ${message.messageType} from ${message.sourceId}")
+            logD { "Successfully deserialized message: ${message.messageType} from ${message.sourceId}" }
             return message
             
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to deserialize message", e)
-            Log.e(TAG, "Raw message was: ${String(data, 0, length)}")
+            logE({ "Failed to deserialize message" }, e)
+            logE { "Raw message was: ${String(data, 0, length)}" }
             return null
         }
     }

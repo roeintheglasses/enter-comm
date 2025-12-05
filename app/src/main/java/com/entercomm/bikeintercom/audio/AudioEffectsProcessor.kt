@@ -4,7 +4,7 @@ import android.media.AudioRecord
 import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.AutomaticGainControl
 import android.media.audiofx.NoiseSuppressor
-import android.util.Log
+import com.entercomm.bikeintercom.util.*
 import kotlin.math.abs
 import kotlin.math.sqrt
 
@@ -18,8 +18,6 @@ import kotlin.math.sqrt
  */
 class AudioEffectsProcessor {
     companion object {
-        private const val TAG = "AudioEffectsProcessor"
-
         // Wind noise detection thresholds
         private const val WIND_NOISE_THRESHOLD = 0.15f
         private const val HIGH_PASS_CUTOFF = 300f  // Hz - filter out low-frequency wind noise
@@ -60,7 +58,7 @@ class AudioEffectsProcessor {
      * Call this after AudioRecord is created but before recording starts.
      */
     fun initialize(audioSessionId: Int, sampleRate: Int = 48000): Boolean {
-        Log.d(TAG, "Initializing audio effects for session: $audioSessionId")
+        logD { "Initializing audio effects for session: $audioSessionId" }
 
         // Initialize hardware AEC
         isAecAvailable = AcousticEchoCanceler.isAvailable()
@@ -69,14 +67,14 @@ class AudioEffectsProcessor {
                 echoCanceler = AcousticEchoCanceler.create(audioSessionId)?.apply {
                     enabled = true
                     isAecEnabled = true
-                    Log.d(TAG, "AEC enabled successfully")
+                    logD { "AEC enabled successfully" }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to create AEC", e)
+                logE({ "Failed to create AEC" }, e)
                 isAecAvailable = false
             }
         } else {
-            Log.w(TAG, "AEC not available on this device")
+            logW { "AEC not available on this device" }
         }
 
         // Initialize hardware Noise Suppressor
@@ -86,14 +84,14 @@ class AudioEffectsProcessor {
                 noiseSuppressor = NoiseSuppressor.create(audioSessionId)?.apply {
                     enabled = true
                     isNsEnabled = true
-                    Log.d(TAG, "Noise Suppressor enabled successfully")
+                    logD { "Noise Suppressor enabled successfully" }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to create Noise Suppressor", e)
+                logE({ "Failed to create Noise Suppressor" }, e)
                 isNsAvailable = false
             }
         } else {
-            Log.w(TAG, "Noise Suppressor not available on this device")
+            logW { "Noise Suppressor not available on this device" }
         }
 
         // Initialize hardware AGC
@@ -103,21 +101,21 @@ class AudioEffectsProcessor {
                 gainControl = AutomaticGainControl.create(audioSessionId)?.apply {
                     enabled = true
                     isAgcEnabled = true
-                    Log.d(TAG, "AGC enabled successfully")
+                    logD { "AGC enabled successfully" }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to create AGC", e)
+                logE({ "Failed to create AGC" }, e)
                 isAgcAvailable = false
             }
         } else {
-            Log.w(TAG, "AGC not available on this device")
+            logW { "AGC not available on this device" }
         }
 
         // Initialize software wind noise filter
         windNoiseFilter = HighPassFilter(sampleRate.toFloat(), HIGH_PASS_CUTOFF)
-        Log.d(TAG, "Wind noise filter initialized at ${HIGH_PASS_CUTOFF}Hz")
+        logD { "Wind noise filter initialized at ${HIGH_PASS_CUTOFF}Hz" }
 
-        Log.d(TAG, "Audio effects initialized - AEC: $isAecEnabled, NS: $isNsEnabled, AGC: $isAgcEnabled")
+        logD { "Audio effects initialized - AEC: $isAecEnabled, NS: $isNsEnabled, AGC: $isAgcEnabled" }
         return isAecEnabled || isNsEnabled || isAgcEnabled
     }
 
@@ -157,9 +155,9 @@ class AudioEffectsProcessor {
             try {
                 it.enabled = enabled
                 isAecEnabled = enabled
-                Log.d(TAG, "AEC ${if (enabled) "enabled" else "disabled"}")
+                logD { "AEC ${if (enabled) "enabled" else "disabled"}" }
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to set AEC state", e)
+                logE({ "Failed to set AEC state" }, e)
             }
         }
     }
@@ -169,9 +167,9 @@ class AudioEffectsProcessor {
             try {
                 it.enabled = enabled
                 isNsEnabled = enabled
-                Log.d(TAG, "NS ${if (enabled) "enabled" else "disabled"}")
+                logD { "NS ${if (enabled) "enabled" else "disabled"}" }
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to set NS state", e)
+                logE({ "Failed to set NS state" }, e)
             }
         }
     }
@@ -181,16 +179,16 @@ class AudioEffectsProcessor {
             try {
                 it.enabled = enabled
                 isAgcEnabled = enabled
-                Log.d(TAG, "AGC ${if (enabled) "enabled" else "disabled"}")
+                logD { "AGC ${if (enabled) "enabled" else "disabled"}" }
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to set AGC state", e)
+                logE({ "Failed to set AGC state" }, e)
             }
         }
     }
 
     fun setWindFilterEnabled(enabled: Boolean) {
         isWindFilterEnabled = enabled
-        Log.d(TAG, "Wind filter ${if (enabled) "enabled" else "disabled"}")
+        logD { "Wind filter ${if (enabled) "enabled" else "disabled"}" }
     }
 
     /**
@@ -216,7 +214,7 @@ class AudioEffectsProcessor {
             noiseSuppressor?.release()
             gainControl?.release()
         } catch (e: Exception) {
-            Log.e(TAG, "Error releasing audio effects", e)
+            logE({ "Error releasing audio effects" }, e)
         }
 
         echoCanceler = null
@@ -228,7 +226,7 @@ class AudioEffectsProcessor {
         isNsEnabled = false
         isAgcEnabled = false
 
-        Log.d(TAG, "Audio effects cleaned up")
+        logD { "Audio effects cleaned up" }
     }
 
     // Software AGC implementation

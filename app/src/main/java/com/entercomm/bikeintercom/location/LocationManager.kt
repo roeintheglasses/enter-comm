@@ -8,8 +8,8 @@ import android.location.Location
 import android.location.LocationListener
 import android.os.Bundle
 import android.os.Looper
-import android.util.Log
 import androidx.core.content.ContextCompat
+import com.entercomm.bikeintercom.util.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -123,7 +123,6 @@ enum class LocationMessageType {
 class LocationManager(private val context: Context) {
 
     companion object {
-        private const val TAG = "LocationManager"
         private const val UPDATE_INTERVAL_MS = 5000L      // 5 second updates
         private const val LOCATION_TIMEOUT_MS = 30000L    // Consider location stale after 30s
     }
@@ -167,11 +166,11 @@ class LocationManager(private val context: Context) {
         }
 
         override fun onProviderEnabled(provider: String) {
-            Log.d(TAG, "Location provider enabled: $provider")
+            logD { "Location provider enabled: $provider" }
         }
 
         override fun onProviderDisabled(provider: String) {
-            Log.d(TAG, "Location provider disabled: $provider")
+            logD { "Location provider disabled: $provider" }
         }
     }
 
@@ -181,7 +180,7 @@ class LocationManager(private val context: Context) {
     fun initialize(nodeId: String, nickname: String) {
         localNodeId = nodeId
         localNickname = nickname
-        Log.d(TAG, "LocationManager initialized for node: $nodeId")
+        logD { "LocationManager initialized for node: $nodeId" }
     }
 
     /**
@@ -189,21 +188,21 @@ class LocationManager(private val context: Context) {
      */
     @SuppressLint("MissingPermission")
     fun startTracking(): Boolean {
-        Log.d(TAG, "startTracking() called")
+        logD { "startTracking() called" }
 
         if (!hasLocationPermission()) {
-            Log.w(TAG, "Location permission not granted")
+            logW { "Location permission not granted" }
             return false
         }
 
         if (_isTracking.value) {
-            Log.d(TAG, "Already tracking location")
+            logD { "Already tracking location" }
             return true
         }
 
         val locationMgr = androidLocationManager
         if (locationMgr == null) {
-            Log.e(TAG, "LocationManager not available")
+            logE { "LocationManager not available" }
             return false
         }
 
@@ -215,7 +214,7 @@ class LocationManager(private val context: Context) {
                 locationMgr.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER) ->
                     android.location.LocationManager.NETWORK_PROVIDER
                 else -> {
-                    Log.w(TAG, "No location provider available")
+                    logW { "No location provider available" }
                     return false
                 }
             }
@@ -227,13 +226,13 @@ class LocationManager(private val context: Context) {
                     ?: locationMgr.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER)
 
                 if (lastLocation != null) {
-                    Log.d(TAG, "Using last known location: ${lastLocation.latitude}, ${lastLocation.longitude}")
+                    logD { "Using last known location: ${lastLocation.latitude}, ${lastLocation.longitude}" }
                     updateLocalLocation(lastLocation)
                 } else {
-                    Log.d(TAG, "No last known location available")
+                    logD { "No last known location available" }
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "Could not get last known location", e)
+                logW({ "Could not get last known location" }, e)
             }
 
             locationMgr.requestLocationUpdates(
@@ -245,13 +244,13 @@ class LocationManager(private val context: Context) {
             )
 
             _isTracking.value = true
-            Log.d(TAG, "Location tracking started with provider: $provider")
+            logD { "Location tracking started with provider: $provider" }
             return true
         } catch (e: SecurityException) {
-            Log.e(TAG, "Security exception starting location tracking", e)
+            logE({ "Security exception starting location tracking" }, e)
             return false
         } catch (e: Exception) {
-            Log.e(TAG, "Error starting location tracking", e)
+            logE({ "Error starting location tracking" }, e)
             return false
         }
     }
@@ -263,9 +262,9 @@ class LocationManager(private val context: Context) {
         try {
             androidLocationManager?.removeUpdates(locationListener)
             _isTracking.value = false
-            Log.d(TAG, "Location tracking stopped")
+            logD { "Location tracking stopped" }
         } catch (e: Exception) {
-            Log.e(TAG, "Error stopping location tracking", e)
+            logE({ "Error stopping location tracking" }, e)
         }
     }
 
@@ -363,7 +362,7 @@ class LocationManager(private val context: Context) {
         staleIds.forEach { peerLocations.remove(it) }
         if (staleIds.isNotEmpty()) {
             updateRadarData()
-            Log.d(TAG, "Removed ${staleIds.size} stale peer locations")
+            logD { "Removed ${staleIds.size} stale peer locations" }
         }
     }
 
@@ -388,14 +387,14 @@ class LocationManager(private val context: Context) {
             broadcastLocation()
         }
 
-        Log.d(TAG, "Local location updated: ${location.latitude}, ${location.longitude}")
+        logD { "Local location updated: ${location.latitude}, ${location.longitude}" }
     }
 
     private fun handleLocationUpdate(senderId: String, payload: ByteArray) {
         val peerLocation = deserializeLocation(senderId, payload) ?: return
         peerLocations[senderId] = peerLocation
         updateRadarData()
-        Log.d(TAG, "Peer location updated: $senderId at ${peerLocation.latitude}, ${peerLocation.longitude}")
+        logD { "Peer location updated: $senderId at ${peerLocation.latitude}, ${peerLocation.longitude}" }
     }
 
     private fun handleLocationRequest(senderId: String) {
@@ -437,7 +436,7 @@ class LocationManager(private val context: Context) {
                 timestamp = parts[7].toLong()
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to deserialize location", e)
+            logE({ "Failed to deserialize location" }, e)
             null
         }
     }

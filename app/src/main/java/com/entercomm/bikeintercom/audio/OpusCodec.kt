@@ -1,6 +1,6 @@
 package com.entercomm.bikeintercom.audio
 
-import android.util.Log
+import com.entercomm.bikeintercom.util.*
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
@@ -26,8 +26,6 @@ class OpusCodec(
     private val bitrate: Int = BITRATE
 ) {
     companion object {
-        private const val TAG = "AudioCodec"
-
         // Audio configuration
         const val SAMPLE_RATE = 48000      // 48kHz
         const val CHANNELS = 1              // Mono
@@ -85,10 +83,10 @@ class OpusCodec(
                 decoderStepIndex = 0
             }
             isInitialized = true
-            Log.d(TAG, "ADPCM codec initialized: ${sampleRate}Hz, ~4x compression")
+            logD { "ADPCM codec initialized: ${sampleRate}Hz, ~4x compression" }
             true
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to initialize codec", e)
+            logE({ "Failed to initialize codec" }, e)
             false
         }
     }
@@ -137,7 +135,7 @@ class OpusCodec(
 
                 output
             } catch (e: Exception) {
-                Log.e(TAG, "Encoding failed", e)
+                logE({ "Encoding failed" }, e)
                 null
             }
         }
@@ -184,7 +182,7 @@ class OpusCodec(
 
                 output
             } catch (e: Exception) {
-                Log.e(TAG, "Decoding failed", e)
+                logE({ "Decoding failed" }, e)
                 ShortArray(0)
             }
         }
@@ -240,7 +238,7 @@ class OpusCodec(
      */
     fun cleanup() {
         isInitialized = false
-        Log.d(TAG, "Codec cleaned up")
+        logD { "Codec cleaned up" }
     }
 
     // IMA ADPCM encoding algorithm

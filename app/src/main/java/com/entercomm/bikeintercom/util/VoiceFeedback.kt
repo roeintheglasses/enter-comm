@@ -3,7 +3,6 @@ package com.entercomm.bikeintercom.util
 import android.content.Context
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
-import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -16,10 +15,6 @@ import java.util.concurrent.ConcurrentLinkedQueue
  * Optimized for cycling use case with clear, concise messages.
  */
 class VoiceFeedback(private val context: Context) {
-
-    companion object {
-        private const val TAG = "VoiceFeedback"
-    }
 
     enum class Priority {
         LOW,      // Can be skipped if queue is full
@@ -58,16 +53,16 @@ class VoiceFeedback(private val context: Context) {
             if (status == TextToSpeech.SUCCESS) {
                 val result = tts?.setLanguage(Locale.US)
                 if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-                    Log.e(TAG, "TTS language not supported")
+                    logE { "TTS language not supported" }
                     isInitialized = false
                 } else {
                     isInitialized = true
                     setupTtsListener()
                     tts?.setSpeechRate(speechRate)
-                    Log.d(TAG, "TTS initialized successfully")
+                    logD { "TTS initialized successfully" }
                 }
             } else {
-                Log.e(TAG, "TTS initialization failed: $status")
+                logE { "TTS initialization failed: $status" }
                 isInitialized = false
             }
         }
@@ -94,7 +89,7 @@ class VoiceFeedback(private val context: Context) {
             }
 
             override fun onError(utteranceId: String?, errorCode: Int) {
-                Log.e(TAG, "TTS error: $errorCode for utterance: $utteranceId")
+                logE { "TTS error: $errorCode for utterance: $utteranceId" }
                 _isSpeaking.value = false
                 currentUtteranceId = null
                 processNextInQueue()
@@ -110,7 +105,7 @@ class VoiceFeedback(private val context: Context) {
         if (!enabled) {
             stop()
         }
-        Log.d(TAG, "Voice feedback ${if (enabled) "enabled" else "disabled"}")
+        logD { "Voice feedback ${if (enabled) "enabled" else "disabled"}" }
     }
 
     /**
@@ -294,7 +289,7 @@ class VoiceFeedback(private val context: Context) {
         tts?.shutdown()
         tts = null
         isInitialized = false
-        Log.d(TAG, "TTS shutdown")
+        logD { "TTS shutdown" }
     }
 
     private fun speak(announcement: Announcement) {

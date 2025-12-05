@@ -8,8 +8,8 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.AudioTrack
 import android.media.MediaRecorder
-import android.util.Log
 import androidx.core.content.ContextCompat
+import com.entercomm.bikeintercom.util.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -53,10 +53,6 @@ class AudioManager(
     private val context: Context,
     private val meshCallback: (ByteArray) -> Unit
 ) {
-    companion object {
-        private const val TAG = "AudioManager"
-    }
-
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
     // State flows
@@ -108,13 +104,13 @@ class AudioManager(
      */
     fun initialize() {
         try {
-            Log.d(TAG, "Initializing AudioManager with Opus codec...")
+            logD { "Initializing AudioManager with Opus codec..." }
 
             // Initialize Opus codec
             if (!opusCodec.initialize()) {
-                Log.e(TAG, "Failed to initialize Opus codec, falling back to PCM")
+                logE { "Failed to initialize Opus codec, falling back to PCM" }
             } else {
-                Log.d(TAG, "Opus codec initialized: ${audioConfig.sampleRate}Hz, ${audioConfig.bitrate}bps")
+                logD { "Opus codec initialized: ${audioConfig.sampleRate}Hz, ${audioConfig.bitrate}bps" }
             }
 
             // Setup audio capture
@@ -123,9 +119,9 @@ class AudioManager(
             // Setup audio playback
             setupAudioPlayback()
 
-            Log.d(TAG, "AudioManager initialized successfully")
+            logD { "AudioManager initialized successfully" }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to initialize AudioManager", e)
+            logE({ "Failed to initialize AudioManager" }, e)
         }
     }
 
@@ -136,13 +132,13 @@ class AudioManager(
         if (_isRecording.value) return
 
         if (!hasAudioPermission()) {
-            Log.e(TAG, "Cannot start recording: RECORD_AUDIO permission not granted")
+            logE { "Cannot start recording: RECORD_AUDIO permission not granted" }
             return
         }
 
         val record = audioRecord
         if (record == null) {
-            Log.e(TAG, "Cannot start recording: AudioRecord not initialized")
+            logE { "Cannot start recording: AudioRecord not initialized" }
             return
         }
 
@@ -159,9 +155,9 @@ class AudioManager(
                 // Start audio processing loop
                 launch { processAudioInput() }
 
-                Log.d(TAG, "Audio recording started with Opus encoding")
+                logD { "Audio recording started with Opus encoding" }
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to start recording", e)
+                logE({ "Failed to start recording" }, e)
                 _isRecording.value = false
             }
         }
@@ -177,15 +173,15 @@ class AudioManager(
         try {
             audioRecord?.stop()
             effectsProcessor.cleanup()
-            Log.d(TAG, "Audio recording stopped")
+            logD { "Audio recording stopped" }
 
             // Log compression stats
             if (totalBytesRaw > 0) {
                 val ratio = totalBytesRaw.toFloat() / totalBytesEncoded.coerceAtLeast(1)
-                Log.d(TAG, "Compression stats: ${totalBytesRaw}B raw -> ${totalBytesEncoded}B encoded (${ratio.format(1)}x)")
+                logD { "Compression stats: ${totalBytesRaw}B raw -> ${totalBytesEncoded}B encoded (${ratio.format(1)}x)" }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error stopping recording", e)
+            logE({ "Error stopping recording" }, e)
         }
     }
 
@@ -194,7 +190,7 @@ class AudioManager(
      */
     fun setMuted(muted: Boolean) {
         _isMuted.value = muted
-        Log.d(TAG, "Audio ${if (muted) "muted" else "unmuted"}")
+        logD { "Audio ${if (muted) "muted" else "unmuted"}" }
     }
 
     /**
@@ -203,7 +199,7 @@ class AudioManager(
     fun updateProcessingSettings(settings: AudioProcessingSettings) {
         _processingSettings.value = settings
         applyProcessingSettings(settings)
-        Log.d(TAG, "Processing settings updated: $settings")
+        logD { "Processing settings updated: $settings" }
     }
 
     /**
@@ -213,21 +209,21 @@ class AudioManager(
         scope.launch {
             try {
                 if (audioData.isEmpty()) {
-                    Log.w(TAG, "Received empty audio data from $sourceId")
+                    logW { "Received empty audio data from $sourceId" }
                     return@launch
                 }
 
                 // Validate size
                 if (audioData.size > 16384) {
-                    Log.e(TAG, "Audio data too large from $sourceId: ${audioData.size} bytes")
+                    logE { "Audio data too large from $sourceId: ${audioData.size} bytes" }
                     return@launch
                 }
 
-                Log.d(TAG, "Received ${audioData.size} bytes from $sourceId")
+                logD { "Received ${audioData.size} bytes from $sourceId" }
 
                 // Get or create processor for this source
                 val processor = audioProcessors.getOrPut(sourceId) {
-                    Log.d(TAG, "Creating PlaybackProcessor for $sourceId")
+                    logD { "Creating PlaybackProcessor for $sourceId" }
                     PlaybackProcessor(sourceId, audioConfig)
                 }
 
@@ -240,14 +236,14 @@ class AudioManager(
 
                 if (decodedSamples.isNotEmpty()) {
                     processor.play(decodedSamples)
-                    Log.d(TAG, "Played ${decodedSamples.size} samples from $sourceId")
+                    logD { "Played ${decodedSamples.size} samples from $sourceId" }
                 }
 
             } catch (e: OutOfMemoryError) {
-                Log.e(TAG, "OOM processing audio from $sourceId", e)
+                logE({ "OOM processing audio from $sourceId" }, e)
                 audioProcessors.remove(sourceId)?.cleanup()
             } catch (e: Exception) {
-                Log.e(TAG, "Error playing audio from $sourceId", e)
+                logE({ "Error playing audio from $sourceId" }, e)
             }
         }
     }
@@ -264,7 +260,7 @@ class AudioManager(
                     processor.play(plcSamples)
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Error handling packet loss for $sourceId", e)
+                logE({ "Error handling packet loss for $sourceId" }, e)
             }
         }
     }
@@ -305,7 +301,7 @@ class AudioManager(
         opusCodec.cleanup()
 
         scope.cancel()
-        Log.d(TAG, "AudioManager cleaned up")
+        logD { "AudioManager cleaned up" }
     }
 
     // Private methods
@@ -318,7 +314,7 @@ class AudioManager(
     @SuppressLint("MissingPermission")
     private fun setupAudioCapture() {
         if (!hasAudioPermission()) {
-            Log.e(TAG, "RECORD_AUDIO permission not granted")
+            logE { "RECORD_AUDIO permission not granted" }
             return
         }
 
@@ -329,7 +325,7 @@ class AudioManager(
         )
 
         if (bufferSize == AudioRecord.ERROR_BAD_VALUE || bufferSize == AudioRecord.ERROR) {
-            Log.e(TAG, "Invalid buffer size: $bufferSize")
+            logE { "Invalid buffer size: $bufferSize" }
             return
         }
 
@@ -342,11 +338,11 @@ class AudioManager(
         )
 
         if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
-            Log.e(TAG, "AudioRecord initialization failed")
+            logE { "AudioRecord initialization failed" }
             audioRecord?.release()
             audioRecord = null
         } else {
-            Log.d(TAG, "AudioRecord initialized: ${audioConfig.sampleRate}Hz, buffer=$bufferSize")
+            logD { "AudioRecord initialized: ${audioConfig.sampleRate}Hz, buffer=$bufferSize" }
         }
     }
 
@@ -367,7 +363,7 @@ class AudioManager(
         )
 
         audioTrack?.play()
-        Log.d(TAG, "AudioTrack initialized: ${audioConfig.sampleRate}Hz")
+        logD { "AudioTrack initialized: ${audioConfig.sampleRate}Hz" }
     }
 
     private suspend fun processAudioInput() {
@@ -417,7 +413,7 @@ class AudioManager(
                 delay((audioConfig.frameSize * 1000L / audioConfig.sampleRate))
 
             } catch (e: Exception) {
-                Log.e(TAG, "Error processing audio input", e)
+                logE({ "Error processing audio input" }, e)
                 delay(100)
             }
         }
@@ -486,7 +482,7 @@ class AudioManager(
                     )
 
                     if (bufferSize == AudioTrack.ERROR_BAD_VALUE || bufferSize == AudioTrack.ERROR) {
-                        Log.e(TAG, "Invalid buffer size for $sourceId")
+                        logE { "Invalid buffer size for $sourceId" }
                         return
                     }
 
@@ -501,14 +497,14 @@ class AudioManager(
                         if (state == AudioTrack.STATE_INITIALIZED) {
                             play()
                             isInitialized = true
-                            Log.d(TAG, "PlaybackProcessor initialized for $sourceId")
+                            logD { "PlaybackProcessor initialized for $sourceId" }
                         } else {
                             release()
-                            Log.e(TAG, "Failed to initialize AudioTrack for $sourceId")
+                            logE { "Failed to initialize AudioTrack for $sourceId" }
                         }
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error setting up PlaybackProcessor for $sourceId", e)
+                    logE({ "Error setting up PlaybackProcessor for $sourceId" }, e)
                 }
             }
         }
@@ -530,10 +526,10 @@ class AudioManager(
 
                     val written = track.write(samples, 0, samples.size)
                     if (written < 0) {
-                        Log.w(TAG, "AudioTrack write error: $written for $sourceId")
+                        logW { "AudioTrack write error: $written for $sourceId" }
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error playing audio for $sourceId", e)
+                    logE({ "Error playing audio for $sourceId" }, e)
                     isInitialized = false
                 }
             }
@@ -545,7 +541,7 @@ class AudioManager(
                     audioTrack?.stop()
                     audioTrack?.release()
                 } catch (e: Exception) {
-                    Log.w(TAG, "Error cleaning up PlaybackProcessor for $sourceId", e)
+                    logW({ "Error cleaning up PlaybackProcessor for $sourceId" }, e)
                 }
                 audioTrack = null
                 isInitialized = false

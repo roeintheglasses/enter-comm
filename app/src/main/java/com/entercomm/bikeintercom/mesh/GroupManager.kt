@@ -2,7 +2,7 @@ package com.entercomm.bikeintercom.mesh
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.util.Log
+import com.entercomm.bikeintercom.util.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -113,7 +113,6 @@ class GroupManager(
     private var localNickname: String
 ) {
     companion object {
-        private const val TAG = "GroupManager"
         private const val PREFS_NAME = "group_prefs"
         private const val KEY_NICKNAME = "nickname"
         private const val KEY_LAST_GROUP_ID = "last_group_id"
@@ -186,7 +185,7 @@ class GroupManager(
         // Announce group to network
         announceGroup()
 
-        Log.d(TAG, "Created group: ${group.groupName} (${group.groupId}) on channel ${group.channelNumber}")
+        logD { "Created group: ${group.groupName} (${group.groupId}) on channel ${group.channelNumber}" }
         return group
     }
 
@@ -216,7 +215,7 @@ class GroupManager(
         val payload = "$localNodeId|${_nickname.value}|${password ?: ""}"
         sendGroupMessage?.invoke(GroupMessageType.JOIN_REQUEST, group.ownerId, payload.toByteArray())
 
-        Log.d(TAG, "Sent join request to group: ${group.groupName}")
+        logD { "Sent join request to group: ${group.groupName}" }
         return true
     }
 
@@ -240,7 +239,7 @@ class GroupManager(
         updateMembersList()
 
         emitEvent(GroupEvent.GroupLeft(groupId))
-        Log.d(TAG, "Left group: ${group.groupName}")
+        logD { "Left group: ${group.groupName}" }
     }
 
     /**
@@ -269,7 +268,7 @@ class GroupManager(
         updateMembersList()
 
         emitEvent(GroupEvent.MemberKicked(nodeId, member.nickname))
-        Log.d(TAG, "Kicked member: ${member.nickname}")
+        logD { "Kicked member: ${member.nickname}" }
         return true
     }
 
@@ -303,7 +302,7 @@ class GroupManager(
         updateMembersList()
 
         emitEvent(GroupEvent.MemberBanned(nodeId, member?.nickname ?: nodeId))
-        Log.d(TAG, "Banned member: ${member?.nickname ?: nodeId}")
+        logD { "Banned member: ${member?.nickname ?: nodeId}" }
         return true
     }
 
@@ -313,7 +312,7 @@ class GroupManager(
     fun unbanMember(nodeId: String) {
         bannedNodes.remove(nodeId)
         saveBannedNodes()
-        Log.d(TAG, "Unbanned member: $nodeId")
+        logD { "Unbanned member: $nodeId" }
     }
 
     /**
@@ -342,7 +341,7 @@ class GroupManager(
         }
 
         emitEvent(GroupEvent.NicknameChanged(localNodeId, newNickname))
-        Log.d(TAG, "Nickname changed to: $newNickname")
+        logD { "Nickname changed to: $newNickname" }
     }
 
     /**
@@ -368,7 +367,7 @@ class GroupManager(
         }
 
         emitEvent(GroupEvent.ChannelChanged(channel))
-        Log.d(TAG, "Channel changed to: $channel")
+        logD { "Channel changed to: $channel" }
         return true
     }
 
@@ -377,7 +376,7 @@ class GroupManager(
      */
     fun processGroupMessage(type: GroupMessageType, senderId: String, payload: ByteArray) {
         val data = String(payload)
-        Log.d(TAG, "Processing group message: $type from $senderId")
+        logD { "Processing group message: $type from $senderId" }
 
         when (type) {
             GroupMessageType.GROUP_ANNOUNCE -> handleGroupAnnounce(senderId, data)
@@ -442,7 +441,7 @@ class GroupManager(
     private fun handleGroupAnnounce(senderId: String, data: String) {
         val group = deserializeGroupAnnounce(data) ?: return
         availableGroups[group.groupId] = group
-        Log.d(TAG, "Discovered group: ${group.groupName} from $senderId")
+        logD { "Discovered group: ${group.groupName} from $senderId" }
     }
 
     private fun handleJoinRequest(@Suppress("UNUSED_PARAMETER") senderId: String, data: String) {
@@ -492,7 +491,7 @@ class GroupManager(
         }
 
         emitEvent(GroupEvent.MemberJoined(newMember))
-        Log.d(TAG, "Accepted join request from: $nickname")
+        logD { "Accepted join request from: $nickname" }
     }
 
     private fun handleJoinAccept(@Suppress("UNUSED_PARAMETER") senderId: String, data: String) {
@@ -513,7 +512,7 @@ class GroupManager(
         saveLastGroupId(group.groupId)
 
         emitEvent(GroupEvent.GroupJoined(group))
-        Log.d(TAG, "Joined group: ${group.groupName}")
+        logD { "Joined group: ${group.groupName}" }
     }
 
     private fun handleJoinReject(@Suppress("UNUSED_PARAMETER") senderId: String, data: String) {
@@ -524,7 +523,7 @@ class GroupManager(
             else -> "Join request rejected"
         }
         emitEvent(GroupEvent.Error(reason))
-        Log.d(TAG, "Join rejected: $reason")
+        logD { "Join rejected: $reason" }
     }
 
     private fun handleLeave(senderId: String, data: String) {
@@ -536,7 +535,7 @@ class GroupManager(
         updateMembersList()
 
         emitEvent(GroupEvent.MemberLeft(nodeId, nickname))
-        Log.d(TAG, "Member left: $nickname")
+        logD { "Member left: $nickname" }
     }
 
     private fun handleKick(senderId: String, @Suppress("UNUSED_PARAMETER") data: String) {
@@ -547,7 +546,7 @@ class GroupManager(
             memberMap.clear()
             updateMembersList()
             emitEvent(GroupEvent.Error("You were kicked from the group"))
-            Log.d(TAG, "We were kicked from group")
+            logD { "We were kicked from group" }
         }
     }
 
@@ -559,7 +558,7 @@ class GroupManager(
             memberMap.clear()
             updateMembersList()
             emitEvent(GroupEvent.Error("You were banned from the group"))
-            Log.d(TAG, "We were banned from group")
+            logD { "We were banned from group" }
         }
     }
 
@@ -576,7 +575,7 @@ class GroupManager(
         }
 
         emitEvent(GroupEvent.NicknameChanged(nodeId, newNickname))
-        Log.d(TAG, "Nickname updated: $newNickname")
+        logD { "Nickname updated: $newNickname" }
     }
 
     private fun handleMemberList(@Suppress("UNUSED_PARAMETER") senderId: String, data: String) {
@@ -606,7 +605,7 @@ class GroupManager(
         if (senderId == group.ownerId) {
             _currentGroup.value = group.copy(channelNumber = newChannel)
             emitEvent(GroupEvent.ChannelChanged(newChannel))
-            Log.d(TAG, "Channel changed to: $newChannel")
+            logD { "Channel changed to: $newChannel" }
         }
     }
 
@@ -637,7 +636,7 @@ class GroupManager(
                 isPasswordProtected = parts[5].toBoolean()
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to deserialize group announce", e)
+            logE({ "Failed to deserialize group announce" }, e)
             null
         }
     }
