@@ -37,7 +37,7 @@ class GroupCodeUtilsTest {
         assertTrue(GroupCodeUtils.isValidGroupCode("abcdef"))
         assertTrue(GroupCodeUtils.isValidGroupCode("ABC DEF")) // with space
         assertTrue(GroupCodeUtils.isValidGroupCode("2345-67"))
-        assertTrue(GroupCodeUtils.isValidGroupCode("RIDE-4K"))
+        assertTrue(GroupCodeUtils.isValidGroupCode("RXDE-4K")) // Note: I is excluded from CODE_CHARS
     }
 
     @Test

@@ -221,10 +221,11 @@ class DistanceVectorRouterTest {
         assertTrue(router.isReachable("node-b"))
 
         // Now advertise infinity (unreachable)
+        // Use hopCount=14 so newHopCount (14+1=15) doesn't exceed MAX_HOP_COUNT
         val ad2 = DistanceVectorRouter.RouteAdvertisement(
             sourceNodeId = "node-a",
             sequenceNumber = 2,
-            routes = listOf(DistanceVectorRouter.AdvertisedRoute("node-b", DistanceVectorRouter.INFINITY, 16)),
+            routes = listOf(DistanceVectorRouter.AdvertisedRoute("node-b", DistanceVectorRouter.INFINITY, 14)),
         )
         router.processRouteAdvertisement(ad2, "192.168.1.2")
         assertFalse("Node should be unreachable after infinity advertisement", router.isReachable("node-b"))
