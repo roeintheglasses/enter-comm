@@ -1,13 +1,19 @@
 package com.entercomm.bikeintercom.mesh
 
+import android.Manifest
+import android.annotation.SuppressLint
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.wifi.WifiManager
 import android.net.wifi.p2p.WifiP2pManager
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import androidx.core.app.ServiceCompat
+import androidx.core.content.ContextCompat
 import com.entercomm.bikeintercom.audio.AudioManager
 import com.entercomm.bikeintercom.config.AppConfig
 import com.entercomm.bikeintercom.location.LocationManager
@@ -59,6 +65,13 @@ class MeshNetworkService : Service() {
     private val _serviceState = MutableStateFlow(ServiceState())
     val serviceState: StateFlow<ServiceState> = _serviceState.asStateFlow()
 
+    // Track periodic scan job to prevent multiple concurrent scan loops
+    private var periodicScanJob: Job? = null
+
+    // Wake locks for reliable WiFi scanning
+    private var wifiLock: WifiManager.WifiLock? = null
+    private var wakeLock: PowerManager.WakeLock? = null
+
     private val nodeId = "node-${UUID.randomUUID().toString().take(8)}"
     private val deviceName = "BikeIntercom-${Build.MODEL}"
 
@@ -74,17 +87,17 @@ class MeshNetworkService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        android.util.Log.d("MeshNetworkService", "onCreate() called")
+        logD { "onCreate() called" }
 
         try {
             // Initialize notification helper (handles channel creation)
             notificationHelper = NotificationHelper(this)
-            android.util.Log.d("MeshNetworkService", "Notification helper initialized")
+            logD { "Notification helper initialized" }
 
             // Try to initialize managers, but don't fail the service if it doesn't work
             try {
                 initializeManagers()
-                android.util.Log.d("MeshNetworkService", "Managers initialized")
+                logD { "Managers initialized" }
 
                 // Only initialize connection coordinator if managers are ready
                 if (::wifiDirectManager.isInitialized && ::meshNetworkManager.isInitialized) {
@@ -94,20 +107,23 @@ class MeshNetworkService : Service() {
                         scope,
                     )
                     setupConnectionCoordinatorCallbacks()
-                    android.util.Log.d("MeshNetworkService", "Connection coordinator initialized")
+                    logD { "Connection coordinator initialized" }
 
                     setupMeshCallbacks()
-                    android.util.Log.d("MeshNetworkService", "Mesh callbacks setup complete")
+                    logD { "Mesh callbacks setup complete" }
                 } else {
-                    android.util.Log.w("MeshNetworkService", "Managers not initialized, skipping coordinator setup")
+                    logW { "Managers not initialized, skipping coordinator setup" }
                 }
             } catch (e: Exception) {
-                android.util.Log.e("MeshNetworkService", "Warning: Manager initialization failed", e)
+                logE({ "Warning: Manager initialization failed" }, e)
             }
 
-            android.util.Log.d("MeshNetworkService", "MeshNetworkService created successfully")
+            // Initialize wake locks for reliable scanning
+            initializeWakeLocks()
+
+            logD { "MeshNetworkService created successfully" }
         } catch (e: Exception) {
-            android.util.Log.e("MeshNetworkService", "Critical error during service creation", e)
+            logE({ "Critical error during service creation" }, e)
             throw e
         }
     }
@@ -141,59 +157,59 @@ class MeshNetworkService : Service() {
 
     private fun initializeManagers() {
         try {
-            android.util.Log.d("MeshNetworkService", "Starting manager initialization...")
+            logD { "Starting manager initialization..." }
 
             // Initialize WiFi Direct Manager
             try {
-                android.util.Log.d("MeshNetworkService", "Initializing WiFi Direct Manager...")
+                logD { "Initializing WiFi Direct Manager..." }
                 val wifiP2pManager = getSystemService(Context.WIFI_P2P_SERVICE) as? WifiP2pManager
                 if (wifiP2pManager == null) {
-                    android.util.Log.e("MeshNetworkService", "WiFi P2P Manager not available")
+                    logE { "WiFi P2P Manager not available" }
                     return
                 }
 
                 val channel = wifiP2pManager.initialize(this, mainLooper, null)
                 if (channel == null) {
-                    android.util.Log.e("MeshNetworkService", "Failed to initialize WiFi P2P channel")
+                    logE { "Failed to initialize WiFi P2P channel" }
                     return
                 }
 
                 wifiDirectManager = WiFiDirectManager(this, wifiP2pManager, channel)
-                android.util.Log.d("MeshNetworkService", "WiFi Direct Manager initialized successfully")
+                logD { "WiFi Direct Manager initialized successfully" }
             } catch (e: Exception) {
-                android.util.Log.e("MeshNetworkService", "Failed to initialize WiFi Direct Manager", e)
+                logE({ "Failed to initialize WiFi Direct Manager" }, e)
                 return
             }
 
             // Initialize Mesh Network Manager
             try {
-                android.util.Log.d("MeshNetworkService", "Initializing Mesh Network Manager...")
+                logD { "Initializing Mesh Network Manager..." }
                 meshNetworkManager = MeshNetworkManager(nodeId, deviceName)
-                android.util.Log.d("MeshNetworkService", "Mesh Network Manager initialized successfully")
+                logD { "Mesh Network Manager initialized successfully" }
             } catch (e: Exception) {
-                android.util.Log.e("MeshNetworkService", "Failed to initialize Mesh Network Manager", e)
+                logE({ "Failed to initialize Mesh Network Manager" }, e)
                 return
             }
 
             // Initialize Audio Manager
             try {
-                android.util.Log.d("MeshNetworkService", "Initializing Audio Manager...")
+                logD { "Initializing Audio Manager..." }
                 audioManager = AudioManager(this) { audioData ->
                     try {
                         meshNetworkManager.sendAudioData(audioData)
                     } catch (e: Exception) {
-                        android.util.Log.e("MeshNetworkService", "Error sending audio data", e)
+                        logE({ "Error sending audio data" }, e)
                     }
                 }
                 audioManager.initialize()
-                android.util.Log.d("MeshNetworkService", "Audio Manager initialized successfully")
+                logD { "Audio Manager initialized successfully" }
             } catch (e: Exception) {
-                android.util.Log.e("MeshNetworkService", "Failed to initialize Audio Manager", e)
+                logE({ "Failed to initialize Audio Manager" }, e)
             }
 
             // Initialize Group Manager
             try {
-                android.util.Log.d("MeshNetworkService", "Initializing Group Manager...")
+                logD { "Initializing Group Manager..." }
                 groupManager = GroupManager(this, nodeId, deviceName)
                 // Connect group manager to mesh network
                 groupManager.sendGroupMessage = { type, destination, payload ->
@@ -203,14 +219,14 @@ class MeshNetworkService : Service() {
                 meshNetworkManager.onGroupMessageReceived = { type, senderId, payload ->
                     groupManager.processGroupMessage(type, senderId, payload)
                 }
-                android.util.Log.d("MeshNetworkService", "Group Manager initialized successfully")
+                logD { "Group Manager initialized successfully" }
             } catch (e: Exception) {
-                android.util.Log.e("MeshNetworkService", "Failed to initialize Group Manager", e)
+                logE({ "Failed to initialize Group Manager" }, e)
             }
 
             // Initialize Location Manager
             try {
-                android.util.Log.d("MeshNetworkService", "Initializing Location Manager...")
+                logD { "Initializing Location Manager..." }
                 locationManager = LocationManager(this)
                 locationManager.initialize(nodeId, deviceName)
                 // Connect location manager to mesh network
@@ -221,14 +237,14 @@ class MeshNetworkService : Service() {
                 meshNetworkManager.onLocationMessageReceived = { type, senderId, payload ->
                     locationManager.processLocationMessage(type, senderId, payload)
                 }
-                android.util.Log.d("MeshNetworkService", "Location Manager initialized successfully")
+                logD { "Location Manager initialized successfully" }
             } catch (e: Exception) {
-                android.util.Log.e("MeshNetworkService", "Failed to initialize Location Manager", e)
+                logE({ "Failed to initialize Location Manager" }, e)
             }
 
-            android.util.Log.d("MeshNetworkService", "Manager initialization completed")
+            logD { "Manager initialization completed" }
         } catch (e: Exception) {
-            android.util.Log.e("MeshNetworkService", "Critical error during manager initialization", e)
+            logE({ "Critical error during manager initialization" }, e)
             onError?.invoke("Failed to initialize: ${e.message}")
         }
     }
@@ -309,10 +325,28 @@ class MeshNetworkService : Service() {
                     return@launch
                 }
 
-                // Start foreground service
+                // Start foreground service with permission check for Android 13+
                 val isMuted = if (::audioManager.isInitialized) audioManager.isMuted.value else false
                 val notification = notificationHelper.createNotification(_serviceState.value, isMuted)
-                startForeground(AppConfig.Service.NOTIFICATION_ID, notification)
+
+                // Check POST_NOTIFICATIONS permission on Android 13+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    val hasNotificationPermission = ContextCompat.checkSelfPermission(
+                        this@MeshNetworkService,
+                        Manifest.permission.POST_NOTIFICATIONS,
+                    ) == PackageManager.PERMISSION_GRANTED
+
+                    if (!hasNotificationPermission) {
+                        logW { "POST_NOTIFICATIONS permission not granted - notification may not show" }
+                    }
+                }
+
+                try {
+                    startForeground(AppConfig.Service.NOTIFICATION_ID, notification)
+                } catch (e: Exception) {
+                    logE({ "Failed to start foreground service" }, e)
+                    // Continue anyway - service can still function without notification on some devices
+                }
 
                 // Initialize WiFi Direct
                 wifiDirectManager.initialize()
@@ -324,23 +358,29 @@ class MeshNetworkService : Service() {
                 connectionCoordinator.startDiscovery()
                 connectionCoordinator.startMonitoring()
 
+                // Cancel any existing scan job before starting a new one
+                periodicScanJob?.cancel()
+
+                // Acquire WiFi lock for mesh network operation
+                acquireScanLocks()
+
                 // Start automatic device scanning after a short delay
-                launch {
+                periodicScanJob = launch {
                     delay(AppConfig.Service.INITIAL_SCAN_DELAY_MS)
 
                     if (_serviceState.value.connectedDevices == 0) {
                         logD { "No devices found via WiFi Direct, starting network scan..." }
-                        meshNetworkManager.scanAndConnectToAvailableDevices()
+                        performScanWithWakeLock()
                     } else {
                         logD { "Devices already found via WiFi Direct, skipping network scan" }
                     }
 
                     // Periodic scanning
-                    while (_serviceState.value.isRunning) {
+                    while (isActive && _serviceState.value.isRunning) {
                         delay(AppConfig.Service.PERIODIC_SCAN_INTERVAL_MS)
                         if (_serviceState.value.isRunning && _serviceState.value.connectedDevices == 0) {
                             logD { "No devices connected, performing periodic scan..." }
-                            meshNetworkManager.scanAndConnectToAvailableDevices()
+                            performScanWithWakeLock()
                         }
                     }
                 }
@@ -381,6 +421,13 @@ class MeshNetworkService : Service() {
         scope.launch {
             try {
                 logD { "Stopping mesh network..." }
+
+                // Cancel periodic scan job
+                periodicScanJob?.cancel()
+                periodicScanJob = null
+
+                // Release wake locks
+                releaseAllLocks()
 
                 // Stop connection coordinator monitoring
                 if (::connectionCoordinator.isInitialized) {
@@ -450,11 +497,26 @@ class MeshNetworkService : Service() {
     fun scanForDevices() {
         if (_serviceState.value.isRunning && ::meshNetworkManager.isInitialized) {
             logD { "Starting network scan for available devices..." }
-            meshNetworkManager.scanAndConnectToAvailableDevices()
+            scope.launch {
+                performScanWithWakeLock()
+            }
         } else {
             val message = if (!_serviceState.value.isRunning) "Cannot scan: Mesh network not active" else "Mesh network manager not initialized"
             onError?.invoke(message)
             logW { message }
+        }
+    }
+
+    /**
+     * Perform a network scan with wake lock protection.
+     * Ensures the device stays awake during the scan operation.
+     */
+    private suspend fun performScanWithWakeLock() {
+        try {
+            acquireScanLocks()
+            meshNetworkManager.scanAndConnectToAvailableDevices()
+        } finally {
+            releaseScanLocks()
         }
     }
 
@@ -562,14 +624,14 @@ class MeshNetworkService : Service() {
      * Start location tracking.
      */
     fun startLocationTracking(): Boolean {
-        android.util.Log.d("MeshNetworkService", "startLocationTracking() called")
+        logD { "startLocationTracking() called" }
         return if (::locationManager.isInitialized) {
-            android.util.Log.d("MeshNetworkService", "LocationManager is initialized, starting tracking...")
+            logD { "LocationManager is initialized, starting tracking..." }
             val result = locationManager.startTracking()
-            android.util.Log.d("MeshNetworkService", "startTracking() returned: $result")
+            logD { "startTracking() returned: $result" }
             result
         } else {
-            android.util.Log.e("MeshNetworkService", "LocationManager is NOT initialized!")
+            logE { "LocationManager is NOT initialized!" }
             false
         }
     }
@@ -595,8 +657,107 @@ class MeshNetworkService : Service() {
         }
     }
 
+    /**
+     * Initialize wake locks for reliable WiFi scanning.
+     * Prevents device from sleeping during scan operations.
+     */
+    @SuppressLint("WakelockTimeout")
+    private fun initializeWakeLocks() {
+        try {
+            // WiFi lock to keep WiFi active
+            val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+            wifiLock = wifiManager?.createWifiLock(
+                WifiManager.WIFI_MODE_FULL_HIGH_PERF,
+                "EnterComm:WifiScan",
+            )
+            logD { "WiFi lock initialized" }
+
+            // Partial wake lock to keep CPU active during scans
+            val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
+            wakeLock = powerManager?.newWakeLock(
+                PowerManager.PARTIAL_WAKE_LOCK,
+                "EnterComm:NetworkScan",
+            )
+            logD { "Wake lock initialized" }
+        } catch (e: Exception) {
+            logE({ "Failed to initialize wake locks" }, e)
+        }
+    }
+
+    /**
+     * Acquire wake locks before WiFi scanning.
+     * Call this before starting scan operations.
+     */
+    @SuppressLint("WakelockTimeout")
+    private fun acquireScanLocks() {
+        try {
+            wifiLock?.let { lock ->
+                if (!lock.isHeld) {
+                    lock.acquire()
+                    logD { "WiFi lock acquired" }
+                }
+            }
+            wakeLock?.let { lock ->
+                if (!lock.isHeld) {
+                    // Acquire with timeout to prevent indefinite hold
+                    lock.acquire(AppConfig.Service.PERIODIC_SCAN_INTERVAL_MS)
+                    logD { "Wake lock acquired" }
+                }
+            }
+        } catch (e: Exception) {
+            logE({ "Failed to acquire scan locks" }, e)
+        }
+    }
+
+    /**
+     * Release wake locks after WiFi scanning completes.
+     * Call this after scan operations complete.
+     */
+    private fun releaseScanLocks() {
+        try {
+            wakeLock?.let { lock ->
+                if (lock.isHeld) {
+                    lock.release()
+                    logD { "Wake lock released" }
+                }
+            }
+            // Note: WiFi lock is kept during mesh network operation
+            // and only released on cleanup
+        } catch (e: Exception) {
+            logE({ "Failed to release scan locks" }, e)
+        }
+    }
+
+    /**
+     * Release all wake locks.
+     */
+    private fun releaseAllLocks() {
+        try {
+            wakeLock?.let { lock ->
+                if (lock.isHeld) {
+                    lock.release()
+                }
+            }
+            wakeLock = null
+
+            wifiLock?.let { lock ->
+                if (lock.isHeld) {
+                    lock.release()
+                }
+            }
+            wifiLock = null
+
+            logD { "All locks released" }
+        } catch (e: Exception) {
+            logE({ "Error releasing locks" }, e)
+        }
+    }
+
     private fun cleanupManagers() {
         try {
+            // Release wake locks first
+            releaseAllLocks()
+
             if (::locationManager.isInitialized) {
                 locationManager.stopTracking()
                 logD { "Location manager cleaned up" }

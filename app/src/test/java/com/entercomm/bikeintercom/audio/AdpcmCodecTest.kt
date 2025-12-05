@@ -7,14 +7,14 @@ import org.junit.Before
 import org.junit.Test
 import kotlin.math.abs
 
-class OpusCodecTest {
+class AdpcmCodecTest {
 
-    private lateinit var codec: OpusCodec
+    private lateinit var codec: AdpcmCodec
 
     @Before
     fun setUp() {
         Logger.isTestMode = true
-        codec = OpusCodec()
+        codec = AdpcmCodec()
         codec.initialize()
     }
 
@@ -28,7 +28,7 @@ class OpusCodecTest {
 
     @Test
     fun `initialize returns true`() {
-        val newCodec = OpusCodec()
+        val newCodec = AdpcmCodec()
         assertTrue(newCodec.initialize())
         newCodec.cleanup()
     }
@@ -255,7 +255,7 @@ class OpusCodecTest {
     @Test
     fun `decodePLC returns frame-sized output`() {
         val plc = codec.decodePLC()
-        assertEquals(OpusCodec.FRAME_SIZE, plc.size)
+        assertEquals(AdpcmCodec.FRAME_SIZE, plc.size)
     }
 
     @Test

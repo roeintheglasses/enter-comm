@@ -4,11 +4,15 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.AudioTrack
 import android.media.MediaRecorder
+import android.os.Build
 import androidx.core.content.ContextCompat
+import com.entercomm.bikeintercom.config.AppConfig
 import com.entercomm.bikeintercom.util.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,11 +24,11 @@ import java.util.concurrent.ConcurrentHashMap
  * Audio configuration for the intercom system.
  */
 data class AudioConfig(
-    val sampleRate: Int = OpusCodec.SAMPLE_RATE, // 48kHz - native Opus rate
-    val channelCount: Int = OpusCodec.CHANNELS, // Mono
+    val sampleRate: Int = AdpcmCodec.SAMPLE_RATE, // 48kHz
+    val channelCount: Int = AdpcmCodec.CHANNELS, // Mono
     val audioFormat: Int = AudioFormat.ENCODING_PCM_16BIT,
-    val frameSize: Int = OpusCodec.FRAME_SIZE, // 20ms at 48kHz
-    val bitrate: Int = OpusCodec.BITRATE, // 24 kbps
+    val frameSize: Int = AdpcmCodec.FRAME_SIZE, // 20ms at 48kHz
+    val bitrate: Int = AdpcmCodec.BITRATE, // 24 kbps
 )
 
 /**
@@ -79,7 +83,7 @@ class AudioManager(
     private var audioTrack: AudioTrack? = null
 
     // Codec and processing
-    private val opusCodec = OpusCodec(
+    private val adpcmCodec = AdpcmCodec(
         sampleRate = audioConfig.sampleRate,
         channels = audioConfig.channelCount,
         frameSize = audioConfig.frameSize,
@@ -87,8 +91,21 @@ class AudioManager(
     )
     private val effectsProcessor = AudioEffectsProcessor()
 
-    // Per-source audio processors for playback mixing
-    private val audioProcessors = ConcurrentHashMap<String, PlaybackProcessor>()
+    // Per-source audio processors for playback mixing with LRU eviction
+    private val audioProcessors = ConcurrentHashMap<String, ProcessorEntry>()
+    private val processorsLock = Any()
+
+    /**
+     * Wrapper for PlaybackProcessor with last access time for LRU eviction.
+     */
+    private inner class ProcessorEntry(
+        val processor: PlaybackProcessor,
+        @Volatile var lastAccessTime: Long = System.currentTimeMillis(),
+    ) {
+        fun touch() {
+            lastAccessTime = System.currentTimeMillis()
+        }
+    }
 
     // Processing state
     @Volatile
@@ -99,6 +116,19 @@ class AudioManager(
     private var totalBytesRaw = 0L
     private var packetsEncoded = 0L
 
+    // Audio Focus Management
+    private val androidAudioManager: android.media.AudioManager? =
+        context.getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager
+
+    private var audioFocusRequest: AudioFocusRequest? = null
+    private var audioFocusGranted = false
+    private var wasRecordingBeforeFocusLoss = false
+    private var playbackVolumeBeforeDuck = 1.0f
+
+    // Audio focus state
+    private val _hasAudioFocus = MutableStateFlow(false)
+    val hasAudioFocus: StateFlow<Boolean> = _hasAudioFocus.asStateFlow()
+
     /**
      * Initialize the audio system.
      */
@@ -107,11 +137,14 @@ class AudioManager(
             logD { "Initializing AudioManager with Opus codec..." }
 
             // Initialize Opus codec
-            if (!opusCodec.initialize()) {
+            if (!adpcmCodec.initialize()) {
                 logE { "Failed to initialize Opus codec, falling back to PCM" }
             } else {
                 logD { "Opus codec initialized: ${audioConfig.sampleRate}Hz, ${audioConfig.bitrate}bps" }
             }
+
+            // Setup audio focus handling
+            setupAudioFocus()
 
             // Setup audio capture
             setupAudioCapture()
@@ -126,7 +159,183 @@ class AudioManager(
     }
 
     /**
+     * Setup audio focus request for voice communication.
+     */
+    @SuppressLint("NewApi")
+    private fun setupAudioFocus() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val audioAttributes = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                .build()
+
+            audioFocusRequest = AudioFocusRequest.Builder(
+                android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE,
+            )
+                .setAudioAttributes(audioAttributes)
+                .setAcceptsDelayedFocusGain(true)
+                .setOnAudioFocusChangeListener { focusChange ->
+                    handleAudioFocusChange(focusChange)
+                }
+                .build()
+
+            logD { "Audio focus request configured for API 26+" }
+        } else {
+            logD { "Audio focus will use legacy API for API < 26" }
+        }
+    }
+
+    /**
+     * Handle audio focus changes from the system.
+     */
+    private fun handleAudioFocusChange(focusChange: Int) {
+        when (focusChange) {
+            android.media.AudioManager.AUDIOFOCUS_GAIN -> {
+                logD { "Audio focus gained" }
+                audioFocusGranted = true
+                _hasAudioFocus.value = true
+
+                // Restore volume after ducking
+                restorePlaybackVolume()
+
+                // Resume recording if we were recording before focus loss
+                if (wasRecordingBeforeFocusLoss) {
+                    wasRecordingBeforeFocusLoss = false
+                    scope.launch {
+                        logD { "Resuming recording after focus gain" }
+                        startRecordingInternal()
+                    }
+                }
+            }
+
+            android.media.AudioManager.AUDIOFOCUS_LOSS -> {
+                logD { "Audio focus lost permanently" }
+                audioFocusGranted = false
+                _hasAudioFocus.value = false
+
+                // Stop recording and playback completely
+                if (_isRecording.value) {
+                    wasRecordingBeforeFocusLoss = false // Don't auto-resume on permanent loss
+                    stopRecording()
+                }
+                pauseAllPlayback()
+            }
+
+            android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                logD { "Audio focus lost transiently (e.g., phone call)" }
+                audioFocusGranted = false
+                _hasAudioFocus.value = false
+
+                // Pause but remember state to resume later
+                if (_isRecording.value) {
+                    wasRecordingBeforeFocusLoss = true
+                    stopRecordingInternal()
+                }
+                pauseAllPlayback()
+            }
+
+            android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+                logD { "Audio focus lost - can duck (reduce volume)" }
+                // Don't stop, just reduce volume
+                duckPlaybackVolume()
+            }
+        }
+    }
+
+    /**
+     * Request audio focus before starting audio operations.
+     * @return true if focus was granted
+     */
+    @Suppress("DEPRECATION")
+    fun requestAudioFocus(): Boolean {
+        val audioMgr = androidAudioManager ?: return false
+
+        val result = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            audioFocusRequest?.let { request ->
+                audioMgr.requestAudioFocus(request)
+            } ?: android.media.AudioManager.AUDIOFOCUS_REQUEST_FAILED
+        } else {
+            audioMgr.requestAudioFocus(
+                { focusChange -> handleAudioFocusChange(focusChange) },
+                android.media.AudioManager.STREAM_VOICE_CALL,
+                android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE,
+            )
+        }
+
+        audioFocusGranted = result == android.media.AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+        _hasAudioFocus.value = audioFocusGranted
+
+        logD { "Audio focus request result: ${if (audioFocusGranted) "granted" else "denied"}" }
+        return audioFocusGranted
+    }
+
+    /**
+     * Abandon audio focus when done with audio operations.
+     */
+    @Suppress("DEPRECATION")
+    fun abandonAudioFocus() {
+        val audioMgr = androidAudioManager ?: return
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            audioFocusRequest?.let { request ->
+                audioMgr.abandonAudioFocusRequest(request)
+            }
+        } else {
+            audioMgr.abandonAudioFocus { focusChange ->
+                handleAudioFocusChange(focusChange)
+            }
+        }
+
+        audioFocusGranted = false
+        _hasAudioFocus.value = false
+        wasRecordingBeforeFocusLoss = false
+        logD { "Audio focus abandoned" }
+    }
+
+    /**
+     * Reduce playback volume for ducking.
+     */
+    private fun duckPlaybackVolume() {
+        playbackVolumeBeforeDuck = 1.0f
+        audioProcessors.values.forEach { entry ->
+            entry.processor.setVolume(0.3f)
+        }
+        logD { "Playback volume ducked to 30%" }
+    }
+
+    /**
+     * Restore playback volume after ducking.
+     */
+    private fun restorePlaybackVolume() {
+        audioProcessors.values.forEach { entry ->
+            entry.processor.setVolume(playbackVolumeBeforeDuck)
+        }
+        logD { "Playback volume restored" }
+    }
+
+    /**
+     * Pause all active playback processors.
+     */
+    private fun pauseAllPlayback() {
+        audioProcessors.values.forEach { entry ->
+            entry.processor.pause()
+        }
+        logD { "All playback paused" }
+    }
+
+    /**
+     * Resume all paused playback processors.
+     */
+    private fun resumeAllPlayback() {
+        audioProcessors.values.forEach { entry ->
+            entry.processor.resume()
+        }
+        logD { "All playback resumed" }
+    }
+
+    /**
      * Start recording and transmitting audio.
+     * Requests audio focus before starting.
      */
     fun startRecording() {
         if (_isRecording.value) return
@@ -135,6 +344,22 @@ class AudioManager(
             logE { "Cannot start recording: RECORD_AUDIO permission not granted" }
             return
         }
+
+        // Request audio focus before starting
+        if (!requestAudioFocus()) {
+            logW { "Audio focus not granted, starting recording anyway" }
+            // Continue anyway - focus might be granted later or user may not care
+        }
+
+        startRecordingInternal()
+    }
+
+    /**
+     * Internal method to start recording without requesting focus.
+     * Used for resuming after focus regain.
+     */
+    private fun startRecordingInternal() {
+        if (_isRecording.value) return
 
         val record = audioRecord
         if (record == null) {
@@ -165,8 +390,18 @@ class AudioManager(
 
     /**
      * Stop recording.
+     * Abandons audio focus.
      */
     fun stopRecording() {
+        stopRecordingInternal()
+        abandonAudioFocus()
+    }
+
+    /**
+     * Internal method to stop recording without abandoning focus.
+     * Used for pausing during transient focus loss.
+     */
+    private fun stopRecordingInternal() {
         _isRecording.value = false
         isProcessing = false
 
@@ -221,30 +456,73 @@ class AudioManager(
 
                 logD { "Received ${audioData.size} bytes from $sourceId" }
 
-                // Get or create processor for this source
-                val processor = audioProcessors.getOrPut(sourceId) {
-                    logD { "Creating PlaybackProcessor for $sourceId" }
-                    PlaybackProcessor(sourceId, audioConfig)
-                }
+                // Get or create processor for this source with LRU eviction
+                val entry = getOrCreateProcessor(sourceId)
+                entry.touch()
 
                 // Decode audio
                 val decodedSamples = if (_processingSettings.value.opusEnabled) {
-                    opusCodec.decode(audioData)
+                    adpcmCodec.decode(audioData)
                 } else {
                     decodePcm(audioData)
                 }
 
                 if (decodedSamples.isNotEmpty()) {
-                    processor.play(decodedSamples)
+                    entry.processor.play(decodedSamples)
                     logD { "Played ${decodedSamples.size} samples from $sourceId" }
                 }
             } catch (e: OutOfMemoryError) {
                 logE({ "OOM processing audio from $sourceId" }, e)
-                audioProcessors.remove(sourceId)?.cleanup()
+                removeProcessor(sourceId)
             } catch (e: Exception) {
                 logE({ "Error playing audio from $sourceId" }, e)
             }
         }
+    }
+
+    /**
+     * Get or create a processor for the given source, evicting LRU if at capacity.
+     */
+    private fun getOrCreateProcessor(sourceId: String): ProcessorEntry {
+        // Fast path: processor already exists
+        audioProcessors[sourceId]?.let { return it }
+
+        // Slow path: need to create a new processor
+        synchronized(processorsLock) {
+            // Double-check after acquiring lock
+            audioProcessors[sourceId]?.let { return it }
+
+            // Evict LRU processor if at capacity
+            if (audioProcessors.size >= AppConfig.Audio.MAX_AUDIO_PROCESSORS) {
+                evictLruProcessor()
+            }
+
+            // Create new processor
+            logD { "Creating PlaybackProcessor for $sourceId (pool: ${audioProcessors.size + 1}/${AppConfig.Audio.MAX_AUDIO_PROCESSORS})" }
+            val processor = PlaybackProcessor(sourceId, audioConfig)
+            val entry = ProcessorEntry(processor)
+            audioProcessors[sourceId] = entry
+            return entry
+        }
+    }
+
+    /**
+     * Evict the least recently used processor to make room for a new one.
+     */
+    private fun evictLruProcessor() {
+        val lruEntry = audioProcessors.entries
+            .minByOrNull { it.value.lastAccessTime }
+            ?: return
+
+        logD { "Evicting LRU processor for ${lruEntry.key} (age: ${System.currentTimeMillis() - lruEntry.value.lastAccessTime}ms)" }
+        audioProcessors.remove(lruEntry.key)?.processor?.cleanup()
+    }
+
+    /**
+     * Remove and cleanup a processor.
+     */
+    private fun removeProcessor(sourceId: String) {
+        audioProcessors.remove(sourceId)?.processor?.cleanup()
     }
 
     /**
@@ -253,10 +531,11 @@ class AudioManager(
     fun handlePacketLoss(sourceId: String) {
         scope.launch {
             try {
-                val processor = audioProcessors[sourceId] ?: return@launch
-                val plcSamples = opusCodec.decodePLC()
+                val entry = audioProcessors[sourceId] ?: return@launch
+                entry.touch()
+                val plcSamples = adpcmCodec.decodePLC()
                 if (plcSamples.isNotEmpty()) {
-                    processor.play(plcSamples)
+                    entry.processor.play(plcSamples)
                 }
             } catch (e: Exception) {
                 logE({ "Error handling packet loss for $sourceId" }, e)
@@ -291,7 +570,7 @@ class AudioManager(
         isProcessing = false
 
         // Cleanup playback processors
-        audioProcessors.values.forEach { it.cleanup() }
+        audioProcessors.values.forEach { it.processor.cleanup() }
         audioProcessors.clear()
 
         // Release audio resources
@@ -299,7 +578,7 @@ class AudioManager(
         audioTrack?.release()
 
         // Cleanup codec
-        opusCodec.cleanup()
+        adpcmCodec.cleanup()
 
         scope.cancel()
         logD { "AudioManager cleaned up" }
@@ -387,7 +666,7 @@ class AudioManager(
 
                     // Encode with Opus
                     val encodedData = if (_processingSettings.value.opusEnabled) {
-                        opusCodec.encode(processedSamples)
+                        adpcmCodec.encode(processedSamples)
                     } else {
                         encodePcm(processedSamples)
                     }
@@ -458,7 +737,10 @@ class AudioManager(
     private fun Float.format(decimals: Int) = "%.${decimals}f".format(this)
 
     /**
-     * Per-source audio playback processor.
+     * Per-source audio playback processor with jitter buffering.
+     *
+     * Uses a JitterBuffer to smooth out network timing variations,
+     * preventing audio glitches from variable packet arrival times.
      */
     private inner class PlaybackProcessor(
         private val sourceId: String,
@@ -467,6 +749,22 @@ class AudioManager(
         private var audioTrack: AudioTrack? = null
         private val lock = Any()
         private var isInitialized = false
+
+        // Jitter buffer for smoothing network timing variations
+        private val jitterBuffer = JitterBuffer(
+            bufferSizeMs = 80, // 80ms buffer suitable for bike intercom
+            sampleRate = config.sampleRate,
+            frameSizeMs = (config.frameSize * 1000) / config.sampleRate,
+        )
+
+        // Sequence counter for incoming frames (per-source)
+        private var frameSequence = 0L
+
+        // Playback job for extracting frames from buffer
+        private var playbackJob: Job? = null
+
+        @Volatile
+        private var isPlaying = false
 
         init {
             setup()
@@ -497,27 +795,63 @@ class AudioManager(
                         if (state == AudioTrack.STATE_INITIALIZED) {
                             play()
                             isInitialized = true
-                            logD { "PlaybackProcessor initialized for $sourceId" }
+                            logD { "PlaybackProcessor initialized for $sourceId with jitter buffer" }
                         } else {
                             release()
                             logE { "Failed to initialize AudioTrack for $sourceId" }
                         }
                     }
+
+                    // Start playback loop
+                    startPlaybackLoop()
                 } catch (e: Exception) {
                     logE({ "Error setting up PlaybackProcessor for $sourceId" }, e)
                 }
             }
         }
 
-        fun play(samples: ShortArray) {
-            if (samples.isEmpty()) return
+        /**
+         * Start the playback loop that extracts frames from the jitter buffer.
+         */
+        private fun startPlaybackLoop() {
+            if (playbackJob?.isActive == true) return
 
+            isPlaying = true
+            playbackJob = scope.launch {
+                val frameDurationMs = (config.frameSize * 1000L) / config.sampleRate
+                logD { "PlaybackProcessor: Starting playback loop for $sourceId (frame=${frameDurationMs}ms)" }
+
+                while (isPlaying && isActive) {
+                    try {
+                        // Extract frame from jitter buffer
+                        val frame = jitterBuffer.getFrame()
+
+                        if (frame != null) {
+                            // Write to AudioTrack
+                            writeToAudioTrack(frame)
+                        }
+
+                        // Wait for next frame period
+                        delay(frameDurationMs)
+                    } catch (e: Exception) {
+                        if (isPlaying) {
+                            logE({ "Playback loop error for $sourceId" }, e)
+                            delay(100)
+                        }
+                    }
+                }
+
+                logD { "PlaybackProcessor: Playback loop ended for $sourceId" }
+            }
+        }
+
+        /**
+         * Write samples directly to AudioTrack.
+         */
+        private fun writeToAudioTrack(samples: ShortArray) {
             synchronized(lock) {
                 val track = audioTrack
-                if (!isInitialized || track == null) {
-                    setup()
-                    return
-                }
+                if (!isInitialized || track == null) return
 
                 try {
                     if (track.playState != AudioTrack.PLAYSTATE_PLAYING) {
@@ -529,13 +863,97 @@ class AudioManager(
                         logW { "AudioTrack write error: $written for $sourceId" }
                     }
                 } catch (e: Exception) {
-                    logE({ "Error playing audio for $sourceId" }, e)
+                    logE({ "Error writing audio for $sourceId" }, e)
                     isInitialized = false
                 }
             }
         }
 
+        /**
+         * Add audio samples to the jitter buffer for playback.
+         */
+        fun play(samples: ShortArray) {
+            if (samples.isEmpty()) return
+
+            synchronized(lock) {
+                if (!isInitialized) {
+                    setup()
+                    return
+                }
+            }
+
+            // Add frame to jitter buffer with sequence number
+            val seq = frameSequence++
+            val timestamp = System.currentTimeMillis()
+            jitterBuffer.addFrame(samples, seq, timestamp)
+        }
+
+        /**
+         * Get jitter buffer statistics.
+         */
+        fun getJitterStats(): JitterBuffer.JitterBufferStats {
+            return jitterBuffer.getStats()
+        }
+
+        /**
+         * Set playback volume (0.0 to 1.0).
+         */
+        @SuppressLint("NewApi")
+        fun setVolume(volume: Float) {
+            synchronized(lock) {
+                val track = audioTrack ?: return
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                        track.setVolume(volume.coerceIn(0f, 1f))
+                    } else {
+                        @Suppress("DEPRECATION")
+                        track.setStereoVolume(volume, volume)
+                    }
+                } catch (e: Exception) {
+                    logW({ "Error setting volume for $sourceId" }, e)
+                }
+            }
+        }
+
+        /**
+         * Pause playback (stops extracting from jitter buffer).
+         */
+        fun pause() {
+            synchronized(lock) {
+                val track = audioTrack
+                if (track != null && track.playState == AudioTrack.PLAYSTATE_PLAYING) {
+                    try {
+                        track.pause()
+                        logD { "PlaybackProcessor paused for $sourceId" }
+                    } catch (e: Exception) {
+                        logW({ "Error pausing PlaybackProcessor for $sourceId" }, e)
+                    }
+                }
+            }
+        }
+
+        /**
+         * Resume playback after pause.
+         */
+        fun resume() {
+            synchronized(lock) {
+                val track = audioTrack
+                if (track != null && isInitialized && track.playState == AudioTrack.PLAYSTATE_PAUSED) {
+                    try {
+                        track.play()
+                        logD { "PlaybackProcessor resumed for $sourceId" }
+                    } catch (e: Exception) {
+                        logW({ "Error resuming PlaybackProcessor for $sourceId" }, e)
+                    }
+                }
+            }
+        }
+
         fun cleanup() {
+            isPlaying = false
+            playbackJob?.cancel()
+            playbackJob = null
+
             synchronized(lock) {
                 try {
                     audioTrack?.stop()
@@ -546,6 +964,9 @@ class AudioManager(
                 audioTrack = null
                 isInitialized = false
             }
+
+            jitterBuffer.reset()
+            logD { "PlaybackProcessor cleaned up for $sourceId" }
         }
     }
 }

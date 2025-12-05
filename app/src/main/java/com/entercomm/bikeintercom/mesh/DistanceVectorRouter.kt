@@ -102,6 +102,9 @@ class DistanceVectorRouter(
     // Direct neighbors: nodeId -> Neighbor
     private val neighbors = ConcurrentHashMap<String, Neighbor>()
 
+    // Track last seen sequence number per source node for stale advertisement rejection
+    private val lastSeenSequenceNumbers = ConcurrentHashMap<String, Int>()
+
     // Sequence number for route advertisements
     private var localSequenceNumber = 0
 
@@ -120,6 +123,7 @@ class DistanceVectorRouter(
         logD { "Distance Vector Router initialized for node: $localNodeId" }
         routingTable.clear()
         neighbors.clear()
+        lastSeenSequenceNumbers.clear()
         localSequenceNumber = 0
     }
 
@@ -179,6 +183,8 @@ class DistanceVectorRouter(
      */
     fun removeNeighbor(nodeId: String) {
         neighbors.remove(nodeId)
+        // Clear sequence number tracking so we accept fresh advertisements if they reconnect
+        lastSeenSequenceNumbers.remove(nodeId)
 
         // Poison routes through this neighbor
         routingTable.forEach { (dest, route) ->
@@ -230,7 +236,16 @@ class DistanceVectorRouter(
             return false
         }
 
-        logD { "Processing route advertisement from $senderId with ${advertisement.routes.size} routes" }
+        // Validate sequence number to reject stale advertisements
+        // This prevents processing old/replayed route updates that could cause routing loops
+        val lastSeenSeq = lastSeenSequenceNumbers[senderId] ?: -1
+        if (advertisement.sequenceNumber <= lastSeenSeq) {
+            logD { "Ignoring stale route advertisement from $senderId (seq=${advertisement.sequenceNumber} <= $lastSeenSeq)" }
+            return false
+        }
+        lastSeenSequenceNumbers[senderId] = advertisement.sequenceNumber
+
+        logD { "Processing route advertisement from $senderId with ${advertisement.routes.size} routes (seq=${advertisement.sequenceNumber})" }
 
         var tableChanged = false
 
@@ -490,11 +505,24 @@ class DistanceVectorRouter(
 
     /**
      * Calculate metric from hop count and link quality.
+     *
+     * Uses logarithmic scaling for link quality penalty:
+     * - linkQuality=1.0  → penalty=0  (perfect link)
+     * - linkQuality=0.5  → penalty=3  (50% packet loss = ~3 extra hops)
+     * - linkQuality=0.1  → penalty=10 (90% packet loss = 10 extra hops)
+     * - linkQuality=0.01 → penalty=20 (99% packet loss = nearly unreachable)
+     *
+     * This properly penalizes poor links - a route through a 50% loss link
+     * is equivalent to 3 additional hops through perfect links.
      */
     private fun calculateMetric(hopCount: Int, linkQuality: Float): Int {
-        // Base metric is hop count
-        // Adjust for link quality (worse quality = higher metric)
-        val qualityPenalty = ((1.0f - linkQuality) * 2).toInt()
+        // Clamp link quality to avoid log(0) and ensure reasonable bounds
+        val clampedQuality = linkQuality.coerceIn(0.01f, 1.0f)
+
+        // Logarithmic penalty: -log10(quality) * 10
+        // This scales naturally with packet loss severity
+        val qualityPenalty = (-kotlin.math.log10(clampedQuality) * 10).toInt()
+
         return hopCount + qualityPenalty
     }
 
@@ -608,6 +636,7 @@ class DistanceVectorRouter(
     fun clear() {
         routingTable.clear()
         neighbors.clear()
+        lastSeenSequenceNumbers.clear()
         localSequenceNumber = 0
         pendingTriggeredUpdate = false
         notifyRouteChange()

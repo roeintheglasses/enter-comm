@@ -15,11 +15,16 @@ object AppConfig {
         const val MAX_ROUTE_AGE_MS = 30000L
         const val MAX_MESSAGE_CACHE_SIZE = 1000
         const val DISCOVERY_INTERVAL_MS = 10000L
-        const val NETWORK_SCAN_TIMEOUT_MS = 500
+        const val NETWORK_SCAN_TIMEOUT_MS = 200 // Reduced from 500ms for faster scanning
+        const val NETWORK_SCAN_PRIORITY_TIMEOUT_MS = 100 // Shorter timeout for known IPs
+        const val NETWORK_SCAN_BATCH_SIZE = 30 // Increased from 20 for faster scanning
         const val DISCOVERY_COOLDOWN_MS = 5000L
         const val MESSAGE_TTL_DEFAULT = 5
         const val MAX_PACKET_SIZE = 16384 // 16KB
         const val MAX_AUDIO_SAMPLES = 8192
+        const val DISCOVERY_CACHE_TTL_MS = 90_000L // 90 seconds (reduced from 5 min)
+        const val DISCOVERY_CACHE_MAX_SIZE = 100 // Max entries in discovery cache
+        const val RECENTLY_SEEN_IPS_MAX_SIZE = 20 // Cache of recently seen IPs for priority scanning
     }
 
     // Audio Configuration

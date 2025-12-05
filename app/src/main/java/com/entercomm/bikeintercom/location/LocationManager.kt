@@ -3,9 +3,12 @@ package com.entercomm.bikeintercom.location
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationListener
+import android.os.BatteryManager
 import android.os.Bundle
 import android.os.Looper
 import androidx.core.content.ContextCompat
@@ -34,22 +37,43 @@ data class PeerLocation(
     val speed: Float = 0f, // Speed in m/s
     val timestamp: Long = System.currentTimeMillis(),
 ) {
+    companion object {
+        /** Maximum acceptable accuracy in meters for radar display */
+        const val MAX_ACCURACY_METERS = 50f
+
+        /** Validate that coordinates are within valid ranges */
+        fun isValid(latitude: Double, longitude: Double): Boolean {
+            return latitude in -90.0..90.0 && longitude in -180.0..180.0
+        }
+
+        /** Check if accuracy is acceptable for radar display */
+        fun hasAcceptableAccuracy(accuracy: Float): Boolean {
+            return accuracy in 0f..MAX_ACCURACY_METERS
+        }
+    }
+
+    /** Check if this location has valid coordinates */
+    val hasValidCoordinates: Boolean
+        get() = isValid(latitude, longitude)
+
+    /** Check if this location has acceptable accuracy for radar */
+    val hasAcceptableAccuracy: Boolean
+        get() = accuracy >= 0f && accuracy <= MAX_ACCURACY_METERS
+
     /**
-     * Calculate distance to another location in meters.
+     * Calculate distance to another location in meters using Haversine formula.
+     * Pure Kotlin implementation for testability.
      */
     fun distanceTo(other: PeerLocation): Float {
-        val results = FloatArray(1)
-        Location.distanceBetween(latitude, longitude, other.latitude, other.longitude, results)
-        return results[0]
+        return haversineDistance(latitude, longitude, other.latitude, other.longitude).toFloat()
     }
 
     /**
-     * Calculate bearing to another location in degrees.
+     * Calculate bearing to another location in degrees (0-360).
+     * Pure Kotlin implementation for testability.
      */
     fun bearingTo(other: PeerLocation): Float {
-        val results = FloatArray(2)
-        Location.distanceBetween(latitude, longitude, other.latitude, other.longitude, results)
-        return results[1]
+        return initialBearing(latitude, longitude, other.latitude, other.longitude).toFloat()
     }
 }
 
@@ -123,8 +147,24 @@ enum class LocationMessageType {
 class LocationManager(private val context: Context) {
 
     companion object {
-        private const val UPDATE_INTERVAL_MS = 5000L // 5 second updates
         private const val LOCATION_TIMEOUT_MS = 30000L // Consider location stale after 30s
+
+        // Battery-aware GPS update intervals
+        private const val UPDATE_INTERVAL_NORMAL_MS = 5000L // 5 seconds when battery > 50%
+        private const val UPDATE_INTERVAL_LOW_MS = 15000L // 15 seconds when battery 21-50%
+        private const val UPDATE_INTERVAL_CRITICAL_MS = 30000L // 30 seconds when battery <= 20%
+
+        // Minimum distance for location updates (meters)
+        private const val MIN_DISTANCE_METERS = 5f // Only update if moved at least 5 meters
+
+        /**
+         * Get GPS update interval based on battery level.
+         */
+        fun getUpdateIntervalForBattery(batteryLevel: Int): Long = when {
+            batteryLevel > 50 -> UPDATE_INTERVAL_NORMAL_MS
+            batteryLevel > 20 -> UPDATE_INTERVAL_LOW_MS
+            else -> UPDATE_INTERVAL_CRITICAL_MS
+        }
     }
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
@@ -235,16 +275,20 @@ class LocationManager(private val context: Context) {
                 logW({ "Could not get last known location" }, e)
             }
 
+            // Get battery-aware update interval
+            val batteryLevel = getBatteryLevel()
+            val updateInterval = getUpdateIntervalForBattery(batteryLevel)
+
             locationMgr.requestLocationUpdates(
                 provider,
-                UPDATE_INTERVAL_MS,
-                1f, // minimum distance in meters
+                updateInterval,
+                MIN_DISTANCE_METERS, // Only update if moved at least this distance
                 locationListener,
                 Looper.getMainLooper(),
             )
 
             _isTracking.value = true
-            logD { "Location tracking started with provider: $provider" }
+            logD { "Location tracking started with provider: $provider, interval: ${updateInterval}ms (battery: $batteryLevel%)" }
             return true
         } catch (e: SecurityException) {
             logE({ "Security exception starting location tracking" }, e)
@@ -367,6 +411,18 @@ class LocationManager(private val context: Context) {
     }
 
     private fun updateLocalLocation(location: Location) {
+        // Validate coordinates
+        if (!PeerLocation.isValid(location.latitude, location.longitude)) {
+            logW { "Ignoring invalid location: lat=${location.latitude}, lng=${location.longitude}" }
+            return
+        }
+
+        // Filter low-accuracy locations for radar display
+        if (!PeerLocation.hasAcceptableAccuracy(location.accuracy)) {
+            logD { "Ignoring low-accuracy location: ${location.accuracy}m (max: ${PeerLocation.MAX_ACCURACY_METERS}m)" }
+            return
+        }
+
         val peerLocation = PeerLocation(
             nodeId = localNodeId,
             nickname = localNickname,
@@ -387,7 +443,7 @@ class LocationManager(private val context: Context) {
             broadcastLocation()
         }
 
-        logD { "Local location updated: ${location.latitude}, ${location.longitude}" }
+        logD { "Local location updated: ${location.latitude}, ${location.longitude} (accuracy: ${location.accuracy}m)" }
     }
 
     private fun handleLocationUpdate(senderId: String, payload: ByteArray) {
@@ -424,19 +480,35 @@ class LocationManager(private val context: Context) {
             val parts = data.split("|")
             if (parts.size < 8) return null
 
+            val latitude = parts[1].toDouble()
+            val longitude = parts[2].toDouble()
+            val accuracy = parts[4].toFloat()
+
+            // Validate coordinates
+            if (!PeerLocation.isValid(latitude, longitude)) {
+                logW { "Rejecting peer location from $nodeId: invalid coordinates ($latitude, $longitude)" }
+                return null
+            }
+
+            // Validate accuracy (allow slightly higher accuracy from peers since network conditions vary)
+            if (accuracy < 0f) {
+                logW { "Rejecting peer location from $nodeId: invalid accuracy ($accuracy)" }
+                return null
+            }
+
             PeerLocation(
                 nodeId = nodeId,
                 nickname = parts[0],
-                latitude = parts[1].toDouble(),
-                longitude = parts[2].toDouble(),
+                latitude = latitude,
+                longitude = longitude,
                 altitude = parts[3].toDouble(),
-                accuracy = parts[4].toFloat(),
-                bearing = parts[5].toFloat(),
-                speed = parts[6].toFloat(),
+                accuracy = accuracy,
+                bearing = parts[5].toFloat().coerceIn(0f, 360f),
+                speed = parts[6].toFloat().coerceAtLeast(0f),
                 timestamp = parts[7].toLong(),
             )
         } catch (e: Exception) {
-            logE({ "Failed to deserialize location" }, e)
+            logE({ "Failed to deserialize location from $nodeId" }, e)
             null
         }
     }
@@ -446,6 +518,28 @@ class LocationManager(private val context: Context) {
             context,
             Manifest.permission.ACCESS_FINE_LOCATION,
         ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    /**
+     * Get current battery level (0-100).
+     */
+    private fun getBatteryLevel(): Int {
+        return try {
+            val batteryStatus = context.registerReceiver(
+                null,
+                IntentFilter(Intent.ACTION_BATTERY_CHANGED),
+            )
+            val level = batteryStatus?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+            val scale = batteryStatus?.getIntExtra(BatteryManager.EXTRA_SCALE, 100) ?: 100
+            if (level >= 0 && scale > 0) {
+                (level * 100) / scale
+            } else {
+                100 // Default to full if unknown
+            }
+        } catch (e: Exception) {
+            logW({ "Failed to get battery level" }, e)
+            100 // Default to full on error
+        }
     }
 }
 

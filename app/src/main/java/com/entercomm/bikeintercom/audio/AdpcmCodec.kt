@@ -17,9 +17,9 @@ import java.nio.ByteOrder
  * - No external dependencies
  * - Works on all Android devices
  *
- * For even better compression (10-20x), enable WebRTC/Opus when available.
+ * For even better compression (10-20x), consider WebRTC/Opus when available.
  */
-class OpusCodec(
+class AdpcmCodec(
     private val sampleRate: Int = SAMPLE_RATE,
     private val channels: Int = CHANNELS,
     private val frameSize: Int = FRAME_SIZE,

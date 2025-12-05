@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.detekt)
     alias(libs.plugins.spotless)
+    alias(libs.plugins.owasp.dependencycheck)
 }
 
 android {
@@ -24,7 +25,8 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
@@ -130,4 +132,12 @@ spotless {
         targetExclude("**/build/**")
         ktlint("1.1.1")
     }
+}
+
+// OWASP Dependency Check configuration
+dependencyCheck {
+    failBuildOnCVSS = 7.0f
+    suppressionFile = "$rootDir/config/dependency-check-suppression.xml"
+    formats = listOf("HTML", "JSON")
+    analyzers.assemblyEnabled = false
 }

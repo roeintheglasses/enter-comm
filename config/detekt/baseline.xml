@@ -3,20 +3,28 @@
   <ManuallySuppressedIssues></ManuallySuppressedIssues>
   <CurrentIssues>
     <ID>ClassOrdering:AccessibilityManager.kt$AccessibilityManager$Companion</ID>
+    <ID>ClassOrdering:AdpcmCodec.kt$AdpcmCodec$Companion</ID>
     <ID>ClassOrdering:AudioEffectsProcessor.kt$AudioEffectsProcessor$Companion</ID>
     <ID>ClassOrdering:DistanceVectorRouter.kt$DistanceVectorRouter$Companion</ID>
+    <ID>ClassOrdering:EncryptedMeshProtocol.kt$EncryptedMeshProtocol$Companion</ID>
     <ID>ClassOrdering:GroupManager.kt$GroupManager$Companion</ID>
     <ID>ClassOrdering:GroupManager.kt$MeshGroup$fun checkPassword(password: String): Boolean</ID>
+    <ID>ClassOrdering:JitterBuffer.kt$JitterBuffer$Companion</ID>
     <ID>ClassOrdering:LocationManager.kt$LocationManager$Companion</ID>
+    <ID>ClassOrdering:LocationManager.kt$PeerLocation$Companion</ID>
     <ID>ClassOrdering:LocationManager.kt$RadarData$Companion</ID>
     <ID>ClassOrdering:MeshNetworkManager.kt$MeshNetworkManager$// Callbacks for audio, control, group, and location messages var onAudioDataReceived: ((ByteArray, String) -&gt; Unit)? = null</ID>
     <ID>ClassOrdering:MeshNetworkManager.kt$MeshNetworkManager$Companion</ID>
+    <ID>ClassOrdering:MeshNetworkManager.kt$MeshNetworkManager$private fun isRateLimited(ipAddress: String): Boolean</ID>
+    <ID>ClassOrdering:MeshNetworkManager.kt$MeshNetworkManager$private fun validateDiscoveryPayload(payload: String): DiscoveryPayload?</ID>
     <ID>ClassOrdering:MeshNetworkManager.kt$MeshNetworkManager$var onControlMessageReceived: ((String, String) -&gt; Unit)? = null</ID>
     <ID>ClassOrdering:MeshNetworkManager.kt$MeshNetworkManager$var onGroupMessageReceived: ((GroupMessageType, String, ByteArray) -&gt; Unit)? = null</ID>
     <ID>ClassOrdering:MeshNetworkManager.kt$MeshNetworkManager$var onLocationMessageReceived: ((LocationMessageType, String, ByteArray) -&gt; Unit)? = null</ID>
     <ID>ClassOrdering:MeshNetworkService.kt$MeshNetworkService$Companion</ID>
+    <ID>ClassOrdering:MeshProtocol.kt$MeshProtocol$/** * Get a human-readable description of the protocol. */ val protocolDescription: String</ID>
+    <ID>ClassOrdering:MeshProtocol.kt$MeshProtocol$/** * Get the protocol version identifier. * Used for protocol negotiation and debugging. */ val protocolVersion: String</ID>
     <ID>ClassOrdering:OnboardingManager.kt$OnboardingManager$Companion</ID>
-    <ID>ClassOrdering:OpusCodec.kt$OpusCodec$Companion</ID>
+    <ID>ClassOrdering:PipeDelimitedMeshProtocol.kt$PipeDelimitedMeshProtocol$Companion</ID>
     <ID>ClassOrdering:WiFiDirectManager.kt$WiFiDirectManager$@SuppressLint("MissingPermission") // Permission is checked in hasWifiDirectPermission() private fun requestPeersIfPermitted()</ID>
     <ID>ClassOrdering:WiFiDirectManager.kt$WiFiDirectManager$Companion</ID>
     <ID>ClassOrdering:WiFiDirectManager.kt$WiFiDirectManager$private fun hasWifiDirectPermission(): Boolean</ID>
@@ -28,6 +36,8 @@
     <ID>CyclomaticComplexMethod:MeshNetworkManager.kt$MeshNetworkManager$private fun handleIncomingMessage(message: MeshMessage, senderIp: String)</ID>
     <ID>CyclomaticComplexMethod:TechnicalComponents.kt$@Composable fun EnhancedNetworkTopology(topology: MeshTopology, modifier: Modifier = Modifier, onNodeClick: ((TopologyNode) -&gt; Unit)? = null)</ID>
     <ID>CyclomaticComplexMethod:TechnicalComponents.kt$@Composable fun TechnicalButton( text: String, onClick: () -&gt; Unit, modifier: Modifier = Modifier, icon: ImageVector? = null, isActive: Boolean = false, buttonType: TechnicalButtonType = TechnicalButtonType.PRIMARY, enabled: Boolean = true, minHeight: Dp = AppConfig.UI.MIN_BUTTON_HEIGHT_DP.dp, )</ID>
+    <ID>DataClassShouldBeImmutable:MeshNetworkManager.kt$MeshNetworkManager.JoinAttemptTracker$var count: Int = 0</ID>
+    <ID>DataClassShouldBeImmutable:MeshNetworkManager.kt$MeshNetworkManager.JoinAttemptTracker$var windowStart: Long = System.currentTimeMillis()</ID>
     <ID>LargeClass:MeshNetworkManager.kt$MeshNetworkManager</ID>
     <ID>LongMethod:GroupComponents.kt$@Composable fun CreateGroupDialog(onDismiss: () -&gt; Unit, onCreate: (name: String, channel: Int, password: String?, maxSize: Int) -&gt; Unit)</ID>
     <ID>LongMethod:GroupComponents.kt$@Composable fun GroupInfoCard(group: MeshGroup?, memberCount: Int, nickname: String, groupCode: String?, onLeaveGroup: () -&gt; Unit, onCreateGroup: () -&gt; Unit, modifier: Modifier = Modifier)</ID>
@@ -38,7 +48,9 @@
     <ID>LongMethod:MainScreen.kt$@Composable private fun SettingsContent(meshTopology: MeshTopology?, onboardingManager: OnboardingManager?)</ID>
     <ID>LongMethod:MainScreen.kt$@Composable private fun StartButton(onClick: () -&gt; Unit, enabled: Boolean)</ID>
     <ID>LongMethod:MainScreen.kt$@OptIn(ExperimentalFoundationApi::class) @Composable private fun PTTButton(isRecording: Boolean, audioLevel: Float, onPress: () -&gt; Unit, onLongPress: () -&gt; Unit)</ID>
+    <ID>LongMethod:MeshNetworkManager.kt$MeshNetworkManager$fun scanAndConnectToAvailableDevices()</ID>
     <ID>LongMethod:MeshNetworkManager.kt$MeshNetworkManager$private fun handleDiscoveryMessage(message: MeshMessage, senderIp: String)</ID>
+    <ID>LongMethod:MeshNetworkService.kt$MeshNetworkService$fun startMeshNetwork()</ID>
     <ID>LongMethod:MeshNetworkService.kt$MeshNetworkService$private fun initializeManagers()</ID>
     <ID>LongMethod:OnboardingScreen.kt$@Composable fun OnboardingScreen(onboardingManager: OnboardingManager, onComplete: (groupCode: String?, isCreator: Boolean) -&gt; Unit)</ID>
     <ID>LongMethod:OnboardingScreen.kt$@Composable private fun CreateGroupScreen(groupCode: String, onNext: () -&gt; Unit, onBack: () -&gt; Unit)</ID>
@@ -66,22 +78,28 @@
     <ID>NestedBlockDepth:ConnectionCoordinator.kt$ConnectionCoordinator$private fun getWiFiDirectGroupOwnerIP(): String</ID>
     <ID>NestedBlockDepth:ConnectionCoordinator.kt$ConnectionCoordinator$private suspend fun handleWiFiDirectEvent(event: WiFiDirectEvent)</ID>
     <ID>NestedBlockDepth:MeshNetworkManager.kt$MeshNetworkManager$fun getLocalIPAddresses(): List&lt;String&gt;</ID>
-    <ID>NestedBlockDepth:MeshNetworkManager.kt$MeshNetworkManager$private fun deserializeMessage(data: ByteArray, length: Int): MeshMessage?</ID>
     <ID>NestedBlockDepth:MeshNetworkManager.kt$MeshNetworkManager$private fun getNetworkBroadcastAddresses(): List&lt;String&gt;</ID>
     <ID>NestedBlockDepth:MeshNetworkManager.kt$MeshNetworkManager$private suspend fun startAudioListener()</ID>
-    <ID>PrintStackTrace:MeshNetworkManager.kt$MeshNetworkManager$e</ID>
     <ID>ReturnCount:ConnectionCoordinator.kt$ConnectionCoordinator$fun connectToDevice(deviceAddress: String): Result&lt;Unit&gt;</ID>
+    <ID>ReturnCount:EncryptedMeshProtocol.kt$EncryptedMeshProtocol$override fun deserialize(data: ByteArray, length: Int): MeshMessage?</ID>
     <ID>ReturnCount:GroupManager.kt$GroupManager$private fun handleJoinRequest(@Suppress("UNUSED_PARAMETER") senderId: String, data: String)</ID>
     <ID>ReturnCount:LocationManager.kt$LocationManager$@SuppressLint("MissingPermission") fun startTracking(): Boolean</ID>
+    <ID>ReturnCount:MeshNetworkManager.kt$MeshNetworkManager$private fun validateDiscoveryPayload(payload: String): DiscoveryPayload?</ID>
+    <ID>ReturnCount:PipeDelimitedMeshProtocol.kt$PipeDelimitedMeshProtocol$override fun deserialize(data: ByteArray, length: Int): MeshMessage?</ID>
+    <ID>SwallowedException:EncryptedMeshProtocol.kt$EncryptedMeshProtocol$e: javax.crypto.AEADBadTagException</ID>
     <ID>SwallowedException:MeshNetworkManager.kt$MeshNetworkManager$e: Exception</ID>
     <ID>SwallowedException:MeshNetworkManager.kt$MeshNetworkManager$e: IllegalArgumentException</ID>
+    <ID>SwallowedException:MeshNetworkManager.kt$MeshNetworkManager$e: SocketTimeoutException</ID>
     <ID>SwallowedException:OnboardingManager.kt$OnboardingManager$e: Exception</ID>
+    <ID>SwallowedException:PipeDelimitedMeshProtocol.kt$PipeDelimitedMeshProtocol$e: IllegalArgumentException</ID>
     <ID>SwallowedException:WiFiDirectManager.kt$WiFiDirectManager$e: IllegalArgumentException</ID>
+    <ID>TooGenericExceptionCaught:AdpcmCodec.kt$AdpcmCodec$e: Exception</ID>
     <ID>TooGenericExceptionCaught:AudioEffectsProcessor.kt$AudioEffectsProcessor$e: Exception</ID>
     <ID>TooGenericExceptionCaught:AudioManager.kt$AudioManager$e: Exception</ID>
     <ID>TooGenericExceptionCaught:AudioManager.kt$AudioManager.PlaybackProcessor$e: Exception</ID>
     <ID>TooGenericExceptionCaught:ConnectionCoordinator.kt$ConnectionCoordinator$e: Exception</ID>
     <ID>TooGenericExceptionCaught:DistanceVectorRouter.kt$DistanceVectorRouter$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:EncryptedMeshProtocol.kt$EncryptedMeshProtocol$e: Exception</ID>
     <ID>TooGenericExceptionCaught:GroupManager.kt$GroupManager$e: Exception</ID>
     <ID>TooGenericExceptionCaught:LocationManager.kt$LocationManager$e: Exception</ID>
     <ID>TooGenericExceptionCaught:MainActivity.kt$MainActivity$e: Exception</ID>
@@ -89,13 +107,30 @@
     <ID>TooGenericExceptionCaught:MeshNetworkManager.kt$MeshNetworkManager$e: Exception</ID>
     <ID>TooGenericExceptionCaught:MeshNetworkService.kt$MeshNetworkService$e: Exception</ID>
     <ID>TooGenericExceptionCaught:OnboardingManager.kt$OnboardingManager$e: Exception</ID>
-    <ID>TooGenericExceptionCaught:OpusCodec.kt$OpusCodec$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:PipeDelimitedMeshProtocol.kt$PipeDelimitedMeshProtocol$e: Exception</ID>
     <ID>TooGenericExceptionCaught:Result.kt$Result.Companion$e: Exception</ID>
     <ID>TooGenericExceptionCaught:WiFiDirectManager.kt$WiFiDirectManager$e: Exception</ID>
     <ID>TooManyFunctions:DistanceVectorRouter.kt$DistanceVectorRouter</ID>
     <ID>TooManyFunctions:MeshNetworkManager.kt$MeshNetworkManager</ID>
     <ID>TooManyFunctions:MeshNetworkService.kt$MeshNetworkService : Service</ID>
     <ID>TooManyFunctions:VoiceFeedback.kt$VoiceFeedback</ID>
+    <ID>UnderscoresInNumericLiterals:AdpcmCodec.kt$AdpcmCodec.Companion$10442</ID>
+    <ID>UnderscoresInNumericLiterals:AdpcmCodec.kt$AdpcmCodec.Companion$11487</ID>
+    <ID>UnderscoresInNumericLiterals:AdpcmCodec.kt$AdpcmCodec.Companion$12635</ID>
+    <ID>UnderscoresInNumericLiterals:AdpcmCodec.kt$AdpcmCodec.Companion$13899</ID>
+    <ID>UnderscoresInNumericLiterals:AdpcmCodec.kt$AdpcmCodec.Companion$15289</ID>
+    <ID>UnderscoresInNumericLiterals:AdpcmCodec.kt$AdpcmCodec.Companion$16818</ID>
+    <ID>UnderscoresInNumericLiterals:AdpcmCodec.kt$AdpcmCodec.Companion$18500</ID>
+    <ID>UnderscoresInNumericLiterals:AdpcmCodec.kt$AdpcmCodec.Companion$20350</ID>
+    <ID>UnderscoresInNumericLiterals:AdpcmCodec.kt$AdpcmCodec.Companion$22385</ID>
+    <ID>UnderscoresInNumericLiterals:AdpcmCodec.kt$AdpcmCodec.Companion$24000</ID>
+    <ID>UnderscoresInNumericLiterals:AdpcmCodec.kt$AdpcmCodec.Companion$24623</ID>
+    <ID>UnderscoresInNumericLiterals:AdpcmCodec.kt$AdpcmCodec.Companion$27086</ID>
+    <ID>UnderscoresInNumericLiterals:AdpcmCodec.kt$AdpcmCodec.Companion$29794</ID>
+    <ID>UnderscoresInNumericLiterals:AdpcmCodec.kt$AdpcmCodec.Companion$32767</ID>
+    <ID>UnderscoresInNumericLiterals:AdpcmCodec.kt$AdpcmCodec.Companion$48000</ID>
+    <ID>UnderscoresInNumericLiterals:AdpcmCodecTest.kt$AdpcmCodecTest$10000</ID>
+    <ID>UnderscoresInNumericLiterals:AdpcmCodecTest.kt$AdpcmCodecTest$48000</ID>
     <ID>UnderscoresInNumericLiterals:AppConfig.kt$AppConfig.Audio$48000</ID>
     <ID>UnderscoresInNumericLiterals:AppConfig.kt$AppConfig.Mesh$10000L</ID>
     <ID>UnderscoresInNumericLiterals:AppConfig.kt$AppConfig.Mesh$15000L</ID>
@@ -110,48 +145,54 @@
     <ID>UnderscoresInNumericLiterals:DistanceVectorRouter.kt$DistanceVectorRouter.Companion$30000L</ID>
     <ID>UnderscoresInNumericLiterals:DistanceVectorRouter.kt$DistanceVectorRouter.Companion$60000L</ID>
     <ID>UnderscoresInNumericLiterals:DistanceVectorRouterTest.kt$DistanceVectorRouterTest$1234567890L</ID>
+    <ID>UnderscoresInNumericLiterals:EncryptedMeshProtocol.kt$EncryptedMeshProtocol.Companion$10000</ID>
     <ID>UnderscoresInNumericLiterals:LocationManager.kt$6371000.0</ID>
+    <ID>UnderscoresInNumericLiterals:LocationManager.kt$LocationManager.Companion$15000L</ID>
     <ID>UnderscoresInNumericLiterals:LocationManager.kt$LocationManager.Companion$30000L</ID>
+    <ID>UnderscoresInNumericLiterals:MeshMessageTest.kt$MeshMessageTest$1234567890L</ID>
+    <ID>UnderscoresInNumericLiterals:MeshMessageTest.kt$MeshMessageTest$12345L</ID>
+    <ID>UnderscoresInNumericLiterals:MeshMessageTest.kt$MeshMessageTest$16384</ID>
     <ID>UnderscoresInNumericLiterals:MeshNetworkManager.kt$MeshNetworkManager$10000</ID>
     <ID>UnderscoresInNumericLiterals:MeshNetworkManager.kt$MeshNetworkManager$30000</ID>
-    <ID>UnderscoresInNumericLiterals:MeshNetworkManager.kt$MeshNetworkManager$300000</ID>
     <ID>UnderscoresInNumericLiterals:MeshNetworkManager.kt$MeshNetworkManager$60000</ID>
     <ID>UnderscoresInNumericLiterals:MeshNetworkManager.kt$MeshNetworkManager.Companion$10000L</ID>
     <ID>UnderscoresInNumericLiterals:MeshNetworkManager.kt$MeshNetworkManager.Companion$15000L</ID>
     <ID>UnderscoresInNumericLiterals:MeshNetworkManager.kt$MeshNetworkManager.Companion$30000L</ID>
-    <ID>UnderscoresInNumericLiterals:OpusCodec.kt$OpusCodec.Companion$10442</ID>
-    <ID>UnderscoresInNumericLiterals:OpusCodec.kt$OpusCodec.Companion$11487</ID>
-    <ID>UnderscoresInNumericLiterals:OpusCodec.kt$OpusCodec.Companion$12635</ID>
-    <ID>UnderscoresInNumericLiterals:OpusCodec.kt$OpusCodec.Companion$13899</ID>
-    <ID>UnderscoresInNumericLiterals:OpusCodec.kt$OpusCodec.Companion$15289</ID>
-    <ID>UnderscoresInNumericLiterals:OpusCodec.kt$OpusCodec.Companion$16818</ID>
-    <ID>UnderscoresInNumericLiterals:OpusCodec.kt$OpusCodec.Companion$18500</ID>
-    <ID>UnderscoresInNumericLiterals:OpusCodec.kt$OpusCodec.Companion$20350</ID>
-    <ID>UnderscoresInNumericLiterals:OpusCodec.kt$OpusCodec.Companion$22385</ID>
-    <ID>UnderscoresInNumericLiterals:OpusCodec.kt$OpusCodec.Companion$24000</ID>
-    <ID>UnderscoresInNumericLiterals:OpusCodec.kt$OpusCodec.Companion$24623</ID>
-    <ID>UnderscoresInNumericLiterals:OpusCodec.kt$OpusCodec.Companion$27086</ID>
-    <ID>UnderscoresInNumericLiterals:OpusCodec.kt$OpusCodec.Companion$29794</ID>
-    <ID>UnderscoresInNumericLiterals:OpusCodec.kt$OpusCodec.Companion$32767</ID>
-    <ID>UnderscoresInNumericLiterals:OpusCodec.kt$OpusCodec.Companion$48000</ID>
-    <ID>UnderscoresInNumericLiterals:OpusCodecTest.kt$OpusCodecTest$10000</ID>
-    <ID>UnderscoresInNumericLiterals:OpusCodecTest.kt$OpusCodecTest$48000</ID>
+    <ID>UnderscoresInNumericLiterals:NetworkStatsTest.kt$NetworkStatsTest$12345L</ID>
+    <ID>UnderscoresInNumericLiterals:NetworkStatsTest.kt$NetworkStatsTest$47500</ID>
+    <ID>UnderscoresInNumericLiterals:NetworkStatsTest.kt$NetworkStatsTest$50000</ID>
+    <ID>UnderscoresInNumericLiterals:PeerLocationTest.kt$PeerLocationTest$3940000f</ID>
+    <ID>UnderscoresInNumericLiterals:PipeDelimitedMeshProtocolTest.kt$PipeDelimitedMeshProtocolTest$10000</ID>
+    <ID>UnderscoresInNumericLiterals:PipeDelimitedMeshProtocolTest.kt$PipeDelimitedMeshProtocolTest$1234567890L</ID>
+    <ID>UnderscoresInNumericLiterals:PipeDelimitedMeshProtocolTest.kt$PipeDelimitedMeshProtocolTest$9876543210L</ID>
+    <ID>UnnecessaryParentheses:AdpcmCodec.kt$AdpcmCodec$(nibble2 shl 4)</ID>
+    <ID>UnnecessaryParentheses:AdpcmCodec.kt$AdpcmCodec$(packedByte shr 4)</ID>
+    <ID>UnnecessaryParentheses:AdpcmCodecTest.kt$AdpcmCodecTest$(pcmData.size / 2)</ID>
     <ID>UnnecessaryParentheses:AudioManager.kt$AudioManager$(audioConfig.frameSize * 1000L / audioConfig.sampleRate)</ID>
+    <ID>UnnecessaryParentheses:AudioManager.kt$AudioManager.PlaybackProcessor$(config.frameSize * 1000)</ID>
+    <ID>UnnecessaryParentheses:AudioManager.kt$AudioManager.PlaybackProcessor$(config.frameSize * 1000L)</ID>
     <ID>UnnecessaryParentheses:DistanceVectorRouter.kt$DistanceVectorRouter$(existingRoute.nextHop == nodeId &amp;&amp; existingRoute.isStale)</ID>
-    <ID>UnnecessaryParentheses:OpusCodec.kt$OpusCodec$(nibble2 shl 4)</ID>
-    <ID>UnnecessaryParentheses:OpusCodec.kt$OpusCodec$(packedByte shr 4)</ID>
-    <ID>UnnecessaryParentheses:OpusCodecTest.kt$OpusCodecTest$(pcmData.size / 2)</ID>
+    <ID>UnnecessaryParentheses:LocationManager.kt$LocationManager$(level * 100)</ID>
+    <ID>UnnecessaryParentheses:MeshNetworkManager.kt$NetworkStats$(uptimeMs / (1000 * 60))</ID>
+    <ID>UnnecessaryParentheses:MeshNetworkManager.kt$NetworkStats$(uptimeMs / 1000)</ID>
+    <ID>UnnecessaryParentheses:NetworkStatsTest.kt$NetworkStatsTest$(100 * 60 * 60 * 1000L)</ID>
+    <ID>UnnecessaryParentheses:NetworkStatsTest.kt$NetworkStatsTest$(2 * 60 * 60 * 1000L)</ID>
+    <ID>UnnecessaryParentheses:NetworkStatsTest.kt$NetworkStatsTest$(5 * 60 * 1000L)</ID>
     <ID>UnnecessaryParentheses:RadarComponents.kt$(distance / maxRange)</ID>
     <ID>UnnecessaryParentheses:TechnicalComponents.kt$(i * 25)</ID>
     <ID>UnusedParameter:RadarComponents.kt$onPeerClick: ((PeerLocation) -&gt; Unit)? = null</ID>
     <ID>UnusedParameter:RadarComponents.kt$textColor: Color</ID>
     <ID>UnusedParameter:TechnicalComponents.kt$onNodeClick: ((TopologyNode) -&gt; Unit)? = null</ID>
     <ID>UnusedParameter:Theme.kt$darkTheme: Boolean = true</ID>
+    <ID>UnusedPrivateMember:AudioManager.kt$AudioManager$private fun resumeAllPlayback()</ID>
     <ID>UnusedPrivateMember:MeshNetworkService.kt$MeshNetworkService$private suspend fun &lt;T&gt; retry(maxAttempts: Int = AppConfig.Service.RETRY_MAX_ATTEMPTS, delayMs: Long = AppConfig.Service.RETRY_DELAY_MS, block: suspend () -&gt; T): T</ID>
+    <ID>UnusedPrivateProperty:AdpcmCodec.kt$AdpcmCodec$bit</ID>
+    <ID>UnusedPrivateProperty:AdpcmCodec.kt$AdpcmCodec$private val bitrate: Int = BITRATE</ID>
+    <ID>UnusedPrivateProperty:AdpcmCodec.kt$AdpcmCodec$private val channels: Int = CHANNELS</ID>
+    <ID>UnusedPrivateProperty:JitterBuffer.kt$JitterBuffer$private val sampleRate: Int = AdpcmCodec.SAMPLE_RATE</ID>
     <ID>UnusedPrivateProperty:MeshNetworkManager.kt$MeshNetworkManager.Companion$private const val AUDIO_PORT = 8889</ID>
-    <ID>UnusedPrivateProperty:OpusCodec.kt$OpusCodec$bit</ID>
-    <ID>UnusedPrivateProperty:OpusCodec.kt$OpusCodec$private val bitrate: Int = BITRATE</ID>
-    <ID>UnusedPrivateProperty:OpusCodec.kt$OpusCodec$private val channels: Int = CHANNELS</ID>
+    <ID>UnusedPrivateProperty:MeshNetworkManager.kt$MeshNetworkManager.Companion$private const val MAX_GROUP_CODE_LENGTH = 8</ID>
+    <ID>UnusedPrivateProperty:MeshNetworkManager.kt$MeshNetworkManager.Companion$private const val MIN_GROUP_CODE_LENGTH = 4</ID>
     <ID>UnusedPrivateProperty:RadarComponents.kt$val fontSize = 12.sp.toPx()</ID>
     <ID>UnusedPrivateProperty:RadarComponents.kt$val textMeasurer = rememberTextMeasurer()</ID>
     <ID>UnusedPrivateProperty:Theme.kt$private val LightColorScheme = lightColorScheme( primary = Purple40, secondary = PurpleGrey40, tertiary = Pink40, )</ID>
