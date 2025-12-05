@@ -7,26 +7,25 @@ import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
 import android.widget.Toast
-import com.entercomm.bikeintercom.util.*
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.lifecycle.lifecycleScope
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import com.entercomm.bikeintercom.mesh.MeshNetworkService
 import com.entercomm.bikeintercom.onboarding.ConnectionMode
 import com.entercomm.bikeintercom.onboarding.OnboardingManager
 import com.entercomm.bikeintercom.ui.screens.IntercomMainScreen
 import com.entercomm.bikeintercom.ui.screens.OnboardingScreen
 import com.entercomm.bikeintercom.ui.theme.EnterCommTheme
+import com.entercomm.bikeintercom.util.*
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -34,7 +33,7 @@ class MainActivity : ComponentActivity() {
     private var isServiceBound by mutableStateOf(false)
     private lateinit var onboardingManager: OnboardingManager
     private var showOnboarding by mutableStateOf(true)
-    
+
     private val requiredPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         arrayOf(
             Manifest.permission.ACCESS_FINE_LOCATION,
@@ -44,7 +43,7 @@ class MainActivity : ComponentActivity() {
             Manifest.permission.RECORD_AUDIO,
             Manifest.permission.MODIFY_AUDIO_SETTINGS,
             Manifest.permission.NEARBY_WIFI_DEVICES,
-            Manifest.permission.POST_NOTIFICATIONS
+            Manifest.permission.POST_NOTIFICATIONS,
         )
     } else {
         arrayOf(
@@ -53,23 +52,23 @@ class MainActivity : ComponentActivity() {
             Manifest.permission.ACCESS_WIFI_STATE,
             Manifest.permission.CHANGE_WIFI_STATE,
             Manifest.permission.RECORD_AUDIO,
-            Manifest.permission.MODIFY_AUDIO_SETTINGS
+            Manifest.permission.MODIFY_AUDIO_SETTINGS,
         )
     }
-    
+
     private val permissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
+        ActivityResultContracts.RequestMultiplePermissions(),
     ) { permissions ->
         logD { "Permission result received: $permissions" }
-        
+
         // Check critical permissions (exclude POST_NOTIFICATIONS as it's optional)
         val criticalPermissions = permissions.filterKeys { it != Manifest.permission.POST_NOTIFICATIONS }
         val allCriticalGranted = criticalPermissions.values.all { it }
         val allGranted = permissions.values.all { it }
-        
+
         logD { "All permissions granted: $allGranted" }
         logD { "All critical permissions granted: $allCriticalGranted" }
-        
+
         if (allCriticalGranted) {
             if (!allGranted) {
                 logD { "Non-critical permissions denied, but proceeding normally" }
@@ -82,13 +81,13 @@ class MainActivity : ComponentActivity() {
         } else {
             logW { "Critical permissions denied: $permissions" }
             Toast.makeText(this, "Critical permissions required for mesh networking", Toast.LENGTH_LONG).show()
-            
+
             // Still try to initialize service for debugging
             logD { "Attempting to initialize service with missing critical permissions" }
             initializeService()
         }
     }
-    
+
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             try {
@@ -139,7 +138,7 @@ class MainActivity : ComponentActivity() {
         meshService?.getGroupManager()?.setNickname(prefs.nickname)
         logD { "Applied nickname: ${prefs.nickname}" }
     }
-    
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         logD { "onCreate() started" }
@@ -164,7 +163,7 @@ class MainActivity : ComponentActivity() {
             EnterCommTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
+                    color = MaterialTheme.colorScheme.background,
                 ) {
                     if (showOnboarding) {
                         OnboardingScreen(
@@ -188,23 +187,23 @@ class MainActivity : ComponentActivity() {
                                         name = "${prefs.nickname}'s Group",
                                         channel = 1,
                                         password = null,
-                                        maxSize = 10
+                                        maxSize = 10,
                                     )
                                 }
-                            }
+                            },
                         )
                     } else {
                         IntercomMainScreen(
                             meshService = meshService,
                             isServiceBound = isServiceBound,
-                            onboardingManager = onboardingManager
+                            onboardingManager = onboardingManager,
                         )
                     }
                 }
             }
         }
     }
-    
+
     override fun onDestroy() {
         super.onDestroy()
         if (isServiceBound) {
@@ -212,29 +211,29 @@ class MainActivity : ComponentActivity() {
             isServiceBound = false
         }
     }
-    
+
     private fun hasAllPermissions(): Boolean {
         val permissionStatus = requiredPermissions.associateWith { permission ->
             ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
         }
         logD { "Permission status: $permissionStatus" }
-        
+
         // Check critical permissions (exclude POST_NOTIFICATIONS as it's optional)
         val criticalPermissions = permissionStatus.filterKeys { it != Manifest.permission.POST_NOTIFICATIONS }
         val allCriticalGranted = criticalPermissions.values.all { it }
         val allGranted = permissionStatus.values.all { it }
-        
+
         logD { "All permissions granted: $allGranted" }
         logD { "All critical permissions granted: $allCriticalGranted" }
-        
+
         return allCriticalGranted
     }
-    
+
     private fun requestPermissions() {
         logD { "Requesting permissions: ${requiredPermissions.toList()}" }
         permissionLauncher.launch(requiredPermissions)
     }
-    
+
     private fun initializeService() {
         logD { "Initializing service..." }
         try {

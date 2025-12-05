@@ -2,6 +2,7 @@ package com.entercomm.bikeintercom.ui.components
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -15,20 +16,18 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
@@ -43,21 +42,12 @@ import com.entercomm.bikeintercom.ui.theme.*
 import com.entercomm.bikeintercom.util.rememberHapticFeedback
 import kotlin.math.cos
 import kotlin.math.sin
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.StrokeCap
 
 /**
  * Technical Status Card with animated border glow effect
  */
 @Composable
-fun TechnicalStatusCard(
-    title: String,
-    status: String,
-    isActive: Boolean = false,
-    isError: Boolean = false,
-    modifier: Modifier = Modifier,
-    content: @Composable ColumnScope.() -> Unit = {}
-) {
+fun TechnicalStatusCard(title: String, status: String, isActive: Boolean = false, isError: Boolean = false, modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit = {}) {
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
 
     val pulseAlpha by infiniteTransition.animateFloat(
@@ -65,9 +55,9 @@ fun TechnicalStatusCard(
         targetValue = 0.8f,
         animationSpec = infiniteRepeatable(
             animation = tween(1500, easing = EaseInOutCubic),
-            repeatMode = RepeatMode.Reverse
+            repeatMode = RepeatMode.Reverse,
         ),
-        label = "pulseAlpha"
+        label = "pulseAlpha",
     )
 
     val borderColor by animateColorAsState(
@@ -77,7 +67,7 @@ fun TechnicalStatusCard(
             else -> DarkBorder
         },
         animationSpec = tween(400, easing = EaseOutCubic),
-        label = "borderColor"
+        label = "borderColor",
     )
 
     val glowColor = when {
@@ -94,41 +84,41 @@ fun TechnicalStatusCard(
                         brush = Brush.radialGradient(
                             colors = listOf(glowColor, Color.Transparent),
                             center = Offset(size.width / 2, size.height / 2),
-                            radius = size.maxDimension
-                        )
+                            radius = size.maxDimension,
+                        ),
                     )
                 }
             }
             .border(
                 width = if (isActive || isError) 2.dp else 1.dp,
                 color = borderColor,
-                shape = RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(16.dp),
             ),
         colors = CardDefaults.cardColors(
-            containerColor = DarkSurface
+            containerColor = DarkSurface,
         ),
-        shape = RoundedCornerShape(16.dp)
+        shape = RoundedCornerShape(16.dp),
     ) {
         Column(
-            modifier = Modifier.padding(20.dp)
+            modifier = Modifier.padding(20.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleMedium,
                     color = TextPrimary,
                     fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.sp
+                    letterSpacing = 1.sp,
                 )
 
                 // Animated status indicator dot with pulse
                 StatusIndicatorDot(
                     isActive = isActive,
-                    isError = isError
+                    isError = isError,
                 )
             }
 
@@ -137,7 +127,7 @@ fun TechnicalStatusCard(
             Text(
                 text = status,
                 style = MaterialTheme.typography.bodyMedium,
-                color = if (isActive) TextSecondary else TextTertiary
+                color = if (isActive) TextSecondary else TextTertiary,
             )
 
             content()
@@ -149,11 +139,7 @@ fun TechnicalStatusCard(
  * Animated status indicator dot with pulsing glow
  */
 @Composable
-fun StatusIndicatorDot(
-    isActive: Boolean,
-    isError: Boolean = false,
-    size: Dp = 12.dp
-) {
+fun StatusIndicatorDot(isActive: Boolean, isError: Boolean = false, size: Dp = 12.dp) {
     val infiniteTransition = rememberInfiniteTransition(label = "dotPulse")
 
     val scale by infiniteTransition.animateFloat(
@@ -161,9 +147,9 @@ fun StatusIndicatorDot(
         targetValue = if (isActive || isError) 1.3f else 1f,
         animationSpec = infiniteRepeatable(
             animation = tween(1000, easing = EaseInOutCubic),
-            repeatMode = RepeatMode.Reverse
+            repeatMode = RepeatMode.Reverse,
         ),
-        label = "dotScale"
+        label = "dotScale",
     )
 
     val glowAlpha by infiniteTransition.animateFloat(
@@ -171,9 +157,9 @@ fun StatusIndicatorDot(
         targetValue = 0.6f,
         animationSpec = infiniteRepeatable(
             animation = tween(1000, easing = EaseInOutCubic),
-            repeatMode = RepeatMode.Reverse
+            repeatMode = RepeatMode.Reverse,
         ),
-        label = "glowAlpha"
+        label = "glowAlpha",
     )
 
     val color = when {
@@ -184,7 +170,7 @@ fun StatusIndicatorDot(
 
     Box(
         modifier = Modifier.size(size * 2),
-        contentAlignment = Alignment.Center
+        contentAlignment = Alignment.Center,
     ) {
         // Outer glow
         if (isActive || isError) {
@@ -192,7 +178,7 @@ fun StatusIndicatorDot(
                 modifier = Modifier
                     .size(size * scale * 1.5f)
                     .clip(CircleShape)
-                    .background(color.copy(alpha = glowAlpha * 0.3f))
+                    .background(color.copy(alpha = glowAlpha * 0.3f)),
             )
         }
         // Inner dot
@@ -200,7 +186,7 @@ fun StatusIndicatorDot(
             modifier = Modifier
                 .size(size)
                 .clip(CircleShape)
-                .background(color)
+                .background(color),
         )
     }
 }
@@ -210,13 +196,7 @@ fun StatusIndicatorDot(
  * Optimized for cycling with large touch target and haptic feedback.
  */
 @Composable
-fun PTTButton(
-    isRecording: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    size: Dp = AppConfig.UI.PTT_BUTTON_SIZE_DP.dp
-) {
+fun PTTButton(isRecording: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, size: Dp = AppConfig.UI.PTT_BUTTON_SIZE_DP.dp) {
     val haptic = rememberHapticFeedback()
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
@@ -233,7 +213,7 @@ fun PTTButton(
     val baseScale by animateFloatAsState(
         targetValue = if (isPressed) 0.92f else 1f,
         animationSpec = spring(dampingRatio = 0.6f, stiffness = 400f),
-        label = "baseScale"
+        label = "baseScale",
     )
 
     val pulseScale by infiniteTransition.animateFloat(
@@ -241,9 +221,9 @@ fun PTTButton(
         targetValue = if (isRecording) 1.08f else 1f,
         animationSpec = infiniteRepeatable(
             animation = tween(800, easing = EaseInOutCubic),
-            repeatMode = RepeatMode.Reverse
+            repeatMode = RepeatMode.Reverse,
         ),
-        label = "pulseScale"
+        label = "pulseScale",
     )
 
     // Glow animation
@@ -252,9 +232,9 @@ fun PTTButton(
         targetValue = 0.6f,
         animationSpec = infiniteRepeatable(
             animation = tween(800, easing = EaseInOutCubic),
-            repeatMode = RepeatMode.Reverse
+            repeatMode = RepeatMode.Reverse,
         ),
-        label = "glowAlpha"
+        label = "glowAlpha",
     )
 
     // Ring rotation for recording state
@@ -263,21 +243,21 @@ fun PTTButton(
         targetValue = 360f,
         animationSpec = infiniteRepeatable(
             animation = tween(3000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
+            repeatMode = RepeatMode.Restart,
         ),
-        label = "ringRotation"
+        label = "ringRotation",
     )
 
     val buttonColor by animateColorAsState(
         targetValue = if (isRecording) TechRed else TechGreen,
         animationSpec = tween(300, easing = EaseOutCubic),
-        label = "buttonColor"
+        label = "buttonColor",
     )
 
     val buttonColorDark by animateColorAsState(
         targetValue = if (isRecording) TechRedDark else TechGreenDark,
         animationSpec = tween(300, easing = EaseOutCubic),
-        label = "buttonColorDark"
+        label = "buttonColorDark",
     )
 
     Box(
@@ -287,25 +267,25 @@ fun PTTButton(
                 interactionSource = interactionSource,
                 indication = null,
                 enabled = enabled,
-                role = Role.Button
+                role = Role.Button,
             ) { onClick() },
-        contentAlignment = Alignment.Center
+        contentAlignment = Alignment.Center,
     ) {
         // Outer glow layer
         if (enabled) {
             Canvas(
                 modifier = Modifier
                     .size(size * 1.4f)
-                    .scale(pulseScale)
+                    .scale(pulseScale),
             ) {
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(
                             buttonColor.copy(alpha = glowAlpha * 0.4f),
                             buttonColor.copy(alpha = glowAlpha * 0.1f),
-                            Color.Transparent
-                        )
-                    )
+                            Color.Transparent,
+                        ),
+                    ),
                 )
             }
         }
@@ -314,7 +294,7 @@ fun PTTButton(
         if (isRecording) {
             Canvas(
                 modifier = Modifier
-                    .size(size * 1.15f)
+                    .size(size * 1.15f),
             ) {
                 val strokeWidth = 3.dp.toPx()
                 drawArc(
@@ -322,14 +302,14 @@ fun PTTButton(
                     startAngle = ringRotation,
                     sweepAngle = 90f,
                     useCenter = false,
-                    style = Stroke(width = strokeWidth)
+                    style = Stroke(width = strokeWidth),
                 )
                 drawArc(
                     color = buttonColor.copy(alpha = 0.6f),
                     startAngle = ringRotation + 180f,
                     sweepAngle = 90f,
                     useCenter = false,
-                    style = Stroke(width = strokeWidth)
+                    style = Stroke(width = strokeWidth),
                 )
             }
         }
@@ -345,27 +325,27 @@ fun PTTButton(
                         colors = listOf(
                             buttonColor.copy(alpha = 0.25f),
                             buttonColorDark.copy(alpha = 0.15f),
-                            DarkSurface
-                        )
-                    )
+                            DarkSurface,
+                        ),
+                    ),
                 )
                 .border(
                     width = 3.dp,
                     brush = Brush.linearGradient(
-                        colors = listOf(buttonColor, buttonColorDark)
+                        colors = listOf(buttonColor, buttonColorDark),
                     ),
-                    shape = CircleShape
+                    shape = CircleShape,
                 ),
-            contentAlignment = Alignment.Center
+            contentAlignment = Alignment.Center,
         ) {
             Column(
-                horizontalAlignment = Alignment.CenterHorizontally
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Icon(
                     imageVector = if (isRecording) Icons.Rounded.Stop else Icons.Rounded.Mic,
                     contentDescription = if (isRecording) "Stop Recording" else "Start Recording",
                     tint = buttonColor,
-                    modifier = Modifier.size(44.dp)
+                    modifier = Modifier.size(44.dp),
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
@@ -373,7 +353,7 @@ fun PTTButton(
                     style = MaterialTheme.typography.titleMedium,
                     color = buttonColor,
                     fontWeight = FontWeight.Bold,
-                    letterSpacing = 2.sp
+                    letterSpacing = 2.sp,
                 )
             }
         }
@@ -392,7 +372,7 @@ fun TechnicalButton(
     isActive: Boolean = false,
     buttonType: TechnicalButtonType = TechnicalButtonType.PRIMARY,
     enabled: Boolean = true,
-    minHeight: Dp = AppConfig.UI.MIN_BUTTON_HEIGHT_DP.dp
+    minHeight: Dp = AppConfig.UI.MIN_BUTTON_HEIGHT_DP.dp,
 ) {
     val haptic = rememberHapticFeedback()
     val interactionSource = remember { MutableInteractionSource() }
@@ -401,7 +381,7 @@ fun TechnicalButton(
     val scale by animateFloatAsState(
         targetValue = if (isPressed) 0.96f else 1f,
         animationSpec = spring(dampingRatio = 0.6f, stiffness = 400f),
-        label = "btnScale"
+        label = "btnScale",
     )
 
     val accentColor = when (buttonType) {
@@ -419,13 +399,13 @@ fun TechnicalButton(
     val backgroundColor by animateColorAsState(
         targetValue = if (isActive) accentColor.copy(alpha = 0.2f) else DarkSurfaceVariant,
         animationSpec = tween(200),
-        label = "bgColor"
+        label = "bgColor",
     )
 
     val contentColor by animateColorAsState(
         targetValue = if (isActive) accentColor else accentColor.copy(alpha = 0.9f),
         animationSpec = tween(200),
-        label = "contentColor"
+        label = "contentColor",
     )
 
     // Using Surface with clickable instead of Button for better touch handling
@@ -447,23 +427,23 @@ fun TechnicalButton(
             brush = Brush.linearGradient(
                 colors = listOf(
                     if (enabled) accentColor else TextDisabled,
-                    if (enabled) accentColorDark else TextDisabled
-                )
-            )
+                    if (enabled) accentColorDark else TextDisabled,
+                ),
+            ),
         ),
-        interactionSource = interactionSource
+        interactionSource = interactionSource,
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
+            horizontalArrangement = Arrangement.Center,
         ) {
             icon?.let {
                 Icon(
                     imageVector = it,
                     contentDescription = null,
                     modifier = Modifier.size(22.dp),
-                    tint = contentColor
+                    tint = contentColor,
                 )
                 Spacer(modifier = Modifier.width(10.dp))
             }
@@ -472,28 +452,23 @@ fun TechnicalButton(
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 1.sp,
-                color = contentColor
+                color = contentColor,
             )
         }
     }
 }
 
 enum class TechnicalButtonType {
-    PRIMARY, SECONDARY, DANGER
+    PRIMARY,
+    SECONDARY,
+    DANGER,
 }
 
 /**
  * Device card with smooth animations and modern styling.
  */
 @Composable
-fun DeviceCard(
-    deviceName: String,
-    deviceAddress: String,
-    isConnected: Boolean = false,
-    signalStrength: Int = 0,
-    onClick: () -> Unit = {},
-    modifier: Modifier = Modifier
-) {
+fun DeviceCard(deviceName: String, deviceAddress: String, isConnected: Boolean = false, signalStrength: Int = 0, onClick: () -> Unit = {}, modifier: Modifier = Modifier) {
     val haptic = rememberHapticFeedback()
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
@@ -501,19 +476,19 @@ fun DeviceCard(
     val scale by animateFloatAsState(
         targetValue = if (isPressed) 0.98f else 1f,
         animationSpec = spring(dampingRatio = 0.6f, stiffness = 400f),
-        label = "cardScale"
+        label = "cardScale",
     )
 
     val borderColor by animateColorAsState(
         targetValue = if (isConnected) TechGreen else DarkBorder,
         animationSpec = tween(300),
-        label = "borderColor"
+        label = "borderColor",
     )
 
     val backgroundColor by animateColorAsState(
         targetValue = if (isConnected) TechGreen.copy(alpha = 0.05f) else DarkSurface,
         animationSpec = tween(300),
-        label = "bgColor"
+        label = "bgColor",
     )
 
     Card(
@@ -528,25 +503,25 @@ fun DeviceCard(
                 } else {
                     Brush.linearGradient(listOf(borderColor, borderColor))
                 },
-                shape = RoundedCornerShape(14.dp)
+                shape = RoundedCornerShape(14.dp),
             )
             .clickable(
                 interactionSource = interactionSource,
-                indication = null
+                indication = null,
             ) {
                 haptic.click()
                 onClick()
             },
         colors = CardDefaults.cardColors(
-            containerColor = backgroundColor
+            containerColor = backgroundColor,
         ),
-        shape = RoundedCornerShape(14.dp)
+        shape = RoundedCornerShape(14.dp),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             // Device icon with status glow
             Box(
@@ -554,21 +529,24 @@ fun DeviceCard(
                     .size(52.dp)
                     .clip(CircleShape)
                     .background(
-                        if (isConnected) TechGreen.copy(alpha = 0.15f)
-                        else DarkSurfaceVariant
+                        if (isConnected) {
+                            TechGreen.copy(alpha = 0.15f)
+                        } else {
+                            DarkSurfaceVariant
+                        },
                     )
                     .border(
                         width = 1.dp,
                         color = if (isConnected) TechGreen.copy(alpha = 0.5f) else DarkBorder,
-                        shape = CircleShape
+                        shape = CircleShape,
                     ),
-                contentAlignment = Alignment.Center
+                contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     imageVector = Icons.Rounded.Headphones,
                     contentDescription = null,
                     tint = if (isConnected) TechGreen else TextTertiary,
-                    modifier = Modifier.size(26.dp)
+                    modifier = Modifier.size(26.dp),
                 )
             }
 
@@ -579,29 +557,29 @@ fun DeviceCard(
                     text = deviceName,
                     style = MaterialTheme.typography.titleMedium,
                     color = TextPrimary,
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.SemiBold,
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = deviceAddress,
                     style = MaterialTheme.typography.bodySmall,
-                    color = TextTertiary
+                    color = TextTertiary,
                 )
 
                 AnimatedVisibility(
                     visible = isConnected,
                     enter = fadeIn() + expandVertically(),
-                    exit = fadeOut() + shrinkVertically()
+                    exit = fadeOut() + shrinkVertically(),
                 ) {
                     Row(
                         modifier = Modifier.padding(top = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Box(
                             modifier = Modifier
                                 .size(8.dp)
                                 .clip(CircleShape)
-                                .background(TechGreen)
+                                .background(TechGreen),
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
@@ -609,7 +587,7 @@ fun DeviceCard(
                             style = MaterialTheme.typography.labelSmall,
                             color = TechGreen,
                             fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.sp
+                            letterSpacing = 1.sp,
                         )
                     }
                 }
@@ -618,14 +596,14 @@ fun DeviceCard(
             if (isConnected) {
                 SignalStrengthIndicator(
                     strength = signalStrength,
-                    modifier = Modifier.size(32.dp)
+                    modifier = Modifier.size(32.dp),
                 )
             } else {
                 Icon(
                     imageVector = Icons.Rounded.ChevronRight,
                     contentDescription = "Connect to device",
                     tint = TextTertiary,
-                    modifier = Modifier.size(28.dp)
+                    modifier = Modifier.size(28.dp),
                 )
             }
         }
@@ -636,14 +614,11 @@ fun DeviceCard(
  * Animated signal strength indicator with bars
  */
 @Composable
-fun SignalStrengthIndicator(
-    strength: Int,
-    modifier: Modifier = Modifier
-) {
+fun SignalStrengthIndicator(strength: Int, modifier: Modifier = Modifier) {
     val animatedStrength by animateIntAsState(
         targetValue = strength,
         animationSpec = tween(500, easing = EaseOutCubic),
-        label = "signalStrength"
+        label = "signalStrength",
     )
 
     Canvas(modifier = modifier) {
@@ -672,7 +647,7 @@ fun SignalStrengthIndicator(
                 color = color,
                 topLeft = Offset(x, y),
                 size = Size(barWidth, barHeight),
-                cornerRadius = androidx.compose.ui.geometry.CornerRadius(2.dp.toPx())
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(2.dp.toPx()),
             )
         }
     }
@@ -682,10 +657,7 @@ fun SignalStrengthIndicator(
  * Network topology mini visualization with animations
  */
 @Composable
-fun NetworkTopology(
-    connectedDevices: Int,
-    modifier: Modifier = Modifier
-) {
+fun NetworkTopology(connectedDevices: Int, modifier: Modifier = Modifier) {
     val infiniteTransition = rememberInfiniteTransition(label = "topology")
 
     val pulse by infiniteTransition.animateFloat(
@@ -693,9 +665,9 @@ fun NetworkTopology(
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
             animation = tween(1500, easing = EaseInOutCubic),
-            repeatMode = RepeatMode.Reverse
+            repeatMode = RepeatMode.Reverse,
         ),
-        label = "topologyPulse"
+        label = "topologyPulse",
     )
 
     Canvas(modifier = modifier) {
@@ -707,17 +679,17 @@ fun NetworkTopology(
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(TechGreen, TechGreenDark),
-                center = Offset(centerX, centerY)
+                center = Offset(centerX, centerY),
             ),
             radius = 10.dp.toPx() * pulse,
-            center = Offset(centerX, centerY)
+            center = Offset(centerX, centerY),
         )
 
         // Outer glow for center
         drawCircle(
             color = TechGreen.copy(alpha = 0.3f * pulse),
             radius = 14.dp.toPx() * pulse,
-            center = Offset(centerX, centerY)
+            center = Offset(centerX, centerY),
         )
 
         // Draw connected devices
@@ -731,21 +703,21 @@ fun NetworkTopology(
                 brush = Brush.linearGradient(
                     colors = listOf(TechGreen, TechCyan),
                     start = Offset(centerX, centerY),
-                    end = Offset(x, y)
+                    end = Offset(x, y),
                 ),
                 start = Offset(centerX, centerY),
                 end = Offset(x, y),
-                strokeWidth = 2.dp.toPx()
+                strokeWidth = 2.dp.toPx(),
             )
 
             // Device node
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(TechCyan, TechCyanDark),
-                    center = Offset(x, y)
+                    center = Offset(x, y),
                 ),
                 radius = 7.dp.toPx(),
-                center = Offset(x, y)
+                center = Offset(x, y),
             )
         }
     }
@@ -757,11 +729,7 @@ fun NetworkTopology(
  * and route paths.
  */
 @Composable
-fun EnhancedNetworkTopology(
-    topology: MeshTopology,
-    modifier: Modifier = Modifier,
-    onNodeClick: ((TopologyNode) -> Unit)? = null
-) {
+fun EnhancedNetworkTopology(topology: MeshTopology, modifier: Modifier = Modifier, onNodeClick: ((TopologyNode) -> Unit)? = null) {
     val infiniteTransition = rememberInfiniteTransition(label = "enhancedTopology")
 
     val pulse by infiniteTransition.animateFloat(
@@ -769,9 +737,9 @@ fun EnhancedNetworkTopology(
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
             animation = tween(1500, easing = EaseInOutCubic),
-            repeatMode = RepeatMode.Reverse
+            repeatMode = RepeatMode.Reverse,
         ),
-        label = "topologyPulse"
+        label = "topologyPulse",
     )
 
     val dataFlowOffset by infiniteTransition.animateFloat(
@@ -779,9 +747,9 @@ fun EnhancedNetworkTopology(
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
             animation = tween(2000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
+            repeatMode = RepeatMode.Restart,
         ),
-        label = "dataFlow"
+        label = "dataFlow",
     )
 
     Canvas(modifier = modifier) {
@@ -796,7 +764,7 @@ fun EnhancedNetworkTopology(
                 color = TechGreen.copy(alpha = 0.1f),
                 radius = ringRadius,
                 center = Offset(centerX, centerY),
-                style = Stroke(width = 1.dp.toPx())
+                style = Stroke(width = 1.dp.toPx()),
             )
         }
 
@@ -843,23 +811,23 @@ fun EnhancedNetworkTopology(
                         brush = Brush.linearGradient(
                             colors = listOf(TechGreen, lineColor),
                             start = fromPos,
-                            end = toPos
+                            end = toPos,
                         ),
                         start = fromPos,
                         end = toPos,
                         strokeWidth = 2.5.dp.toPx(),
-                        cap = StrokeCap.Round
+                        cap = StrokeCap.Round,
                     )
 
                     // Animated data flow dots
                     val dotPos = Offset(
                         fromPos.x + (toPos.x - fromPos.x) * dataFlowOffset,
-                        fromPos.y + (toPos.y - fromPos.y) * dataFlowOffset
+                        fromPos.y + (toPos.y - fromPos.y) * dataFlowOffset,
                     )
                     drawCircle(
                         color = TechGreen.copy(alpha = 0.8f),
                         radius = 3.dp.toPx(),
-                        center = dotPos
+                        center = dotPos,
                     )
                 } else {
                     // Dashed line for multi-hop connections
@@ -868,7 +836,7 @@ fun EnhancedNetworkTopology(
                         start = fromPos,
                         end = toPos,
                         strokeWidth = 1.5.dp.toPx(),
-                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f))
+                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f)),
                     )
                 }
             }
@@ -887,7 +855,7 @@ fun EnhancedNetworkTopology(
                             start = currentPos,
                             end = nextPos,
                             strokeWidth = 4.dp.toPx(),
-                            cap = StrokeCap.Round
+                            cap = StrokeCap.Round,
                         )
                         currentPos = nextPos
                     }
@@ -899,15 +867,15 @@ fun EnhancedNetworkTopology(
         drawCircle(
             color = TechGreen.copy(alpha = 0.2f * pulse),
             radius = 18.dp.toPx() * pulse,
-            center = Offset(centerX, centerY)
+            center = Offset(centerX, centerY),
         )
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(TechGreen, TechGreenDark),
-                center = Offset(centerX, centerY)
+                center = Offset(centerX, centerY),
             ),
             radius = 12.dp.toPx() * pulse,
-            center = Offset(centerX, centerY)
+            center = Offset(centerX, centerY),
         )
 
         // Draw device nodes with signal-based colors
@@ -920,17 +888,17 @@ fun EnhancedNetworkTopology(
             drawCircle(
                 color = nodeColor.copy(alpha = 0.3f),
                 radius = nodeRadius + 4.dp.toPx(),
-                center = pos
+                center = pos,
             )
 
             // Node circle
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(nodeColor, nodeColor.copy(alpha = 0.7f)),
-                    center = pos
+                    center = pos,
                 ),
                 radius = nodeRadius,
-                center = pos
+                center = pos,
             )
 
             // Hop count indicator for multi-hop nodes
@@ -938,7 +906,7 @@ fun EnhancedNetworkTopology(
                 drawCircle(
                     color = DarkSurface,
                     radius = 4.dp.toPx(),
-                    center = Offset(pos.x + nodeRadius, pos.y - nodeRadius)
+                    center = Offset(pos.x + nodeRadius, pos.y - nodeRadius),
                 )
             }
         }
@@ -966,15 +934,11 @@ private val TechOrange = Color(0xFFFF9800)
  * Audio level meter with smooth animated bars
  */
 @Composable
-fun AudioLevelMeter(
-    level: Float,
-    modifier: Modifier = Modifier,
-    isRecording: Boolean = false
-) {
+fun AudioLevelMeter(level: Float, modifier: Modifier = Modifier, isRecording: Boolean = false) {
     val animatedLevel by animateFloatAsState(
         targetValue = if (isRecording) level else 0f,
         animationSpec = spring(dampingRatio = 0.7f, stiffness = 300f),
-        label = "audioLevel"
+        label = "audioLevel",
     )
 
     val infiniteTransition = rememberInfiniteTransition(label = "meterPulse")
@@ -983,9 +947,9 @@ fun AudioLevelMeter(
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
             animation = tween(500),
-            repeatMode = RepeatMode.Reverse
+            repeatMode = RepeatMode.Reverse,
         ),
-        label = "barPulse"
+        label = "barPulse",
     )
 
     Canvas(modifier = modifier) {
@@ -1013,7 +977,7 @@ fun AudioLevelMeter(
                 color = color.copy(alpha = alpha),
                 topLeft = Offset(x, y),
                 size = Size(barWidth, barHeight.coerceAtLeast(4.dp.toPx())),
-                cornerRadius = cornerRadius
+                cornerRadius = cornerRadius,
             )
         }
     }
@@ -1023,26 +987,23 @@ fun AudioLevelMeter(
  * Loading indicator with modern styling
  */
 @Composable
-fun LoadingIndicator(
-    message: String = "Loading...",
-    modifier: Modifier = Modifier
-) {
+fun LoadingIndicator(message: String = "Loading...", modifier: Modifier = Modifier) {
     Column(
         modifier = modifier
             .fillMaxWidth()
             .padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+        verticalArrangement = Arrangement.Center,
     ) {
         Box(
             modifier = Modifier.size(56.dp),
-            contentAlignment = Alignment.Center
+            contentAlignment = Alignment.Center,
         ) {
             CircularProgressIndicator(
                 modifier = Modifier.size(56.dp),
                 color = TechCyan,
                 strokeWidth = 3.dp,
-                trackColor = DarkBorder
+                trackColor = DarkBorder,
             )
         }
         Spacer(modifier = Modifier.height(20.dp))
@@ -1051,7 +1012,7 @@ fun LoadingIndicator(
             style = MaterialTheme.typography.labelLarge,
             color = TextSecondary,
             fontWeight = FontWeight.Medium,
-            letterSpacing = 1.sp
+            letterSpacing = 1.sp,
         )
     }
 }
@@ -1060,11 +1021,7 @@ fun LoadingIndicator(
  * Error display with retry option and animations
  */
 @Composable
-fun ErrorDisplay(
-    message: String,
-    onRetry: (() -> Unit)? = null,
-    modifier: Modifier = Modifier
-) {
+fun ErrorDisplay(message: String, onRetry: (() -> Unit)? = null, modifier: Modifier = Modifier) {
     val haptic = rememberHapticFeedback()
 
     val infiniteTransition = rememberInfiniteTransition(label = "error")
@@ -1073,9 +1030,9 @@ fun ErrorDisplay(
         targetValue = 1.1f,
         animationSpec = infiniteRepeatable(
             animation = tween(800, easing = EaseInOutCubic),
-            repeatMode = RepeatMode.Reverse
+            repeatMode = RepeatMode.Reverse,
         ),
-        label = "errorPulse"
+        label = "errorPulse",
     )
 
     Card(
@@ -1084,18 +1041,18 @@ fun ErrorDisplay(
             .border(
                 width = 2.dp,
                 brush = Brush.linearGradient(listOf(TechRed, TechRedDark)),
-                shape = RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(16.dp),
             ),
         colors = CardDefaults.cardColors(
-            containerColor = TechRed.copy(alpha = 0.08f)
+            containerColor = TechRed.copy(alpha = 0.08f),
         ),
-        shape = RoundedCornerShape(16.dp)
+        shape = RoundedCornerShape(16.dp),
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Icon(
                 imageVector = Icons.Rounded.Warning,
@@ -1103,7 +1060,7 @@ fun ErrorDisplay(
                 tint = TechRed,
                 modifier = Modifier
                     .size(48.dp)
-                    .scale(pulseScale)
+                    .scale(pulseScale),
             )
             Spacer(modifier = Modifier.height(16.dp))
             Text(
@@ -1111,14 +1068,14 @@ fun ErrorDisplay(
                 style = MaterialTheme.typography.titleMedium,
                 color = TechRed,
                 fontWeight = FontWeight.Bold,
-                letterSpacing = 2.sp
+                letterSpacing = 2.sp,
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = message,
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextSecondary,
-                modifier = Modifier.padding(horizontal = 8.dp)
+                modifier = Modifier.padding(horizontal = 8.dp),
             )
             onRetry?.let {
                 Spacer(modifier = Modifier.height(20.dp))
@@ -1130,7 +1087,7 @@ fun ErrorDisplay(
                     },
                     icon = Icons.Rounded.Refresh,
                     buttonType = TechnicalButtonType.DANGER,
-                    modifier = Modifier.fillMaxWidth(0.5f)
+                    modifier = Modifier.fillMaxWidth(0.5f),
                 )
             }
         }
@@ -1141,14 +1098,7 @@ fun ErrorDisplay(
  * Empty state display with modern styling
  */
 @Composable
-fun EmptyStateDisplay(
-    title: String,
-    message: String,
-    icon: ImageVector = Icons.Rounded.Info,
-    actionText: String? = null,
-    onAction: (() -> Unit)? = null,
-    modifier: Modifier = Modifier
-) {
+fun EmptyStateDisplay(title: String, message: String, icon: ImageVector = Icons.Rounded.Info, actionText: String? = null, onAction: (() -> Unit)? = null, modifier: Modifier = Modifier) {
     val haptic = rememberHapticFeedback()
 
     Column(
@@ -1156,7 +1106,7 @@ fun EmptyStateDisplay(
             .fillMaxWidth()
             .padding(40.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+        verticalArrangement = Arrangement.Center,
     ) {
         Box(
             modifier = Modifier
@@ -1164,13 +1114,13 @@ fun EmptyStateDisplay(
                 .clip(CircleShape)
                 .background(DarkSurfaceVariant)
                 .border(1.dp, DarkBorder, CircleShape),
-            contentAlignment = Alignment.Center
+            contentAlignment = Alignment.Center,
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
                 tint = TextTertiary,
-                modifier = Modifier.size(40.dp)
+                modifier = Modifier.size(40.dp),
             )
         }
         Spacer(modifier = Modifier.height(24.dp))
@@ -1179,13 +1129,13 @@ fun EmptyStateDisplay(
             style = MaterialTheme.typography.titleMedium,
             color = TextSecondary,
             fontWeight = FontWeight.Bold,
-            letterSpacing = 1.sp
+            letterSpacing = 1.sp,
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             text = message,
             style = MaterialTheme.typography.bodyMedium,
-            color = TextTertiary
+            color = TextTertiary,
         )
         if (actionText != null && onAction != null) {
             Spacer(modifier = Modifier.height(28.dp))
@@ -1195,7 +1145,7 @@ fun EmptyStateDisplay(
                     haptic.click()
                     onAction()
                 },
-                buttonType = TechnicalButtonType.SECONDARY
+                buttonType = TechnicalButtonType.SECONDARY,
             )
         }
     }
@@ -1205,12 +1155,7 @@ fun EmptyStateDisplay(
  * Connection status banner with animations
  */
 @Composable
-fun ConnectionStatusBanner(
-    isConnected: Boolean,
-    isConnecting: Boolean = false,
-    deviceCount: Int = 0,
-    modifier: Modifier = Modifier
-) {
+fun ConnectionStatusBanner(isConnected: Boolean, isConnecting: Boolean = false, deviceCount: Int = 0, modifier: Modifier = Modifier) {
     val infiniteTransition = rememberInfiniteTransition(label = "banner")
 
     val pulseAlpha by infiniteTransition.animateFloat(
@@ -1218,9 +1163,9 @@ fun ConnectionStatusBanner(
         targetValue = 0.25f,
         animationSpec = infiniteRepeatable(
             animation = tween(1000, easing = EaseInOutCubic),
-            repeatMode = RepeatMode.Reverse
+            repeatMode = RepeatMode.Reverse,
         ),
-        label = "bannerPulse"
+        label = "bannerPulse",
     )
 
     val backgroundColor by animateColorAsState(
@@ -1230,7 +1175,7 @@ fun ConnectionStatusBanner(
             else -> TechRed.copy(alpha = 0.15f)
         },
         animationSpec = tween(400),
-        label = "bannerColor"
+        label = "bannerColor",
     )
 
     val textColor = when {
@@ -1245,23 +1190,23 @@ fun ConnectionStatusBanner(
             .background(backgroundColor)
             .padding(horizontal = 20.dp, vertical = 14.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Row(
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             if (isConnecting) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(18.dp),
                     color = textColor,
                     strokeWidth = 2.dp,
-                    trackColor = textColor.copy(alpha = 0.2f)
+                    trackColor = textColor.copy(alpha = 0.2f),
                 )
             } else {
                 StatusIndicatorDot(
                     isActive = isConnected,
                     isError = !isConnected && !isConnecting,
-                    size = 10.dp
+                    size = 10.dp,
                 )
             }
             Spacer(modifier = Modifier.width(14.dp))
@@ -1274,20 +1219,20 @@ fun ConnectionStatusBanner(
                 style = MaterialTheme.typography.labelLarge,
                 color = textColor,
                 fontWeight = FontWeight.Bold,
-                letterSpacing = 1.sp
+                letterSpacing = 1.sp,
             )
         }
 
         AnimatedVisibility(
             visible = isConnected && deviceCount > 0,
             enter = fadeIn() + slideInHorizontally { it },
-            exit = fadeOut() + slideOutHorizontally { it }
+            exit = fadeOut() + slideOutHorizontally { it },
         ) {
             Text(
                 text = "$deviceCount DEVICE${if (deviceCount > 1) "S" else ""}",
                 style = MaterialTheme.typography.labelMedium,
                 color = textColor,
-                letterSpacing = 0.5.sp
+                letterSpacing = 0.5.sp,
             )
         }
     }

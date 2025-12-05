@@ -52,7 +52,7 @@ class OpusCodecTest {
         val expectedMaxSize = 4 + (pcmData.size / 2) + 1
         assertTrue(
             "Encoded size should be much smaller than input",
-            encoded!!.size <= expectedMaxSize
+            encoded!!.size <= expectedMaxSize,
         )
     }
 
@@ -113,7 +113,7 @@ class OpusCodecTest {
         // Allow some error due to lossy compression
         assertTrue(
             "Maximum error $maxError should be reasonable for ADPCM",
-            maxError < 5000
+            maxError < 5000,
         )
     }
 
@@ -149,7 +149,7 @@ class OpusCodecTest {
         for (sample in decoded) {
             assertTrue(
                 "Silent input should decode to near-silence",
-                abs(sample.toInt()) < 100
+                abs(sample.toInt()) < 100,
             )
         }
     }
@@ -161,7 +161,7 @@ class OpusCodecTest {
             Short.MIN_VALUE,
             0,
             Short.MAX_VALUE,
-            Short.MIN_VALUE
+            Short.MIN_VALUE,
         )
 
         val encoded = codec.encode(pcmData)
@@ -208,7 +208,7 @@ class OpusCodecTest {
         // ADPCM should achieve ~4x compression (with header overhead slightly less)
         assertTrue(
             "Compression ratio $ratio should be close to 4x",
-            ratio in 3.5f..4.5f
+            ratio in 3.5f..4.5f,
         )
     }
 

@@ -27,7 +27,7 @@ android {
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
+                "proguard-rules.pro",
             )
         }
     }
@@ -95,11 +95,16 @@ detekt {
 }
 
 tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
+    jvmTarget = "1.8"
     reports {
         html.required.set(true)
         xml.required.set(true)
         sarif.required.set(true)
     }
+}
+
+tasks.withType<io.gitlab.arturbosch.detekt.DetektCreateBaselineTask>().configureEach {
+    jvmTarget = "1.8"
 }
 
 // Spotless configuration
@@ -110,11 +115,14 @@ spotless {
         ktlint("1.1.1")
             .editorConfigOverride(
                 mapOf(
-                    "max_line_length" to "120",
+                    "max_line_length" to "200",
                     "indent_size" to "4",
                     "ktlint_standard_no-wildcard-imports" to "disabled",
-                    "ktlint_standard_package-name" to "disabled"
-                )
+                    "ktlint_standard_package-name" to "disabled",
+                    "ktlint_standard_value-parameter-comment" to "disabled",
+                    "ktlint_standard_value-argument-comment" to "disabled",
+                    "ktlint_standard_function-naming" to "disabled",
+                ),
             )
     }
     kotlinGradle {

@@ -17,10 +17,10 @@ import java.util.concurrent.ConcurrentLinkedQueue
 class VoiceFeedback(private val context: Context) {
 
     enum class Priority {
-        LOW,      // Can be skipped if queue is full
-        NORMAL,   // Standard announcement
-        HIGH,     // Important, plays soon
-        IMMEDIATE // Interrupts current speech
+        LOW, // Can be skipped if queue is full
+        NORMAL, // Standard announcement
+        HIGH, // Important, plays soon
+        IMMEDIATE, // Interrupts current speech
     }
 
     private var tts: TextToSpeech? = null
@@ -33,7 +33,7 @@ class VoiceFeedback(private val context: Context) {
     val isSpeaking: StateFlow<Boolean> = _isSpeaking.asStateFlow()
 
     private var volume: Float = 0.8f
-    private var speechRate: Float = 1.1f  // Slightly faster for cycling
+    private var speechRate: Float = 1.1f // Slightly faster for cycling
 
     // Queue for pending announcements
     private val announcementQueue = ConcurrentLinkedQueue<Announcement>()
@@ -42,7 +42,7 @@ class VoiceFeedback(private val context: Context) {
     data class Announcement(
         val message: String,
         val priority: Priority,
-        val id: String = UUID.randomUUID().toString()
+        val id: String = UUID.randomUUID().toString(),
     )
 
     /**
@@ -307,6 +307,10 @@ class VoiceFeedback(private val context: Context) {
     }
 
     enum class SignalQuality {
-        EXCELLENT, GOOD, FAIR, POOR, LOST
+        EXCELLENT,
+        GOOD,
+        FAIR,
+        POOR,
+        LOST,
     }
 }

@@ -23,14 +23,14 @@ class OpusCodec(
     private val sampleRate: Int = SAMPLE_RATE,
     private val channels: Int = CHANNELS,
     private val frameSize: Int = FRAME_SIZE,
-    private val bitrate: Int = BITRATE
+    private val bitrate: Int = BITRATE,
 ) {
     companion object {
         // Audio configuration
-        const val SAMPLE_RATE = 48000      // 48kHz
-        const val CHANNELS = 1              // Mono
-        const val FRAME_SIZE = 960          // 20ms at 48kHz
-        const val BITRATE = 24000           // Target bitrate (actual varies with ADPCM)
+        const val SAMPLE_RATE = 48000 // 48kHz
+        const val CHANNELS = 1 // Mono
+        const val FRAME_SIZE = 960 // 20ms at 48kHz
+        const val BITRATE = 24000 // Target bitrate (actual varies with ADPCM)
 
         // IMA ADPCM step table
         private val STEP_TABLE = intArrayOf(
@@ -42,13 +42,13 @@ class OpusCodec(
             876, 963, 1060, 1166, 1282, 1411, 1552, 1707, 1878, 2066,
             2272, 2499, 2749, 3024, 3327, 3660, 4026, 4428, 4871, 5358,
             5894, 6484, 7132, 7845, 8630, 9493, 10442, 11487, 12635, 13899,
-            15289, 16818, 18500, 20350, 22385, 24623, 27086, 29794, 32767
+            15289, 16818, 18500, 20350, 22385, 24623, 27086, 29794, 32767,
         )
 
         // Index adjustment table
         private val INDEX_TABLE = intArrayOf(
             -1, -1, -1, -1, 2, 4, 6, 8,
-            -1, -1, -1, -1, 2, 4, 6, 8
+            -1, -1, -1, -1, 2, 4, 6, 8,
         )
 
         // Header size: predictor (2 bytes) + step index (1 byte) + reserved (1 byte)
@@ -209,7 +209,7 @@ class OpusCodec(
      * Get the compression ratio achieved.
      */
     fun getCompressionRatio(pcmSamples: Int, encodedBytes: Int): Float {
-        val pcmBytes = pcmSamples * 2  // 16-bit samples
+        val pcmBytes = pcmSamples * 2 // 16-bit samples
         return if (encodedBytes > 0) pcmBytes.toFloat() / encodedBytes else 0f
     }
 

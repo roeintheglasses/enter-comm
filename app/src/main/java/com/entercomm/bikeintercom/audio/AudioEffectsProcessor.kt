@@ -1,6 +1,5 @@
 package com.entercomm.bikeintercom.audio
 
-import android.media.AudioRecord
 import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.AutomaticGainControl
 import android.media.audiofx.NoiseSuppressor
@@ -20,7 +19,7 @@ class AudioEffectsProcessor {
     companion object {
         // Wind noise detection thresholds
         private const val WIND_NOISE_THRESHOLD = 0.15f
-        private const val HIGH_PASS_CUTOFF = 300f  // Hz - filter out low-frequency wind noise
+        private const val HIGH_PASS_CUTOFF = 300f // Hz - filter out low-frequency wind noise
     }
 
     // Android hardware audio effects (API 16+)
@@ -201,7 +200,7 @@ class AudioEffectsProcessor {
             windNoiseDetected = windNoiseDetected,
             hardwareAecActive = isAecEnabled,
             hardwareNsActive = isNsEnabled,
-            hardwareAgcActive = isAgcEnabled
+            hardwareAgcActive = isAgcEnabled,
         )
     }
 
@@ -231,12 +230,12 @@ class AudioEffectsProcessor {
 
     // Software AGC implementation
     private fun applySoftwareAgc(samples: ShortArray): ShortArray {
-        val targetLevel = 0.3f  // Target RMS level
-        val attackTime = 0.01f  // Fast attack for speech
-        val releaseTime = 0.1f  // Slower release
+        val targetLevel = 0.3f // Target RMS level
+        val attackTime = 0.01f // Fast attack for speech
+        val releaseTime = 0.1f // Slower release
 
         val rms = calculateRms(samples)
-        if (rms < 0.001f) return samples  // Silence, don't adjust
+        if (rms < 0.001f) return samples // Silence, don't adjust
 
         // Calculate desired gain
         val desiredGain = (targetLevel / rms).coerceIn(0.5f, 4.0f)
@@ -342,5 +341,5 @@ data class AudioEffectsStats(
     val windNoiseDetected: Boolean,
     val hardwareAecActive: Boolean,
     val hardwareNsActive: Boolean,
-    val hardwareAgcActive: Boolean
+    val hardwareAgcActive: Boolean,
 )

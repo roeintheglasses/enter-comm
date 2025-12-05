@@ -63,8 +63,8 @@ object AppConfig {
 
     // Battery-aware scan intervals
     fun getDiscoveryIntervalForBattery(batteryLevel: Int): Long = when (batteryLevel) {
-        in 0..20 -> 120_000L   // 2 minutes when battery critical
-        in 21..50 -> 60_000L   // 1 minute when battery low
-        else -> 30_000L        // 30 seconds normally
+        in 0..20 -> 120_000L // 2 minutes when battery critical
+        in 21..50 -> 60_000L // 1 minute when battery low
+        else -> 30_000L // 30 seconds normally
     }
 }

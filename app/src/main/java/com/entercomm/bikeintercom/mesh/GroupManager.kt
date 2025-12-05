@@ -16,12 +16,12 @@ import java.util.concurrent.ConcurrentHashMap
 data class MeshGroup(
     val groupId: String,
     val groupName: String,
-    val channelNumber: Int,           // 1-10 for different "frequencies"
-    val ownerId: String,              // Node ID of group creator
+    val channelNumber: Int, // 1-10 for different "frequencies"
+    val ownerId: String, // Node ID of group creator
     val maxSize: Int = 10,
     val isPasswordProtected: Boolean = false,
     val passwordHash: String? = null,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
 ) {
     companion object {
         const val DEFAULT_CHANNEL = 1
@@ -36,7 +36,7 @@ data class MeshGroup(
                 groupId = UUID.randomUUID().toString().take(8),
                 groupName = "$ownerName's Group",
                 channelNumber = DEFAULT_CHANNEL,
-                ownerId = ownerId
+                ownerId = ownerId,
             )
         }
     }
@@ -59,16 +59,16 @@ data class GroupMember(
     val joinedAt: Long = System.currentTimeMillis(),
     val role: MemberRole = MemberRole.MEMBER,
     val lastSeen: Long = System.currentTimeMillis(),
-    val isMuted: Boolean = false
+    val isMuted: Boolean = false,
 ) {
     val isOwner: Boolean
         get() = role == MemberRole.OWNER
 }
 
 enum class MemberRole {
-    OWNER,    // Group creator, can kick/ban
-    MEMBER,   // Regular member
-    BANNED    // Banned from group
+    OWNER, // Group creator, can kick/ban
+    MEMBER, // Regular member
+    BANNED, // Banned from group
 }
 
 /**
@@ -91,16 +91,16 @@ sealed class GroupEvent {
  * Group message types for mesh protocol.
  */
 enum class GroupMessageType {
-    GROUP_ANNOUNCE,    // Broadcast group existence
-    JOIN_REQUEST,      // Request to join group
-    JOIN_ACCEPT,       // Accept join request
-    JOIN_REJECT,       // Reject join request
-    LEAVE,             // Member leaving
-    KICK,              // Owner kicking member
-    BAN,               // Owner banning member
-    NICKNAME_UPDATE,   // Member nickname change
-    MEMBER_LIST,       // Full member list sync
-    CHANNEL_CHANGE     // Channel number change
+    GROUP_ANNOUNCE, // Broadcast group existence
+    JOIN_REQUEST, // Request to join group
+    JOIN_ACCEPT, // Accept join request
+    JOIN_REJECT, // Reject join request
+    LEAVE, // Member leaving
+    KICK, // Owner kicking member
+    BAN, // Owner banning member
+    NICKNAME_UPDATE, // Member nickname change
+    MEMBER_LIST, // Full member list sync
+    CHANNEL_CHANGE, // Channel number change
 }
 
 /**
@@ -110,7 +110,7 @@ enum class GroupMessageType {
 class GroupManager(
     private val context: Context,
     private val localNodeId: String,
-    private var localNickname: String
+    private var localNickname: String,
 ) {
     companion object {
         private const val PREFS_NAME = "group_prefs"
@@ -136,6 +136,7 @@ class GroupManager(
 
     // Internal storage
     private val memberMap = ConcurrentHashMap<String, GroupMember>()
+
     // Use Collections.newSetFromMap for API 21+ compatibility (newKeySet requires API 24)
     private val bannedNodes: MutableSet<String> = java.util.Collections.newSetFromMap(ConcurrentHashMap())
     private val availableGroups = ConcurrentHashMap<String, MeshGroup>()
@@ -151,12 +152,7 @@ class GroupManager(
     /**
      * Create a new group.
      */
-    fun createGroup(
-        name: String,
-        channel: Int = MeshGroup.DEFAULT_CHANNEL,
-        password: String? = null,
-        maxSize: Int = MeshGroup.DEFAULT_MAX_SIZE
-    ): MeshGroup {
+    fun createGroup(name: String, channel: Int = MeshGroup.DEFAULT_CHANNEL, password: String? = null, maxSize: Int = MeshGroup.DEFAULT_MAX_SIZE): MeshGroup {
         val group = MeshGroup(
             groupId = UUID.randomUUID().toString().take(8),
             groupName = name.take(20),
@@ -164,7 +160,7 @@ class GroupManager(
             ownerId = localNodeId,
             maxSize = maxSize.coerceIn(2, 20),
             isPasswordProtected = password != null,
-            passwordHash = password?.let { hashPassword(it) }
+            passwordHash = password?.let { hashPassword(it) },
         )
 
         _currentGroup.value = group
@@ -174,7 +170,7 @@ class GroupManager(
         val ownerMember = GroupMember(
             nodeId = localNodeId,
             nickname = _nickname.value,
-            role = MemberRole.OWNER
+            role = MemberRole.OWNER,
         )
         memberMap[localNodeId] = ownerMember
         updateMembersList()
@@ -453,7 +449,7 @@ class GroupManager(
         val password = parts.getOrNull(2) ?: ""
 
         val group = _currentGroup.value ?: return
-        if (group.ownerId != localNodeId) return  // Not owner
+        if (group.ownerId != localNodeId) return // Not owner
 
         // Check if banned
         if (bannedNodes.contains(requesterId)) {
@@ -633,7 +629,7 @@ class GroupManager(
                 channelNumber = parts[2].toInt(),
                 ownerId = parts[3],
                 maxSize = parts[4].toInt(),
-                isPasswordProtected = parts[5].toBoolean()
+                isPasswordProtected = parts[5].toBoolean(),
             )
         } catch (e: Exception) {
             logE({ "Failed to deserialize group announce" }, e)

@@ -2,7 +2,6 @@ package com.entercomm.bikeintercom.service
 
 import com.entercomm.bikeintercom.config.AppConfig
 import com.entercomm.bikeintercom.mesh.MeshNetworkManager
-import com.entercomm.bikeintercom.util.MeshError
 import com.entercomm.bikeintercom.util.Result
 import com.entercomm.bikeintercom.util.logD
 import com.entercomm.bikeintercom.util.logE
@@ -30,7 +29,7 @@ enum class ConnectionState {
     DISCOVERING,
     CONNECTING,
     CONNECTED,
-    ERROR
+    ERROR,
 }
 
 /**
@@ -50,7 +49,7 @@ sealed class ConnectionEvent {
 class ConnectionCoordinator(
     private val wifiDirectManager: WiFiDirectManager,
     private val meshNetworkManager: MeshNetworkManager,
-    private val scope: CoroutineScope
+    private val scope: CoroutineScope,
 ) {
     private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
     val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
@@ -259,7 +258,6 @@ class ConnectionCoordinator(
 
                 logW { "Mesh connection not established, retrying..." }
                 delay(AppConfig.Service.RETRY_DELAY_MS * (attempt + 1))
-
             } catch (e: Exception) {
                 logE({ "Mesh connection attempt failed" }, e)
                 if (attempt == AppConfig.Service.RETRY_MAX_ATTEMPTS - 1) {

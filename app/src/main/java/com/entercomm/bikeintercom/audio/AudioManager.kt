@@ -20,11 +20,11 @@ import java.util.concurrent.ConcurrentHashMap
  * Audio configuration for the intercom system.
  */
 data class AudioConfig(
-    val sampleRate: Int = OpusCodec.SAMPLE_RATE,  // 48kHz - native Opus rate
-    val channelCount: Int = OpusCodec.CHANNELS,    // Mono
+    val sampleRate: Int = OpusCodec.SAMPLE_RATE, // 48kHz - native Opus rate
+    val channelCount: Int = OpusCodec.CHANNELS, // Mono
     val audioFormat: Int = AudioFormat.ENCODING_PCM_16BIT,
-    val frameSize: Int = OpusCodec.FRAME_SIZE,     // 20ms at 48kHz
-    val bitrate: Int = OpusCodec.BITRATE           // 24 kbps
+    val frameSize: Int = OpusCodec.FRAME_SIZE, // 20ms at 48kHz
+    val bitrate: Int = OpusCodec.BITRATE, // 24 kbps
 )
 
 /**
@@ -35,7 +35,7 @@ data class AudioProcessingSettings(
     val nsEnabled: Boolean = true,
     val agcEnabled: Boolean = true,
     val windFilterEnabled: Boolean = true,
-    val opusEnabled: Boolean = true
+    val opusEnabled: Boolean = true,
 )
 
 /**
@@ -51,7 +51,7 @@ data class AudioProcessingSettings(
  */
 class AudioManager(
     private val context: Context,
-    private val meshCallback: (ByteArray) -> Unit
+    private val meshCallback: (ByteArray) -> Unit,
 ) {
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
@@ -83,7 +83,7 @@ class AudioManager(
         sampleRate = audioConfig.sampleRate,
         channels = audioConfig.channelCount,
         frameSize = audioConfig.frameSize,
-        bitrate = audioConfig.bitrate
+        bitrate = audioConfig.bitrate,
     )
     private val effectsProcessor = AudioEffectsProcessor()
 
@@ -238,7 +238,6 @@ class AudioManager(
                     processor.play(decodedSamples)
                     logD { "Played ${decodedSamples.size} samples from $sourceId" }
                 }
-
             } catch (e: OutOfMemoryError) {
                 logE({ "OOM processing audio from $sourceId" }, e)
                 audioProcessors.remove(sourceId)?.cleanup()
@@ -271,14 +270,16 @@ class AudioManager(
     fun getCodecStats(): CodecStats {
         val compressionRatio = if (totalBytesEncoded > 0) {
             totalBytesRaw.toFloat() / totalBytesEncoded
-        } else 0f
+        } else {
+            0f
+        }
 
         return CodecStats(
             packetsEncoded = packetsEncoded,
             bytesRaw = totalBytesRaw,
             bytesEncoded = totalBytesEncoded,
             compressionRatio = compressionRatio,
-            effectsStats = effectsProcessor.getStats()
+            effectsStats = effectsProcessor.getStats(),
         )
     }
 
@@ -308,7 +309,7 @@ class AudioManager(
 
     private fun hasAudioPermission(): Boolean {
         return ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
-                PackageManager.PERMISSION_GRANTED
+            PackageManager.PERMISSION_GRANTED
     }
 
     @SuppressLint("MissingPermission")
@@ -321,7 +322,7 @@ class AudioManager(
         val bufferSize = AudioRecord.getMinBufferSize(
             audioConfig.sampleRate,
             AudioFormat.CHANNEL_IN_MONO,
-            audioConfig.audioFormat
+            audioConfig.audioFormat,
         )
 
         if (bufferSize == AudioRecord.ERROR_BAD_VALUE || bufferSize == AudioRecord.ERROR) {
@@ -330,11 +331,11 @@ class AudioManager(
         }
 
         audioRecord = AudioRecord(
-            MediaRecorder.AudioSource.VOICE_COMMUNICATION,  // Optimized for voice
+            MediaRecorder.AudioSource.VOICE_COMMUNICATION, // Optimized for voice
             audioConfig.sampleRate,
             AudioFormat.CHANNEL_IN_MONO,
             audioConfig.audioFormat,
-            bufferSize * 2
+            bufferSize * 2,
         )
 
         if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
@@ -350,7 +351,7 @@ class AudioManager(
         val bufferSize = AudioTrack.getMinBufferSize(
             audioConfig.sampleRate,
             AudioFormat.CHANNEL_OUT_MONO,
-            audioConfig.audioFormat
+            audioConfig.audioFormat,
         )
 
         audioTrack = AudioTrack(
@@ -359,7 +360,7 @@ class AudioManager(
             AudioFormat.CHANNEL_OUT_MONO,
             audioConfig.audioFormat,
             bufferSize * 2,
-            AudioTrack.MODE_STREAM
+            AudioTrack.MODE_STREAM,
         )
 
         audioTrack?.play()
@@ -381,7 +382,7 @@ class AudioManager(
 
                     // Apply audio processing (AEC, NS, AGC, wind filter)
                     val processedSamples = effectsProcessor.process(
-                        buffer.copyOf(samplesRead)
+                        buffer.copyOf(samplesRead),
                     )
 
                     // Encode with Opus
@@ -411,7 +412,6 @@ class AudioManager(
 
                 // Sleep for frame duration
                 delay((audioConfig.frameSize * 1000L / audioConfig.sampleRate))
-
             } catch (e: Exception) {
                 logE({ "Error processing audio input" }, e)
                 delay(100)
@@ -462,7 +462,7 @@ class AudioManager(
      */
     private inner class PlaybackProcessor(
         private val sourceId: String,
-        private val config: AudioConfig
+        private val config: AudioConfig,
     ) {
         private var audioTrack: AudioTrack? = null
         private val lock = Any()
@@ -478,7 +478,7 @@ class AudioManager(
                     val bufferSize = AudioTrack.getMinBufferSize(
                         config.sampleRate,
                         AudioFormat.CHANNEL_OUT_MONO,
-                        config.audioFormat
+                        config.audioFormat,
                     )
 
                     if (bufferSize == AudioTrack.ERROR_BAD_VALUE || bufferSize == AudioTrack.ERROR) {
@@ -492,7 +492,7 @@ class AudioManager(
                         AudioFormat.CHANNEL_OUT_MONO,
                         config.audioFormat,
                         bufferSize * 4,
-                        AudioTrack.MODE_STREAM
+                        AudioTrack.MODE_STREAM,
                     ).apply {
                         if (state == AudioTrack.STATE_INITIALIZED) {
                             play()
@@ -558,5 +558,5 @@ data class CodecStats(
     val bytesRaw: Long = 0,
     val bytesEncoded: Long = 0,
     val compressionRatio: Float = 0f,
-    val effectsStats: AudioEffectsStats? = null
+    val effectsStats: AudioEffectsStats? = null,
 )

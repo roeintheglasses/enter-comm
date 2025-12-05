@@ -10,8 +10,8 @@ import kotlinx.coroutines.flow.asStateFlow
  * Connection modes for the mesh network.
  */
 enum class ConnectionMode {
-    GROUP_MODE,  // Only connect with group members (default, private)
-    OPEN_MODE    // Connect with everyone in range (for events)
+    GROUP_MODE, // Only connect with group members (default, private)
+    OPEN_MODE, // Connect with everyone in range (for events)
 }
 
 /**
@@ -21,7 +21,7 @@ data class UserPreferences(
     val nickname: String = "Rider",
     val connectionMode: ConnectionMode = ConnectionMode.GROUP_MODE,
     val onboardingCompleted: Boolean = false,
-    val currentGroupCode: String? = null
+    val currentGroupCode: String? = null,
 )
 
 /**
@@ -124,7 +124,7 @@ class OnboardingManager(context: Context) {
                 ConnectionMode.GROUP_MODE
             },
             onboardingCompleted = prefs.getBoolean(KEY_ONBOARDING_COMPLETED, false),
-            currentGroupCode = prefs.getString(KEY_CURRENT_GROUP_CODE, null)
+            currentGroupCode = prefs.getString(KEY_CURRENT_GROUP_CODE, null),
         )
     }
 }

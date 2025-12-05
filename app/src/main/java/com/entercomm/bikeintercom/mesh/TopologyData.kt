@@ -8,9 +8,9 @@ data class TopologyNode(
     val displayName: String,
     val isDirectNeighbor: Boolean,
     val hopCount: Int,
-    val signalStrength: Float,  // 0.0-1.0, estimated from link quality
+    val signalStrength: Float, // 0.0-1.0, estimated from link quality
     val lastSeen: Long,
-    val isActive: Boolean = true
+    val isActive: Boolean = true,
 ) {
     /**
      * Get signal quality category.
@@ -26,7 +26,11 @@ data class TopologyNode(
     }
 
     enum class SignalQuality {
-        EXCELLENT, GOOD, FAIR, POOR, CRITICAL
+        EXCELLENT,
+        GOOD,
+        FAIR,
+        POOR,
+        CRITICAL,
     }
 }
 
@@ -37,9 +41,9 @@ data class TopologyConnection(
     val fromNodeId: String,
     val toNodeId: String,
     val isActive: Boolean,
-    val linkQuality: Float,  // 0.0-1.0
-    val isDirect: Boolean,   // Direct neighbor connection
-    val latency: Long = 0    // Estimated latency in ms
+    val linkQuality: Float, // 0.0-1.0
+    val isDirect: Boolean, // Direct neighbor connection
+    val latency: Long = 0, // Estimated latency in ms
 )
 
 /**
@@ -50,8 +54,8 @@ data class MeshTopology(
     val localDisplayName: String,
     val nodes: List<TopologyNode>,
     val connections: List<TopologyConnection>,
-    val routePaths: Map<String, List<String>>,  // destination -> path through nodes
-    val timestamp: Long = System.currentTimeMillis()
+    val routePaths: Map<String, List<String>>, // destination -> path through nodes
+    val timestamp: Long = System.currentTimeMillis(),
 ) {
     /**
      * Get the total number of reachable nodes.
@@ -100,7 +104,7 @@ data class MeshTopology(
                 localDisplayName = localDisplayName,
                 nodes = emptyList(),
                 connections = emptyList(),
-                routePaths = emptyMap()
+                routePaths = emptyMap(),
             )
         }
     }
@@ -111,7 +115,7 @@ data class MeshTopology(
  */
 class TopologyBuilder(
     private val localNodeId: String,
-    private val localDisplayName: String
+    private val localDisplayName: String,
 ) {
     private val nodes = mutableListOf<TopologyNode>()
     private val connections = mutableListOf<TopologyConnection>()
@@ -120,42 +124,34 @@ class TopologyBuilder(
     /**
      * Add a node from router data.
      */
-    fun addNode(
-        nodeId: String,
-        displayName: String,
-        isDirectNeighbor: Boolean,
-        hopCount: Int,
-        linkQuality: Float,
-        lastSeen: Long
-    ): TopologyBuilder {
-        nodes.add(TopologyNode(
-            nodeId = nodeId,
-            displayName = displayName,
-            isDirectNeighbor = isDirectNeighbor,
-            hopCount = hopCount,
-            signalStrength = linkQuality,
-            lastSeen = lastSeen,
-            isActive = true
-        ))
+    fun addNode(nodeId: String, displayName: String, isDirectNeighbor: Boolean, hopCount: Int, linkQuality: Float, lastSeen: Long): TopologyBuilder {
+        nodes.add(
+            TopologyNode(
+                nodeId = nodeId,
+                displayName = displayName,
+                isDirectNeighbor = isDirectNeighbor,
+                hopCount = hopCount,
+                signalStrength = linkQuality,
+                lastSeen = lastSeen,
+                isActive = true,
+            ),
+        )
         return this
     }
 
     /**
      * Add a connection.
      */
-    fun addConnection(
-        fromNodeId: String,
-        toNodeId: String,
-        linkQuality: Float,
-        isDirect: Boolean
-    ): TopologyBuilder {
-        connections.add(TopologyConnection(
-            fromNodeId = fromNodeId,
-            toNodeId = toNodeId,
-            isActive = true,
-            linkQuality = linkQuality,
-            isDirect = isDirect
-        ))
+    fun addConnection(fromNodeId: String, toNodeId: String, linkQuality: Float, isDirect: Boolean): TopologyBuilder {
+        connections.add(
+            TopologyConnection(
+                fromNodeId = fromNodeId,
+                toNodeId = toNodeId,
+                isActive = true,
+                linkQuality = linkQuality,
+                isDirect = isDirect,
+            ),
+        )
         return this
     }
 
@@ -176,7 +172,7 @@ class TopologyBuilder(
             localDisplayName = localDisplayName,
             nodes = nodes.toList(),
             connections = connections.toList(),
-            routePaths = routePaths.toMap()
+            routePaths = routePaths.toMap(),
         )
     }
 }

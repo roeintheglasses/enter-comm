@@ -56,8 +56,8 @@ class DistanceVectorRouterTest {
             sourceNodeId = "node-a",
             sequenceNumber = 1,
             routes = listOf(
-                DistanceVectorRouter.AdvertisedRoute("node-c", 1, 1)
-            )
+                DistanceVectorRouter.AdvertisedRoute("node-c", 1, 1),
+            ),
         )
         router.processRouteAdvertisement(advertisement, "192.168.1.2")
 
@@ -131,8 +131,8 @@ class DistanceVectorRouterTest {
             sequenceNumber = 1,
             routes = listOf(
                 DistanceVectorRouter.AdvertisedRoute("node-b", 1, 1),
-                DistanceVectorRouter.AdvertisedRoute("node-c", 2, 2)
-            )
+                DistanceVectorRouter.AdvertisedRoute("node-c", 2, 2),
+            ),
         )
 
         val changed = router.processRouteAdvertisement(advertisement, "192.168.1.2")
@@ -152,8 +152,8 @@ class DistanceVectorRouterTest {
             sourceNodeId = "unknown-node",
             sequenceNumber = 1,
             routes = listOf(
-                DistanceVectorRouter.AdvertisedRoute("node-b", 1, 1)
-            )
+                DistanceVectorRouter.AdvertisedRoute("node-b", 1, 1),
+            ),
         )
 
         val changed = router.processRouteAdvertisement(advertisement, "192.168.1.99")
@@ -169,8 +169,9 @@ class DistanceVectorRouterTest {
             sourceNodeId = "node-a",
             sequenceNumber = 1,
             routes = listOf(
-                DistanceVectorRouter.AdvertisedRoute("node-local", 1, 1) // Route back to us
-            )
+                // Route back to us
+                DistanceVectorRouter.AdvertisedRoute("node-local", 1, 1),
+            ),
         )
 
         val changed = router.processRouteAdvertisement(advertisement, "192.168.1.2")
@@ -185,8 +186,9 @@ class DistanceVectorRouterTest {
             sourceNodeId = "node-a",
             sequenceNumber = 1,
             routes = listOf(
-                DistanceVectorRouter.AdvertisedRoute("node-far", 14, 14) // Almost at max
-            )
+                // Almost at max
+                DistanceVectorRouter.AdvertisedRoute("node-far", 14, 14),
+            ),
         )
 
         val changed = router.processRouteAdvertisement(advertisement, "192.168.1.2")
@@ -198,8 +200,8 @@ class DistanceVectorRouterTest {
             sourceNodeId = "node-a",
             sequenceNumber = 2,
             routes = listOf(
-                DistanceVectorRouter.AdvertisedRoute("node-too-far", 15, 15)
-            )
+                DistanceVectorRouter.AdvertisedRoute("node-too-far", 15, 15),
+            ),
         )
         router.processRouteAdvertisement(advertisement2, "192.168.1.2")
         assertFalse("Route with too many hops should be ignored", router.isReachable("node-too-far"))
@@ -213,7 +215,7 @@ class DistanceVectorRouterTest {
         val ad1 = DistanceVectorRouter.RouteAdvertisement(
             sourceNodeId = "node-a",
             sequenceNumber = 1,
-            routes = listOf(DistanceVectorRouter.AdvertisedRoute("node-b", 1, 1))
+            routes = listOf(DistanceVectorRouter.AdvertisedRoute("node-b", 1, 1)),
         )
         router.processRouteAdvertisement(ad1, "192.168.1.2")
         assertTrue(router.isReachable("node-b"))
@@ -222,7 +224,7 @@ class DistanceVectorRouterTest {
         val ad2 = DistanceVectorRouter.RouteAdvertisement(
             sourceNodeId = "node-a",
             sequenceNumber = 2,
-            routes = listOf(DistanceVectorRouter.AdvertisedRoute("node-b", DistanceVectorRouter.INFINITY, 16))
+            routes = listOf(DistanceVectorRouter.AdvertisedRoute("node-b", DistanceVectorRouter.INFINITY, 16)),
         )
         router.processRouteAdvertisement(ad2, "192.168.1.2")
         assertFalse("Node should be unreachable after infinity advertisement", router.isReachable("node-b"))
@@ -249,7 +251,7 @@ class DistanceVectorRouterTest {
         val ad = DistanceVectorRouter.RouteAdvertisement(
             sourceNodeId = "node-a",
             sequenceNumber = 1,
-            routes = listOf(DistanceVectorRouter.AdvertisedRoute("node-c", 1, 1))
+            routes = listOf(DistanceVectorRouter.AdvertisedRoute("node-c", 1, 1)),
         )
         router.processRouteAdvertisement(ad, "192.168.1.2")
 
@@ -274,9 +276,10 @@ class DistanceVectorRouterTest {
             routes = listOf(
                 DistanceVectorRouter.AdvertisedRoute("node-b", 2, 2),
                 DistanceVectorRouter.AdvertisedRoute("node-c", 3, 3),
-                DistanceVectorRouter.AdvertisedRoute("node-d", 16, 16) // Infinity
+                // Infinity
+                DistanceVectorRouter.AdvertisedRoute("node-d", 16, 16),
             ),
-            timestamp = 1234567890L
+            timestamp = 1234567890L,
         )
 
         val serialized = router.serializeAdvertisement(original)
@@ -299,7 +302,7 @@ class DistanceVectorRouterTest {
         val original = DistanceVectorRouter.RouteAdvertisement(
             sourceNodeId = "node-a",
             sequenceNumber = 1,
-            routes = emptyList()
+            routes = emptyList(),
         )
 
         val serialized = router.serializeAdvertisement(original)
@@ -372,7 +375,7 @@ class DistanceVectorRouterTest {
         val ad1 = DistanceVectorRouter.RouteAdvertisement(
             sourceNodeId = "node-a",
             sequenceNumber = 1,
-            routes = listOf(DistanceVectorRouter.AdvertisedRoute("node-c", 1, 1))
+            routes = listOf(DistanceVectorRouter.AdvertisedRoute("node-c", 1, 1)),
         )
         router.processRouteAdvertisement(ad1, "192.168.1.2")
 
@@ -382,7 +385,8 @@ class DistanceVectorRouterTest {
         val ad2 = DistanceVectorRouter.RouteAdvertisement(
             sourceNodeId = "node-b",
             sequenceNumber = 1,
-            routes = listOf(DistanceVectorRouter.AdvertisedRoute("node-c", 0, 0)) // Direct connection
+            // Direct connection
+            routes = listOf(DistanceVectorRouter.AdvertisedRoute("node-c", 0, 0)),
         )
         router.processRouteAdvertisement(ad2, "192.168.1.3")
 

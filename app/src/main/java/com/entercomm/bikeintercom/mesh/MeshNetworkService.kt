@@ -28,7 +28,7 @@ data class ServiceState(
     val isRunning: Boolean = false,
     val connectedDevices: Int = 0,
     val isRecording: Boolean = false,
-    val networkStatus: String = "Disconnected"
+    val networkStatus: String = "Disconnected",
 )
 
 class MeshNetworkService : Service() {
@@ -67,11 +67,11 @@ class MeshNetworkService : Service() {
     var onDeviceDiscovered: ((String, String) -> Unit)? = null
     var onConnectionEstablished: ((String) -> Unit)? = null
     var onError: ((String) -> Unit)? = null
-    
+
     inner class MeshNetworkBinder : Binder() {
         fun getService(): MeshNetworkService = this@MeshNetworkService
     }
-    
+
     override fun onCreate() {
         super.onCreate()
         android.util.Log.d("MeshNetworkService", "onCreate() called")
@@ -91,7 +91,7 @@ class MeshNetworkService : Service() {
                     connectionCoordinator = ConnectionCoordinator(
                         wifiDirectManager,
                         meshNetworkManager,
-                        scope
+                        scope,
                     )
                     setupConnectionCoordinatorCallbacks()
                     android.util.Log.d("MeshNetworkService", "Connection coordinator initialized")
@@ -111,12 +111,12 @@ class MeshNetworkService : Service() {
             throw e
         }
     }
-    
+
     override fun onBind(intent: Intent?): IBinder {
         logD { "onBind() called" }
         return binder
     }
-    
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START_MESH -> startMeshNetwork()
@@ -125,10 +125,10 @@ class MeshNetworkService : Service() {
             ACTION_STOP_RECORDING -> stopRecording()
             ACTION_TOGGLE_MUTE -> toggleMute()
         }
-        
+
         return START_STICKY
     }
-    
+
     override fun onDestroy() {
         super.onDestroy()
         if (::connectionCoordinator.isInitialized) {
@@ -138,7 +138,7 @@ class MeshNetworkService : Service() {
         scope.cancel()
         logD { "MeshNetworkService destroyed" }
     }
-    
+
     private fun initializeManagers() {
         try {
             android.util.Log.d("MeshNetworkService", "Starting manager initialization...")
@@ -227,7 +227,6 @@ class MeshNetworkService : Service() {
             }
 
             android.util.Log.d("MeshNetworkService", "Manager initialization completed")
-
         } catch (e: Exception) {
             android.util.Log.e("MeshNetworkService", "Critical error during manager initialization", e)
             onError?.invoke("Failed to initialize: ${e.message}")
@@ -254,30 +253,30 @@ class MeshNetworkService : Service() {
             }
         }
     }
-    
+
     private fun setupMeshCallbacks() {
         // Audio data callback
         meshNetworkManager.onAudioDataReceived = { audioData, sourceId ->
             audioManager.playAudioData(audioData, sourceId)
         }
-        
+
         // Control message callback
         meshNetworkManager.onControlMessageReceived = { message, sourceId ->
             handleControlMessage(message, sourceId)
         }
-        
+
         // Monitor state changes
         scope.launch {
             meshNetworkManager.connectedNodes.collect { nodes ->
                 updateServiceState {
                     copy(
                         connectedDevices = nodes.size,
-                        networkStatus = if (nodes.isNotEmpty()) "Connected (${nodes.size} devices)" else "Searching..."
+                        networkStatus = if (nodes.isNotEmpty()) "Connected (${nodes.size} devices)" else "Searching...",
                     )
                 }
             }
         }
-        
+
         scope.launch {
             audioManager.isRecording.collect { recording ->
                 updateServiceState {
@@ -285,19 +284,19 @@ class MeshNetworkService : Service() {
                 }
             }
         }
-        
+
         scope.launch {
             meshNetworkManager.isActive.collect { active ->
                 updateServiceState {
                     copy(
                         isRunning = active,
-                        networkStatus = if (active) "Active" else "Stopped"
+                        networkStatus = if (active) "Active" else "Stopped",
                     )
                 }
             }
         }
     }
-    
+
     fun startMeshNetwork() {
         scope.launch {
             try {
@@ -349,25 +348,20 @@ class MeshNetworkService : Service() {
                 updateServiceState {
                     copy(
                         isRunning = true,
-                        networkStatus = "Starting..."
+                        networkStatus = "Starting...",
                     )
                 }
 
                 logD { "Mesh network started successfully" }
-
             } catch (e: Exception) {
                 logE({ "Failed to start mesh network" }, e)
                 onError?.invoke("Failed to start mesh network: ${e.message}")
             }
         }
     }
-    
+
     // Helper function for retry logic
-    private suspend fun <T> retry(
-        maxAttempts: Int = AppConfig.Service.RETRY_MAX_ATTEMPTS,
-        delayMs: Long = AppConfig.Service.RETRY_DELAY_MS,
-        block: suspend () -> T
-    ): T {
+    private suspend fun <T> retry(maxAttempts: Int = AppConfig.Service.RETRY_MAX_ATTEMPTS, delayMs: Long = AppConfig.Service.RETRY_DELAY_MS, block: suspend () -> T): T {
         var lastException: Exception? = null
         repeat(maxAttempts) { attempt ->
             try {
@@ -417,13 +411,12 @@ class MeshNetworkService : Service() {
                 ServiceCompat.stopForeground(this@MeshNetworkService, ServiceCompat.STOP_FOREGROUND_REMOVE)
 
                 logD { "Mesh network stopped" }
-
             } catch (e: Exception) {
                 logE({ "Error stopping mesh network" }, e)
             }
         }
     }
-    
+
     fun startRecording() {
         if (_serviceState.value.isRunning && ::audioManager.isInitialized) {
             audioManager.startRecording()
@@ -453,7 +446,7 @@ class MeshNetworkService : Service() {
             logW { "Audio manager not initialized, cannot toggle mute" }
         }
     }
-    
+
     fun scanForDevices() {
         if (_serviceState.value.isRunning && ::meshNetworkManager.isInitialized) {
             logD { "Starting network scan for available devices..." }
@@ -476,7 +469,7 @@ class MeshNetworkService : Service() {
                 onError?.invoke(message)
             }
     }
-    
+
     private fun handleControlMessage(message: String, sourceId: String) {
         when (message) {
             "mute_request" -> logD { "Received mute request from $sourceId" }
@@ -504,7 +497,9 @@ class MeshNetworkService : Service() {
     fun getMeshTopology(): MeshTopology? {
         return if (::meshNetworkManager.isInitialized) {
             meshNetworkManager.getMeshTopology()
-        } else null
+        } else {
+            null
+        }
     }
 
     /**
@@ -533,7 +528,9 @@ class MeshNetworkService : Service() {
     fun getGroupCode(): String? {
         return if (::meshNetworkManager.isInitialized) {
             meshNetworkManager.getGroupCode()
-        } else null
+        } else {
+            null
+        }
     }
 
     /**
@@ -556,7 +553,9 @@ class MeshNetworkService : Service() {
     fun isGroupModeEnabled(): Boolean {
         return if (::meshNetworkManager.isInitialized) {
             meshNetworkManager.isGroupModeEnabled()
-        } else true  // Default to group mode for safety
+        } else {
+            true // Default to group mode for safety
+        }
     }
 
     /**
@@ -595,7 +594,7 @@ class MeshNetworkService : Service() {
             notificationHelper.updateNotification(newState, isMuted)
         }
     }
-    
+
     private fun cleanupManagers() {
         try {
             if (::locationManager.isInitialized) {

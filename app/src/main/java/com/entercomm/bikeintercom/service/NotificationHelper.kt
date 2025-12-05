@@ -36,7 +36,7 @@ class NotificationHelper(private val context: Context) {
             val channel = NotificationChannel(
                 AppConfig.Service.NOTIFICATION_CHANNEL_ID,
                 "Bike Intercom",
-                NotificationManager.IMPORTANCE_LOW
+                NotificationManager.IMPORTANCE_LOW,
             ).apply {
                 description = "Mesh network communication for bike intercom"
                 enableVibration(false)
@@ -61,16 +61,20 @@ class NotificationHelper(private val context: Context) {
             action = MeshNetworkService.ACTION_STOP_MESH
         }
         val stopPendingIntent = PendingIntent.getService(
-            context, 0, stopIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            context,
+            0,
+            stopIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
         val muteIntent = Intent(context, MeshNetworkService::class.java).apply {
             action = MeshNetworkService.ACTION_TOGGLE_MUTE
         }
         val mutePendingIntent = PendingIntent.getService(
-            context, 1, muteIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            context,
+            1,
+            muteIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
         val muteText = if (isMuted) "Unmute" else "Mute"

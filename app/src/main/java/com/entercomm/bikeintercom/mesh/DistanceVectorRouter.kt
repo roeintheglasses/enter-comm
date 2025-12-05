@@ -23,14 +23,14 @@ import java.util.concurrent.ConcurrentHashMap
  * - Unreachable routes are poisoned with INFINITY metric
  */
 class DistanceVectorRouter(
-    private val localNodeId: String
+    private val localNodeId: String,
 ) {
     companion object {
         // Routing constants
-        const val INFINITY = 16              // Maximum hop count (unreachable)
-        const val MAX_HOP_COUNT = 15         // Maximum valid hop count
-        const val ROUTE_TIMEOUT_MS = 30000L  // Route expires after 30s without update
-        const val ROUTE_FLUSH_MS = 60000L    // Route removed after 60s
+        const val INFINITY = 16 // Maximum hop count (unreachable)
+        const val MAX_HOP_COUNT = 15 // Maximum valid hop count
+        const val ROUTE_TIMEOUT_MS = 30000L // Route expires after 30s without update
+        const val ROUTE_FLUSH_MS = 60000L // Route removed after 60s
         const val UPDATE_INTERVAL_MS = 10000L // Periodic update interval
 
         // Route advertisement format version
@@ -41,15 +41,15 @@ class DistanceVectorRouter(
      * Routing table entry with extended metrics.
      */
     data class RouteEntry(
-        val destination: String,           // Destination node ID
-        val nextHop: String,               // Next hop node ID (direct neighbor)
-        val metric: Int,                   // Total cost (hop count + adjustments)
-        val hopCount: Int,                 // Number of hops to destination
+        val destination: String, // Destination node ID
+        val nextHop: String, // Next hop node ID (direct neighbor)
+        val metric: Int, // Total cost (hop count + adjustments)
+        val hopCount: Int, // Number of hops to destination
         val lastUpdated: Long = System.currentTimeMillis(),
         val expiresAt: Long = System.currentTimeMillis() + ROUTE_TIMEOUT_MS,
         val isDirectNeighbor: Boolean = false,
-        val linkQuality: Float = 1.0f,     // 0.0-1.0 link quality estimate
-        val sequenceNumber: Int = 0        // For loop detection
+        val linkQuality: Float = 1.0f, // 0.0-1.0 link quality estimate
+        val sequenceNumber: Int = 0, // For loop detection
     ) {
         val isExpired: Boolean
             get() = System.currentTimeMillis() > expiresAt
@@ -70,7 +70,7 @@ class DistanceVectorRouter(
         val port: Int,
         val lastSeen: Long = System.currentTimeMillis(),
         val linkQuality: Float = 1.0f,
-        val rtt: Long = 0L  // Round-trip time in ms
+        val rtt: Long = 0L, // Round-trip time in ms
     ) {
         val isAlive: Boolean
             get() = System.currentTimeMillis() - lastSeen < ROUTE_TIMEOUT_MS
@@ -84,7 +84,7 @@ class DistanceVectorRouter(
         val sourceNodeId: String,
         val sequenceNumber: Int,
         val routes: List<AdvertisedRoute>,
-        val timestamp: Long = System.currentTimeMillis()
+        val timestamp: Long = System.currentTimeMillis(),
     )
 
     /**
@@ -93,7 +93,7 @@ class DistanceVectorRouter(
     data class AdvertisedRoute(
         val destination: String,
         val metric: Int,
-        val hopCount: Int
+        val hopCount: Int,
     )
 
     // Routing table: destination -> RouteEntry
@@ -139,7 +139,7 @@ class DistanceVectorRouter(
             port = port,
             lastSeen = now,
             linkQuality = linkQuality,
-            rtt = existingNeighbor?.rtt ?: 0L
+            rtt = existingNeighbor?.rtt ?: 0L,
         )
 
         neighbors[nodeId] = neighbor
@@ -151,8 +151,8 @@ class DistanceVectorRouter(
         // Update route if: new route, or better metric, or same but fresher
         if (existingRoute == null ||
             metric < existingRoute.metric ||
-            (existingRoute.nextHop == nodeId && existingRoute.isStale)) {
-
+            (existingRoute.nextHop == nodeId && existingRoute.isStale)
+        ) {
             routingTable[nodeId] = RouteEntry(
                 destination = nodeId,
                 nextHop = nodeId,
@@ -160,7 +160,7 @@ class DistanceVectorRouter(
                 hopCount = 1,
                 isDirectNeighbor = true,
                 linkQuality = linkQuality,
-                sequenceNumber = ++localSequenceNumber
+                sequenceNumber = ++localSequenceNumber,
             )
 
             logD { "Added/updated neighbor route: $nodeId via direct, metric=$metric" }
@@ -169,7 +169,7 @@ class DistanceVectorRouter(
             // Just refresh the existing route
             routingTable[nodeId] = existingRoute.copy(
                 lastUpdated = now,
-                expiresAt = now + ROUTE_TIMEOUT_MS
+                expiresAt = now + ROUTE_TIMEOUT_MS,
             )
         }
     }
@@ -185,7 +185,7 @@ class DistanceVectorRouter(
             if (route.nextHop == nodeId) {
                 routingTable[dest] = route.copy(
                     metric = INFINITY,
-                    lastUpdated = System.currentTimeMillis()
+                    lastUpdated = System.currentTimeMillis(),
                 )
                 logD { "Poisoned route to $dest (neighbor $nodeId disconnected)" }
             }
@@ -208,7 +208,7 @@ class DistanceVectorRouter(
                 val now = System.currentTimeMillis()
                 routingTable[nodeId] = route.copy(
                     lastUpdated = now,
-                    expiresAt = now + ROUTE_TIMEOUT_MS
+                    expiresAt = now + ROUTE_TIMEOUT_MS,
                 )
             }
         }
@@ -279,11 +279,13 @@ class DistanceVectorRouter(
                     lastUpdated = now,
                     expiresAt = now + ROUTE_TIMEOUT_MS,
                     isDirectNeighbor = false,
-                    sequenceNumber = advertisement.sequenceNumber
+                    sequenceNumber = advertisement.sequenceNumber,
                 )
 
-                logD { "Updated route: ${advertisedRoute.destination} via $senderId, " +
-                        "metric=$newMetric, hops=$newHopCount" }
+                logD {
+                    "Updated route: ${advertisedRoute.destination} via $senderId, " +
+                        "metric=$newMetric, hops=$newHopCount"
+                }
                 tableChanged = true
             }
         }
@@ -304,11 +306,13 @@ class DistanceVectorRouter(
         val routes = mutableListOf<AdvertisedRoute>()
 
         // Add route to ourselves (metric 0)
-        routes.add(AdvertisedRoute(
-            destination = localNodeId,
-            metric = 0,
-            hopCount = 0
-        ))
+        routes.add(
+            AdvertisedRoute(
+                destination = localNodeId,
+                metric = 0,
+                hopCount = 0,
+            ),
+        )
 
         // Add all known routes with split-horizon poison-reverse
         routingTable.forEach { (destination, route) ->
@@ -322,17 +326,19 @@ class DistanceVectorRouter(
                 route.metric
             }
 
-            routes.add(AdvertisedRoute(
-                destination = destination,
-                metric = advertisedMetric,
-                hopCount = if (advertisedMetric >= INFINITY) INFINITY else route.hopCount
-            ))
+            routes.add(
+                AdvertisedRoute(
+                    destination = destination,
+                    metric = advertisedMetric,
+                    hopCount = if (advertisedMetric >= INFINITY) INFINITY else route.hopCount,
+                ),
+            )
         }
 
         return RouteAdvertisement(
             sourceNodeId = localNodeId,
             sequenceNumber = ++localSequenceNumber,
-            routes = routes
+            routes = routes,
         )
     }
 
@@ -424,7 +430,7 @@ class DistanceVectorRouter(
                 route.isExpired && route.metric < INFINITY -> {
                     routingTable[destination] = route.copy(
                         metric = INFINITY,
-                        lastUpdated = now
+                        lastUpdated = now,
                     )
                     logD { "Poisoned expired route to $destination" }
                     pendingTriggeredUpdate = true
@@ -434,7 +440,7 @@ class DistanceVectorRouter(
                 deadNeighbors.contains(route.nextHop) && route.metric < INFINITY -> {
                     routingTable[destination] = route.copy(
                         metric = INFINITY,
-                        lastUpdated = now
+                        lastUpdated = now,
                     )
                     logD { "Poisoned route to $destination (dead next hop)" }
                     pendingTriggeredUpdate = true
@@ -478,7 +484,7 @@ class DistanceVectorRouter(
             nextHop = route.nextHop,
             hopCount = route.hopCount,
             metric = route.metric,
-            isDirectNeighbor = route.isDirectNeighbor
+            isDirectNeighbor = route.isDirectNeighbor,
         )
     }
 
@@ -537,7 +543,7 @@ class DistanceVectorRouter(
                     sourceNodeId = sourceNodeId,
                     sequenceNumber = sequenceNumber,
                     routes = emptyList(),
-                    timestamp = timestamp
+                    timestamp = timestamp,
                 )
             }
 
@@ -550,9 +556,11 @@ class DistanceVectorRouter(
                         AdvertisedRoute(
                             destination = routeParts[0],
                             metric = routeParts[1].toInt(),
-                            hopCount = routeParts[2].toInt()
+                            hopCount = routeParts[2].toInt(),
                         )
-                    } else null
+                    } else {
+                        null
+                    }
                 }
 
             RouteAdvertisement(
@@ -560,7 +568,7 @@ class DistanceVectorRouter(
                 sourceNodeId = sourceNodeId,
                 sequenceNumber = sequenceNumber,
                 routes = routes,
-                timestamp = timestamp
+                timestamp = timestamp,
             )
         } catch (e: Exception) {
             logE({ "Failed to deserialize route advertisement" }, e)
@@ -584,9 +592,11 @@ class DistanceVectorRouter(
                 route.isStale -> "STALE"
                 else -> "ACTIVE"
             }
-            sb.appendLine("  ${route.destination}: via ${route.nextHop}, " +
+            sb.appendLine(
+                "  ${route.destination}: via ${route.nextHop}, " +
                     "metric=${route.metric}, hops=${route.hopCount}, " +
-                    "direct=${route.isDirectNeighbor}, status=$status")
+                    "direct=${route.isDirectNeighbor}, status=$status",
+            )
         }
 
         return sb.toString()
@@ -612,5 +622,5 @@ data class PathInfo(
     val nextHop: String,
     val hopCount: Int,
     val metric: Int,
-    val isDirectNeighbor: Boolean
+    val isDirectNeighbor: Boolean,
 )

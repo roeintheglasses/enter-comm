@@ -30,9 +30,9 @@ data class PeerLocation(
     val longitude: Double,
     val altitude: Double = 0.0,
     val accuracy: Float = 0f,
-    val bearing: Float = 0f,      // Direction peer is facing
-    val speed: Float = 0f,        // Speed in m/s
-    val timestamp: Long = System.currentTimeMillis()
+    val bearing: Float = 0f, // Direction peer is facing
+    val speed: Float = 0f, // Speed in m/s
+    val timestamp: Long = System.currentTimeMillis(),
 ) {
     /**
      * Calculate distance to another location in meters.
@@ -59,8 +59,8 @@ data class PeerLocation(
 data class RadarData(
     val localLocation: PeerLocation?,
     val peerLocations: List<PeerLocation>,
-    val radarRange: Float = 500f,  // Range in meters
-    val lastUpdate: Long = System.currentTimeMillis()
+    val radarRange: Float = 500f, // Range in meters
+    val lastUpdate: Long = System.currentTimeMillis(),
 ) {
     companion object {
         val EMPTY = RadarData(null, emptyList())
@@ -101,7 +101,7 @@ data class RadarData(
 
         // Convert polar to cartesian (x right, y up)
         val x = (sin(angleRad) * normalizedDistance).toFloat()
-        val y = (-cos(angleRad) * normalizedDistance).toFloat()  // Negative because y increases downward in canvas
+        val y = (-cos(angleRad) * normalizedDistance).toFloat() // Negative because y increases downward in canvas
 
         return x to y
     }
@@ -111,9 +111,9 @@ data class RadarData(
  * Location message types for mesh protocol.
  */
 enum class LocationMessageType {
-    LOCATION_UPDATE,      // Periodic location broadcast
-    LOCATION_REQUEST,     // Request peer's location
-    LOCATION_RESPONSE     // Response to location request
+    LOCATION_UPDATE, // Periodic location broadcast
+    LOCATION_REQUEST, // Request peer's location
+    LOCATION_RESPONSE, // Response to location request
 }
 
 /**
@@ -123,8 +123,8 @@ enum class LocationMessageType {
 class LocationManager(private val context: Context) {
 
     companion object {
-        private const val UPDATE_INTERVAL_MS = 5000L      // 5 second updates
-        private const val LOCATION_TIMEOUT_MS = 30000L    // Consider location stale after 30s
+        private const val UPDATE_INTERVAL_MS = 5000L // 5 second updates
+        private const val LOCATION_TIMEOUT_MS = 30000L // Consider location stale after 30s
     }
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
@@ -240,7 +240,7 @@ class LocationManager(private val context: Context) {
                 UPDATE_INTERVAL_MS,
                 1f, // minimum distance in meters
                 locationListener,
-                Looper.getMainLooper()
+                Looper.getMainLooper(),
             )
 
             _isTracking.value = true
@@ -376,7 +376,7 @@ class LocationManager(private val context: Context) {
             accuracy = location.accuracy,
             bearing = location.bearing,
             speed = location.speed,
-            timestamp = System.currentTimeMillis()
+            timestamp = System.currentTimeMillis(),
         )
 
         _localLocation.value = peerLocation
@@ -408,7 +408,7 @@ class LocationManager(private val context: Context) {
             localLocation = _localLocation.value,
             peerLocations = peerLocations.values.toList(),
             radarRange = _radarRange.value,
-            lastUpdate = System.currentTimeMillis()
+            lastUpdate = System.currentTimeMillis(),
         )
     }
 
@@ -433,7 +433,7 @@ class LocationManager(private val context: Context) {
                 accuracy = parts[4].toFloat(),
                 bearing = parts[5].toFloat(),
                 speed = parts[6].toFloat(),
-                timestamp = parts[7].toLong()
+                timestamp = parts[7].toLong(),
             )
         } catch (e: Exception) {
             logE({ "Failed to deserialize location" }, e)
@@ -444,7 +444,7 @@ class LocationManager(private val context: Context) {
     private fun hasLocationPermission(): Boolean {
         return ContextCompat.checkSelfPermission(
             context,
-            Manifest.permission.ACCESS_FINE_LOCATION
+            Manifest.permission.ACCESS_FINE_LOCATION,
         ) == PackageManager.PERMISSION_GRANTED
     }
 }
@@ -459,8 +459,8 @@ fun haversineDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): D
     val dLon = Math.toRadians(lon2 - lon1)
 
     val a = sin(dLat / 2).pow(2) +
-            cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) *
-            sin(dLon / 2).pow(2)
+        cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) *
+        sin(dLon / 2).pow(2)
 
     val c = 2 * atan2(sqrt(a), sqrt(1 - a))
 
@@ -477,7 +477,7 @@ fun initialBearing(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Doub
 
     val y = sin(dLonRad) * cos(lat2Rad)
     val x = cos(lat1Rad) * sin(lat2Rad) -
-            sin(lat1Rad) * cos(lat2Rad) * cos(dLonRad)
+        sin(lat1Rad) * cos(lat2Rad) * cos(dLonRad)
 
     var bearing = Math.toDegrees(atan2(y, x))
     bearing = (bearing + 360) % 360

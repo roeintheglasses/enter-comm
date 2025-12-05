@@ -17,7 +17,7 @@ class GroupCodeUtilsTest {
         val normalized = code.replace("-", "")
         assertTrue(
             "All characters should be valid",
-            normalized.all { it in GroupCodeUtils.CODE_CHARS }
+            normalized.all { it in GroupCodeUtils.CODE_CHARS },
         )
     }
 
@@ -33,23 +33,23 @@ class GroupCodeUtilsTest {
     fun `isValidGroupCode returns true for valid codes`() {
         assertTrue(GroupCodeUtils.isValidGroupCode("ABCD-EF"))
         assertTrue(GroupCodeUtils.isValidGroupCode("ABCDEF"))
-        assertTrue(GroupCodeUtils.isValidGroupCode("abcd-ef"))  // lowercase
+        assertTrue(GroupCodeUtils.isValidGroupCode("abcd-ef")) // lowercase
         assertTrue(GroupCodeUtils.isValidGroupCode("abcdef"))
-        assertTrue(GroupCodeUtils.isValidGroupCode("ABC DEF"))  // with space
+        assertTrue(GroupCodeUtils.isValidGroupCode("ABC DEF")) // with space
         assertTrue(GroupCodeUtils.isValidGroupCode("2345-67"))
         assertTrue(GroupCodeUtils.isValidGroupCode("RIDE-4K"))
     }
 
     @Test
     fun `isValidGroupCode returns false for invalid codes`() {
-        assertFalse(GroupCodeUtils.isValidGroupCode(""))  // empty
-        assertFalse(GroupCodeUtils.isValidGroupCode("ABC"))  // too short
-        assertFalse(GroupCodeUtils.isValidGroupCode("ABCDEFGH"))  // too long
-        assertFalse(GroupCodeUtils.isValidGroupCode("ABC0EF"))  // contains 0 (invalid)
-        assertFalse(GroupCodeUtils.isValidGroupCode("ABC1EF"))  // contains 1 (invalid)
-        assertFalse(GroupCodeUtils.isValidGroupCode("ABCIEF"))  // contains I (invalid)
-        assertFalse(GroupCodeUtils.isValidGroupCode("ABCLEF"))  // contains L (invalid)
-        assertFalse(GroupCodeUtils.isValidGroupCode("ABCOEF"))  // contains O (invalid)
+        assertFalse(GroupCodeUtils.isValidGroupCode("")) // empty
+        assertFalse(GroupCodeUtils.isValidGroupCode("ABC")) // too short
+        assertFalse(GroupCodeUtils.isValidGroupCode("ABCDEFGH")) // too long
+        assertFalse(GroupCodeUtils.isValidGroupCode("ABC0EF")) // contains 0 (invalid)
+        assertFalse(GroupCodeUtils.isValidGroupCode("ABC1EF")) // contains 1 (invalid)
+        assertFalse(GroupCodeUtils.isValidGroupCode("ABCIEF")) // contains I (invalid)
+        assertFalse(GroupCodeUtils.isValidGroupCode("ABCLEF")) // contains L (invalid)
+        assertFalse(GroupCodeUtils.isValidGroupCode("ABCOEF")) // contains O (invalid)
     }
 
     @Test
@@ -81,7 +81,7 @@ class GroupCodeUtilsTest {
         ambiguous.forEach { char ->
             assertFalse(
                 "CODE_CHARS should not contain $char",
-                char in GroupCodeUtils.CODE_CHARS
+                char in GroupCodeUtils.CODE_CHARS,
             )
         }
     }

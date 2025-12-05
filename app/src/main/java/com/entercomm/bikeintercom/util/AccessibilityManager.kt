@@ -23,13 +23,13 @@ data class AccessibilitySettings(
     val boneConduction: BoneConductionMode = BoneConductionMode.AUTO,
     val oneHandedMode: Boolean = true,
     val volumeButtonPtt: Boolean = false,
-    val swipeGesturesEnabled: Boolean = true
+    val swipeGesturesEnabled: Boolean = true,
 )
 
 enum class BoneConductionMode {
-    AUTO,      // Detect automatically
-    ENABLED,   // Always use bone conduction optimizations
-    DISABLED   // Never use bone conduction optimizations
+    AUTO, // Detect automatically
+    ENABLED, // Always use bone conduction optimizations
+    DISABLED, // Never use bone conduction optimizations
 }
 
 /**
@@ -116,7 +116,8 @@ class AccessibilityManager(private val context: Context) {
                 // TYPE_HEARING_AID, TYPE_BLE_HEADSET, or check product name
                 if (device.type == AudioDeviceInfo.TYPE_HEARING_AID ||
                     device.type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
-                    isBoneConductionDevice(device)) {
+                    isBoneConductionDevice(device)
+                ) {
                     _isBoneConductionDetected.value = true
                     logD { "Bone conduction headset detected: ${device.productName}" }
                     return true
@@ -136,7 +137,7 @@ class AccessibilityManager(private val context: Context) {
         }
         val boneConductionKeywords = listOf(
             "bone", "shokz", "aftershokz", "openrun", "opencomm",
-            "aeropex", "trekz", "titanium", "air", "conduction"
+            "aeropex", "trekz", "titanium", "air", "conduction",
         )
         return boneConductionKeywords.any { productName.contains(it) }
     }
@@ -151,14 +152,14 @@ class AccessibilityManager(private val context: Context) {
     fun getBoneConductionAudioParams(): BoneConductionParams {
         return if (shouldUseBoneConductionOptimizations()) {
             BoneConductionParams(
-                bassReduction = 0.5f,      // Reduce bass by 50%
-                midBoost = 1.3f,           // Boost mids by 30%
-                trebleBoost = 1.1f,        // Slight treble boost
-                volumeMultiplier = 1.2f,   // 20% volume increase
-                agcTargetLevel = 0.4f      // Higher AGC target
+                bassReduction = 0.5f, // Reduce bass by 50%
+                midBoost = 1.3f, // Boost mids by 30%
+                trebleBoost = 1.1f, // Slight treble boost
+                volumeMultiplier = 1.2f, // 20% volume increase
+                agcTargetLevel = 0.4f, // Higher AGC target
             )
         } else {
-            BoneConductionParams()  // Default params
+            BoneConductionParams() // Default params
         }
     }
 
@@ -193,11 +194,11 @@ class AccessibilityManager(private val context: Context) {
             highContrastMode = prefs.getBoolean(KEY_HIGH_CONTRAST, false),
             boneConduction = BoneConductionMode.valueOf(
                 prefs.getString(KEY_BONE_CONDUCTION, BoneConductionMode.AUTO.name)
-                    ?: BoneConductionMode.AUTO.name
+                    ?: BoneConductionMode.AUTO.name,
             ),
             oneHandedMode = prefs.getBoolean(KEY_ONE_HANDED, true),
             volumeButtonPtt = prefs.getBoolean(KEY_VOLUME_PTT, false),
-            swipeGesturesEnabled = prefs.getBoolean(KEY_SWIPE_GESTURES, true)
+            swipeGesturesEnabled = prefs.getBoolean(KEY_SWIPE_GESTURES, true),
         )
     }
 
@@ -236,5 +237,5 @@ data class BoneConductionParams(
     val midBoost: Float = 1.0f,
     val trebleBoost: Float = 1.0f,
     val volumeMultiplier: Float = 1.0f,
-    val agcTargetLevel: Float = 0.3f
+    val agcTargetLevel: Float = 0.3f,
 )

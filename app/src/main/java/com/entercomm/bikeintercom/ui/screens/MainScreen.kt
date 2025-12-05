@@ -3,10 +3,10 @@ package com.entercomm.bikeintercom.ui.screens
 import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -57,7 +57,7 @@ enum class AppMode {
     STANDBY,
     CONNECTING,
     ACTIVE,
-    TRANSMITTING
+    TRANSMITTING,
 }
 
 /**
@@ -67,18 +67,14 @@ enum class NavigationTab {
     INTERCOM,
     GROUP,
     RADAR,
-    SETTINGS
+    SETTINGS,
 }
 
 /**
  * Main screen with PTT-centric design and cohesive animations
  */
 @Composable
-fun IntercomMainScreen(
-    meshService: MeshNetworkService?,
-    isServiceBound: Boolean,
-    onboardingManager: OnboardingManager? = null
-) {
+fun IntercomMainScreen(meshService: MeshNetworkService?, isServiceBound: Boolean, onboardingManager: OnboardingManager? = null) {
     val context = LocalContext.current
     var serviceState by remember { mutableStateOf(ServiceState()) }
     var audioLevel by remember { mutableFloatStateOf(0f) }
@@ -157,7 +153,7 @@ fun IntercomMainScreen(
         bottomBar = {
             NavigationBar(
                 containerColor = DarkSurface,
-                contentColor = TextPrimary
+                contentColor = TextPrimary,
             ) {
                 NavigationBarItem(
                     selected = selectedTab == NavigationTab.INTERCOM,
@@ -169,8 +165,8 @@ fun IntercomMainScreen(
                         selectedTextColor = TechGreen,
                         indicatorColor = TechGreen.copy(alpha = 0.2f),
                         unselectedIconColor = TextTertiary,
-                        unselectedTextColor = TextTertiary
-                    )
+                        unselectedTextColor = TextTertiary,
+                    ),
                 )
                 NavigationBarItem(
                     selected = selectedTab == NavigationTab.GROUP,
@@ -182,8 +178,8 @@ fun IntercomMainScreen(
                         selectedTextColor = TechCyan,
                         indicatorColor = TechCyan.copy(alpha = 0.2f),
                         unselectedIconColor = TextTertiary,
-                        unselectedTextColor = TextTertiary
-                    )
+                        unselectedTextColor = TextTertiary,
+                    ),
                 )
                 NavigationBarItem(
                     selected = selectedTab == NavigationTab.RADAR,
@@ -195,8 +191,8 @@ fun IntercomMainScreen(
                         selectedTextColor = TechOrange,
                         indicatorColor = TechOrange.copy(alpha = 0.2f),
                         unselectedIconColor = TextTertiary,
-                        unselectedTextColor = TextTertiary
-                    )
+                        unselectedTextColor = TextTertiary,
+                    ),
                 )
                 NavigationBarItem(
                     selected = selectedTab == NavigationTab.SETTINGS,
@@ -208,16 +204,16 @@ fun IntercomMainScreen(
                         selectedTextColor = TextSecondary,
                         indicatorColor = TextSecondary.copy(alpha = 0.2f),
                         unselectedIconColor = TextTertiary,
-                        unselectedTextColor = TextTertiary
-                    )
+                        unselectedTextColor = TextTertiary,
+                    ),
                 )
             }
-        }
+        },
     ) { paddingValues ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
+                .padding(paddingValues),
         ) {
             when (selectedTab) {
                 NavigationTab.INTERCOM -> {
@@ -240,7 +236,7 @@ fun IntercomMainScreen(
                                 meshService?.startMeshNetwork()
                                 Toast.makeText(context, "Starting mesh network...", Toast.LENGTH_SHORT).show()
                             }
-                        }
+                        },
                     )
                 }
                 NavigationTab.GROUP -> {
@@ -263,7 +259,7 @@ fun IntercomMainScreen(
                         onJoinGroup = { group -> showJoinGroupDialog = group },
                         onKickMember = { nodeId -> groupManager?.kickMember(nodeId) },
                         onBanMember = { nodeId -> groupManager?.banMember(nodeId) },
-                        onChannelChange = { channel -> groupManager?.changeChannel(channel) }
+                        onChannelChange = { channel -> groupManager?.changeChannel(channel) },
                     )
                 }
                 NavigationTab.RADAR -> {
@@ -283,13 +279,13 @@ fun IntercomMainScreen(
                             android.util.Log.d("MainScreen", "onStopTracking called")
                             meshService?.stopLocationTracking()
                         },
-                        onRangeChange = { locationManager?.cycleRadarRange() }
+                        onRangeChange = { locationManager?.cycleRadarRange() },
                     )
                 }
                 NavigationTab.SETTINGS -> {
                     SettingsContent(
                         meshTopology = meshTopology,
-                        onboardingManager = onboardingManager
+                        onboardingManager = onboardingManager,
                     )
                 }
             }
@@ -302,7 +298,7 @@ fun IntercomMainScreen(
             onDismiss = { showCreateGroupDialog = false },
             onCreate = { name, channel, password, maxSize ->
                 groupManager?.createGroup(name, channel, password, maxSize)
-            }
+            },
         )
     }
 
@@ -312,7 +308,7 @@ fun IntercomMainScreen(
             onDismiss = { showJoinGroupDialog = null },
             onJoin = { password ->
                 groupManager?.joinGroup(group.groupId, password)
-            }
+            },
         )
     }
 }
@@ -327,12 +323,12 @@ private fun IntercomContent(
     serviceState: ServiceState,
     @Suppress("UNUSED_PARAMETER") meshTopology: MeshTopology?,
     onPTTPress: () -> Unit,
-    onStartStop: () -> Unit
+    onStartStop: () -> Unit,
 ) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(PitchBlack)
+            .background(PitchBlack),
     ) {
         // Animated background glow based on app mode
         AnimatedBackgroundGlow(appMode = appMode, audioLevel = audioLevel)
@@ -341,13 +337,13 @@ private fun IntercomContent(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             // Top status section
             StatusHeader(
                 appMode = appMode,
                 connectedDevices = serviceState.connectedDevices,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
             )
 
             Spacer(modifier = Modifier.weight(0.15f))
@@ -359,7 +355,7 @@ private fun IntercomContent(
                 isRecording = serviceState.isRecording,
                 onPTTPress = onPTTPress,
                 onStartStop = onStartStop,
-                modifier = Modifier.weight(0.5f)
+                modifier = Modifier.weight(0.5f),
             )
 
             Spacer(modifier = Modifier.weight(0.1f))
@@ -369,7 +365,7 @@ private fun IntercomContent(
                 appMode = appMode,
                 connectedDevices = serviceState.connectedDevices,
                 isRunning = serviceState.isRunning,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
             )
         }
     }
@@ -392,7 +388,7 @@ private fun GroupContent(
     onJoinGroup: (MeshGroup) -> Unit,
     onKickMember: (String) -> Unit,
     onBanMember: (String) -> Unit,
-    onChannelChange: (Int) -> Unit
+    onChannelChange: (Int) -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -400,13 +396,13 @@ private fun GroupContent(
             .background(PitchBlack)
             .verticalScroll(rememberScrollState())
             .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text(
             text = "Group & Channel",
             style = MaterialTheme.typography.headlineMedium,
             color = TextPrimary,
-            fontWeight = FontWeight.Bold
+            fontWeight = FontWeight.Bold,
         )
 
         // Group info card
@@ -416,19 +412,19 @@ private fun GroupContent(
             nickname = nickname,
             groupCode = groupCode,
             onLeaveGroup = onLeaveGroup,
-            onCreateGroup = onCreateGroup
+            onCreateGroup = onCreateGroup,
         )
 
         // Channel selector (if in group and owner)
         if (currentGroup != null && isOwner) {
             Card(
-                colors = CardDefaults.cardColors(containerColor = DarkSurface)
+                colors = CardDefaults.cardColors(containerColor = DarkSurface),
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     ChannelSelector(
                         currentChannel = currentGroup.channelNumber,
                         onChannelChange = onChannelChange,
-                        enabled = isOwner
+                        enabled = isOwner,
                     )
                 }
             }
@@ -441,7 +437,7 @@ private fun GroupContent(
                 localNodeId = localNodeId,
                 isOwner = isOwner,
                 onKickMember = onKickMember,
-                onBanMember = onBanMember
+                onBanMember = onBanMember,
             )
         }
 
@@ -449,7 +445,7 @@ private fun GroupContent(
         if (currentGroup == null && availableGroups.isNotEmpty()) {
             AvailableGroupsList(
                 groups = availableGroups,
-                onJoinGroup = onJoinGroup
+                onJoinGroup = onJoinGroup,
             )
         }
     }
@@ -459,13 +455,7 @@ private fun GroupContent(
  * Radar tab content
  */
 @Composable
-private fun RadarContent(
-    radarData: RadarData,
-    isTracking: Boolean,
-    onStartTracking: () -> Unit,
-    onStopTracking: () -> Unit,
-    onRangeChange: () -> Unit
-) {
+private fun RadarContent(radarData: RadarData, isTracking: Boolean, onStartTracking: () -> Unit, onStopTracking: () -> Unit, onRangeChange: () -> Unit) {
     val hasLocation = radarData.localLocation != null
 
     // Debug logging on composition
@@ -483,18 +473,18 @@ private fun RadarContent(
             .fillMaxSize()
             .background(PitchBlack)
             .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
                 text = "Rider Radar",
                 style = MaterialTheme.typography.headlineMedium,
                 color = TextPrimary,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
             )
 
             // Location tracking toggle
@@ -512,9 +502,9 @@ private fun RadarContent(
                     contentColor = when {
                         isTracking -> Color.White
                         else -> TechCyan
-                    }
+                    },
                 ),
-                border = if (!isTracking) BorderStroke(1.dp, TechCyan.copy(alpha = 0.5f)) else null
+                border = if (!isTracking) BorderStroke(1.dp, TechCyan.copy(alpha = 0.5f)) else null,
             ) {
                 Icon(
                     imageVector = when {
@@ -523,7 +513,7 @@ private fun RadarContent(
                         else -> Icons.Default.LocationOff
                     },
                     contentDescription = null,
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(18.dp),
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
@@ -531,7 +521,7 @@ private fun RadarContent(
                         isTracking && hasLocation -> "GPS Active"
                         isTracking -> "Acquiring..."
                         else -> "Start GPS"
-                    }
+                    },
                 )
             }
         }
@@ -539,24 +529,24 @@ private fun RadarContent(
         // Status message when tracking but no location yet
         if (isTracking && !hasLocation) {
             Card(
-                colors = CardDefaults.cardColors(containerColor = TechOrange.copy(alpha = 0.2f))
+                colors = CardDefaults.cardColors(containerColor = TechOrange.copy(alpha = 0.2f)),
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(12.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(20.dp),
                         strokeWidth = 2.dp,
-                        color = TechOrange
+                        color = TechOrange,
                     )
                     Text(
                         text = "Waiting for GPS signal... Make sure you're outdoors.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = TechOrange
+                        color = TechOrange,
                     )
                 }
             }
@@ -568,7 +558,7 @@ private fun RadarContent(
                 Text(
                     text = "Your location: %.5f, %.5f".format(loc.latitude, loc.longitude),
                     style = MaterialTheme.typography.bodySmall,
-                    color = TextTertiary
+                    color = TextTertiary,
                 )
             }
         }
@@ -577,7 +567,7 @@ private fun RadarContent(
         RadarWithPeerList(
             radarData = radarData,
             onRangeChange = onRangeChange,
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize(),
         )
     }
 }
@@ -586,10 +576,7 @@ private fun RadarContent(
  * Settings tab content
  */
 @Composable
-private fun SettingsContent(
-    meshTopology: MeshTopology?,
-    onboardingManager: OnboardingManager?
-) {
+private fun SettingsContent(meshTopology: MeshTopology?, onboardingManager: OnboardingManager?) {
     val userPrefs by onboardingManager?.userPreferences?.collectAsState()
         ?: remember { mutableStateOf(null) }
 
@@ -599,35 +586,35 @@ private fun SettingsContent(
             .background(PitchBlack)
             .verticalScroll(rememberScrollState())
             .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text(
             text = "Settings",
             style = MaterialTheme.typography.headlineMedium,
             color = TextPrimary,
-            fontWeight = FontWeight.Bold
+            fontWeight = FontWeight.Bold,
         )
 
         // Profile section
         Card(
-            colors = CardDefaults.cardColors(containerColor = DarkSurface)
+            colors = CardDefaults.cardColors(containerColor = DarkSurface),
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Row(
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.Person,
                         contentDescription = null,
                         tint = TechCyan,
-                        modifier = Modifier.size(24.dp)
+                        modifier = Modifier.size(24.dp),
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = "Profile",
                         style = MaterialTheme.typography.titleMedium,
                         color = TextPrimary,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
                     )
                 }
                 Spacer(modifier = Modifier.height(12.dp))
@@ -635,18 +622,18 @@ private fun SettingsContent(
                 // Nickname
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     Text(
                         text = "Nickname",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = TextSecondary
+                        color = TextSecondary,
                     )
                     Text(
                         text = userPrefs?.nickname ?: "Rider",
                         style = MaterialTheme.typography.bodyMedium,
                         color = TextPrimary,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.Medium,
                     )
                 }
 
@@ -655,12 +642,12 @@ private fun SettingsContent(
                 // Group Code
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     Text(
                         text = "Group Code",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = TextSecondary
+                        color = TextSecondary,
                     )
                     Text(
                         text = userPrefs?.currentGroupCode?.let {
@@ -668,7 +655,7 @@ private fun SettingsContent(
                         } ?: "None",
                         style = MaterialTheme.typography.bodyMedium,
                         color = if (userPrefs?.currentGroupCode != null) TechCyan else TextTertiary,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.Medium,
                     )
                 }
 
@@ -677,12 +664,12 @@ private fun SettingsContent(
                 // Connection Mode
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     Text(
                         text = "Connection Mode",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = TextSecondary
+                        color = TextSecondary,
                     )
                     Text(
                         text = when (userPrefs?.connectionMode) {
@@ -695,7 +682,7 @@ private fun SettingsContent(
                             ConnectionMode.OPEN_MODE -> TechOrange
                             else -> TechGreen
                         },
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.Medium,
                     )
                 }
             }
@@ -703,14 +690,14 @@ private fun SettingsContent(
 
         // Network topology section
         Card(
-            colors = CardDefaults.cardColors(containerColor = DarkSurface)
+            colors = CardDefaults.cardColors(containerColor = DarkSurface),
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
                     text = "Network Topology",
                     style = MaterialTheme.typography.titleMedium,
                     color = TextPrimary,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
                 )
                 Spacer(modifier = Modifier.height(12.dp))
 
@@ -719,18 +706,18 @@ private fun SettingsContent(
                         topology = meshTopology,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(300.dp)
+                            .height(300.dp),
                     )
                 } else {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(200.dp),
-                        contentAlignment = Alignment.Center
+                        contentAlignment = Alignment.Center,
                     ) {
                         Text(
                             text = "No network connections",
-                            color = TextTertiary
+                            color = TextTertiary,
                         )
                     }
                 }
@@ -739,25 +726,25 @@ private fun SettingsContent(
 
         // About section
         Card(
-            colors = CardDefaults.cardColors(containerColor = DarkSurface)
+            colors = CardDefaults.cardColors(containerColor = DarkSurface),
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
                     text = "About",
                     style = MaterialTheme.typography.titleMedium,
                     color = TextPrimary,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = "Enter-Comm v1.0",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = TextSecondary
+                    color = TextSecondary,
                 )
                 Text(
                     text = "WiFi Direct Mesh Intercom for Cyclists",
                     style = MaterialTheme.typography.bodySmall,
-                    color = TextTertiary
+                    color = TextTertiary,
                 )
             }
         }
@@ -768,10 +755,7 @@ private fun SettingsContent(
  * Animated background glow that responds to app state
  */
 @Composable
-private fun AnimatedBackgroundGlow(
-    appMode: AppMode,
-    audioLevel: Float
-) {
+private fun AnimatedBackgroundGlow(appMode: AppMode, audioLevel: Float) {
     val infiniteTransition = rememberInfiniteTransition(label = "bgGlow")
 
     val pulseScale by infiniteTransition.animateFloat(
@@ -779,9 +763,9 @@ private fun AnimatedBackgroundGlow(
         targetValue = 1.2f,
         animationSpec = infiniteRepeatable(
             animation = tween(2000, easing = EaseInOutCubic),
-            repeatMode = RepeatMode.Reverse
+            repeatMode = RepeatMode.Reverse,
         ),
-        label = "pulse"
+        label = "pulse",
     )
 
     val glowColor by animateColorAsState(
@@ -793,7 +777,7 @@ private fun AnimatedBackgroundGlow(
             AppMode.TRANSMITTING -> TechRed.copy(alpha = 0.1f + audioLevel * 0.15f)
         },
         animationSpec = tween(500, easing = EaseOutCubic),
-        label = "glowColor"
+        label = "glowColor",
     )
 
     val glowScale = if (appMode == AppMode.TRANSMITTING) {
@@ -806,14 +790,14 @@ private fun AnimatedBackgroundGlow(
         modifier = Modifier
             .fillMaxSize()
             .scale(glowScale)
-            .blur(100.dp)
+            .blur(100.dp),
     ) {
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(glowColor, Color.Transparent),
                 center = Offset(size.width / 2, size.height * 0.45f),
-                radius = size.minDimension * 0.8f
-            )
+                radius = size.minDimension * 0.8f,
+            ),
         )
     }
 }
@@ -822,21 +806,17 @@ private fun AnimatedBackgroundGlow(
  * Top status header with mode indicator
  */
 @Composable
-private fun StatusHeader(
-    appMode: AppMode,
-    connectedDevices: Int,
-    modifier: Modifier = Modifier
-) {
+private fun StatusHeader(appMode: AppMode, connectedDevices: Int, modifier: Modifier = Modifier) {
     val statusAlpha by animateFloatAsState(
         targetValue = if (appMode == AppMode.INITIALIZING) 0.5f else 1f,
         animationSpec = tween(300),
-        label = "statusAlpha"
+        label = "statusAlpha",
     )
 
     Row(
         modifier = modifier.alpha(statusAlpha),
         horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         // App title with status
         Column {
@@ -845,7 +825,7 @@ private fun StatusHeader(
                 style = MaterialTheme.typography.titleMedium,
                 color = TextPrimary,
                 fontWeight = FontWeight.Bold,
-                letterSpacing = 2.sp
+                letterSpacing = 2.sp,
             )
 
             Spacer(modifier = Modifier.height(4.dp))
@@ -857,7 +837,7 @@ private fun StatusHeader(
         AnimatedVisibility(
             visible = appMode == AppMode.ACTIVE || appMode == AppMode.TRANSMITTING,
             enter = fadeIn() + scaleIn(initialScale = 0.8f),
-            exit = fadeOut() + scaleOut(targetScale = 0.8f)
+            exit = fadeOut() + scaleOut(targetScale = 0.8f),
         ) {
             DeviceCountBadge(count = connectedDevices)
         }
@@ -876,9 +856,9 @@ private fun StatusIndicator(appMode: AppMode) {
         targetValue = 1.3f,
         animationSpec = infiniteRepeatable(
             animation = tween(800, easing = EaseInOutCubic),
-            repeatMode = RepeatMode.Reverse
+            repeatMode = RepeatMode.Reverse,
         ),
-        label = "dotScale"
+        label = "dotScale",
     )
 
     val statusColor by animateColorAsState(
@@ -890,7 +870,7 @@ private fun StatusIndicator(appMode: AppMode) {
             AppMode.TRANSMITTING -> TechRed
         },
         animationSpec = tween(300),
-        label = "statusColor"
+        label = "statusColor",
     )
 
     val statusText = when (appMode) {
@@ -903,14 +883,14 @@ private fun StatusIndicator(appMode: AppMode) {
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Box(
             modifier = Modifier
                 .size(8.dp)
                 .scale(if (appMode != AppMode.STANDBY) dotScale else 1f)
                 .clip(CircleShape)
-                .background(statusColor)
+                .background(statusColor),
         )
 
         Text(
@@ -918,7 +898,7 @@ private fun StatusIndicator(appMode: AppMode) {
             style = MaterialTheme.typography.labelSmall,
             color = statusColor,
             fontWeight = FontWeight.Medium,
-            letterSpacing = 1.sp
+            letterSpacing = 1.sp,
         )
     }
 }
@@ -934,19 +914,19 @@ private fun DeviceCountBadge(count: Int) {
             .border(1.dp, TechGreen.copy(alpha = 0.3f), RoundedCornerShape(20.dp))
             .padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Icon(
             imageVector = Icons.Rounded.Headphones,
             contentDescription = null,
             tint = TechGreen,
-            modifier = Modifier.size(16.dp)
+            modifier = Modifier.size(16.dp),
         )
         Text(
             text = "$count",
             style = MaterialTheme.typography.labelMedium,
             color = TechGreen,
-            fontWeight = FontWeight.Bold
+            fontWeight = FontWeight.Bold,
         )
     }
 }
@@ -956,42 +936,35 @@ private fun DeviceCountBadge(count: Int) {
  * Uses fixed size container to prevent layout jumps during transitions
  */
 @Composable
-private fun PTTHeroSection(
-    appMode: AppMode,
-    audioLevel: Float,
-    isRecording: Boolean,
-    onPTTPress: () -> Unit,
-    onStartStop: () -> Unit,
-    modifier: Modifier = Modifier
-) {
+private fun PTTHeroSection(appMode: AppMode, audioLevel: Float, isRecording: Boolean, onPTTPress: () -> Unit, onStartStop: () -> Unit, modifier: Modifier = Modifier) {
     // Fixed size container prevents layout jumps
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(280.dp), // Fixed height for both states
-        contentAlignment = Alignment.Center
+        contentAlignment = Alignment.Center,
     ) {
         // Crossfade between START and PTT buttons
         Crossfade(
             targetState = appMode == AppMode.STANDBY || appMode == AppMode.INITIALIZING,
             animationSpec = tween(300, easing = EaseInOutCubic),
-            label = "heroTransition"
+            label = "heroTransition",
         ) { isStandby ->
             Box(
                 modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
+                contentAlignment = Alignment.Center,
             ) {
                 if (isStandby) {
                     StartButton(
                         onClick = onStartStop,
-                        enabled = appMode != AppMode.INITIALIZING
+                        enabled = appMode != AppMode.INITIALIZING,
                     )
                 } else {
                     PTTButton(
                         isRecording = isRecording,
                         audioLevel = audioLevel,
                         onPress = onPTTPress,
-                        onLongPress = onStartStop
+                        onLongPress = onStartStop,
                     )
                 }
             }
@@ -1003,10 +976,7 @@ private fun PTTHeroSection(
  * Animated START button
  */
 @Composable
-private fun StartButton(
-    onClick: () -> Unit,
-    enabled: Boolean
-) {
+private fun StartButton(onClick: () -> Unit, enabled: Boolean) {
     val haptic = rememberHapticFeedback()
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
@@ -1017,7 +987,7 @@ private fun StartButton(
             else -> 1f
         },
         animationSpec = spring(dampingRatio = 0.6f, stiffness = 400f),
-        label = "startScale"
+        label = "startScale",
     )
 
     val infiniteTransition = rememberInfiniteTransition(label = "startPulse")
@@ -1026,9 +996,9 @@ private fun StartButton(
         targetValue = 1.15f,
         animationSpec = infiniteRepeatable(
             animation = tween(1500, easing = EaseInOutCubic),
-            repeatMode = RepeatMode.Reverse
+            repeatMode = RepeatMode.Reverse,
         ),
-        label = "ringScale"
+        label = "ringScale",
     )
 
     val ringAlpha by infiniteTransition.animateFloat(
@@ -1036,20 +1006,20 @@ private fun StartButton(
         targetValue = 0.6f,
         animationSpec = infiniteRepeatable(
             animation = tween(1500, easing = EaseInOutCubic),
-            repeatMode = RepeatMode.Reverse
+            repeatMode = RepeatMode.Reverse,
         ),
-        label = "ringAlpha"
+        label = "ringAlpha",
     )
 
     val buttonAlpha by animateFloatAsState(
         targetValue = if (enabled) 1f else 0.5f,
         animationSpec = tween(300),
-        label = "buttonAlpha"
+        label = "buttonAlpha",
     )
 
     Box(
         contentAlignment = Alignment.Center,
-        modifier = Modifier.alpha(buttonAlpha)
+        modifier = Modifier.alpha(buttonAlpha),
     ) {
         // Pulsing outer ring
         if (enabled) {
@@ -1060,8 +1030,8 @@ private fun StartButton(
                     .border(
                         width = 2.dp,
                         color = TechGreen.copy(alpha = ringAlpha),
-                        shape = CircleShape
-                    )
+                        shape = CircleShape,
+                    ),
             )
         }
 
@@ -1076,29 +1046,29 @@ private fun StartButton(
                         colors = listOf(
                             TechGreen.copy(alpha = 0.2f),
                             TechGreenDark.copy(alpha = 0.1f),
-                            Color.Transparent
-                        )
-                    )
+                            Color.Transparent,
+                        ),
+                    ),
                 )
                 .border(3.dp, TechGreen, CircleShape)
                 .clickable(
                     interactionSource = interactionSource,
                     indication = null,
-                    enabled = enabled
+                    enabled = enabled,
                 ) {
                     haptic.heavyClick()
                     onClick()
                 },
-            contentAlignment = Alignment.Center
+            contentAlignment = Alignment.Center,
         ) {
             Column(
-                horizontalAlignment = Alignment.CenterHorizontally
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Icon(
                     imageVector = Icons.Rounded.PowerSettingsNew,
                     contentDescription = "Start",
                     tint = TechGreen,
-                    modifier = Modifier.size(48.dp)
+                    modifier = Modifier.size(48.dp),
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
@@ -1106,7 +1076,7 @@ private fun StartButton(
                     style = MaterialTheme.typography.titleMedium,
                     color = TechGreen,
                     fontWeight = FontWeight.Bold,
-                    letterSpacing = 2.sp
+                    letterSpacing = 2.sp,
                 )
             }
         }
@@ -1118,12 +1088,7 @@ private fun StartButton(
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun PTTButton(
-    isRecording: Boolean,
-    audioLevel: Float,
-    onPress: () -> Unit,
-    onLongPress: () -> Unit
-) {
+private fun PTTButton(isRecording: Boolean, audioLevel: Float, onPress: () -> Unit, onLongPress: () -> Unit) {
     val haptic = rememberHapticFeedback()
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
@@ -1135,13 +1100,13 @@ private fun PTTButton(
             else -> 1f
         },
         animationSpec = spring(dampingRatio = 0.6f, stiffness = 300f),
-        label = "pttScale"
+        label = "pttScale",
     )
 
     val buttonColor by animateColorAsState(
         targetValue = if (isRecording) TechRed else TechGreen,
         animationSpec = tween(200),
-        label = "pttColor"
+        label = "pttColor",
     )
 
     val infiniteTransition = rememberInfiniteTransition(label = "pttAnim")
@@ -1151,13 +1116,13 @@ private fun PTTButton(
         targetValue = 360f,
         animationSpec = infiniteRepeatable(
             animation = tween(4000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
+            repeatMode = RepeatMode.Restart,
         ),
-        label = "ringRotation"
+        label = "ringRotation",
     )
 
     Box(
-        contentAlignment = Alignment.Center
+        contentAlignment = Alignment.Center,
     ) {
         // Audio level rings (only when recording)
         if (isRecording) {
@@ -1168,18 +1133,18 @@ private fun PTTButton(
                     targetValue = 1.5f + index * 0.2f,
                     animationSpec = infiniteRepeatable(
                         animation = tween(1000, delayMillis = delay, easing = EaseOut),
-                        repeatMode = RepeatMode.Restart
+                        repeatMode = RepeatMode.Restart,
                     ),
-                    label = "audioRing$index"
+                    label = "audioRing$index",
                 )
                 val ringAlpha by infiniteTransition.animateFloat(
                     initialValue = 0.4f,
                     targetValue = 0f,
                     animationSpec = infiniteRepeatable(
                         animation = tween(1000, delayMillis = delay, easing = EaseOut),
-                        repeatMode = RepeatMode.Restart
+                        repeatMode = RepeatMode.Restart,
                     ),
-                    label = "audioRingAlpha$index"
+                    label = "audioRingAlpha$index",
                 )
 
                 Box(
@@ -1189,8 +1154,8 @@ private fun PTTButton(
                         .border(
                             width = 2.dp,
                             color = TechRed.copy(alpha = ringAlpha * audioLevel),
-                            shape = CircleShape
-                        )
+                            shape = CircleShape,
+                        ),
                 )
             }
         }
@@ -1199,7 +1164,7 @@ private fun PTTButton(
         Canvas(
             modifier = Modifier
                 .size(180.dp)
-                .rotate(ringRotation)
+                .rotate(ringRotation),
         ) {
             val strokeWidth = 3.dp.toPx()
             drawArc(
@@ -1207,14 +1172,14 @@ private fun PTTButton(
                 startAngle = 0f,
                 sweepAngle = 60f,
                 useCenter = false,
-                style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+                style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
             )
             drawArc(
                 color = buttonColor.copy(alpha = 0.5f),
                 startAngle = 180f,
                 sweepAngle = 60f,
                 useCenter = false,
-                style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+                style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
             )
         }
 
@@ -1229,9 +1194,9 @@ private fun PTTButton(
                         colors = listOf(
                             buttonColor.copy(alpha = 0.25f),
                             buttonColor.copy(alpha = 0.1f),
-                            Color.Transparent
-                        )
-                    )
+                            Color.Transparent,
+                        ),
+                    ),
                 )
                 .border(4.dp, buttonColor, CircleShape)
                 .combinedClickable(
@@ -1244,18 +1209,18 @@ private fun PTTButton(
                     onLongClick = {
                         haptic.error() // Different haptic for long press
                         onLongPress()
-                    }
+                    },
                 ),
-            contentAlignment = Alignment.Center
+            contentAlignment = Alignment.Center,
         ) {
             Column(
-                horizontalAlignment = Alignment.CenterHorizontally
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Icon(
                     imageVector = if (isRecording) Icons.Rounded.MicOff else Icons.Rounded.Mic,
                     contentDescription = if (isRecording) "Stop" else "Talk",
                     tint = buttonColor,
-                    modifier = Modifier.size(48.dp)
+                    modifier = Modifier.size(48.dp),
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
@@ -1263,13 +1228,13 @@ private fun PTTButton(
                     style = MaterialTheme.typography.titleSmall,
                     color = buttonColor,
                     fontWeight = FontWeight.Bold,
-                    letterSpacing = 2.sp
+                    letterSpacing = 2.sp,
                 )
                 Text(
                     text = if (isRecording) "TO STOP" else "TO TALK",
                     style = MaterialTheme.typography.labelSmall,
                     color = buttonColor.copy(alpha = 0.7f),
-                    letterSpacing = 1.sp
+                    letterSpacing = 1.sp,
                 )
             }
         }
@@ -1281,7 +1246,7 @@ private fun PTTButton(
             color = TextTertiary,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .offset(y = 100.dp)
+                .offset(y = 100.dp),
         )
     }
 }
@@ -1290,12 +1255,7 @@ private fun PTTButton(
  * Bottom info section with network details
  */
 @Composable
-private fun BottomInfoSection(
-    appMode: AppMode,
-    connectedDevices: Int,
-    isRunning: Boolean,
-    modifier: Modifier = Modifier
-) {
+private fun BottomInfoSection(appMode: AppMode, connectedDevices: Int, isRunning: Boolean, modifier: Modifier = Modifier) {
     val contentAlpha by animateFloatAsState(
         targetValue = when (appMode) {
             AppMode.INITIALIZING -> 0.3f
@@ -1303,44 +1263,44 @@ private fun BottomInfoSection(
             else -> 1f
         },
         animationSpec = tween(300),
-        label = "bottomAlpha"
+        label = "bottomAlpha",
     )
 
     Column(
         modifier = modifier.alpha(contentAlpha),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         // Network status cards
         AnimatedVisibility(
             visible = isRunning,
             enter = fadeIn() + slideInVertically { it / 2 },
-            exit = fadeOut() + slideOutVertically { it / 2 }
+            exit = fadeOut() + slideOutVertically { it / 2 },
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 InfoCard(
                     icon = Icons.Rounded.Wifi,
                     label = "NETWORK",
                     value = if (isRunning) "MESH" else "OFF",
                     isActive = isRunning,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
                 )
                 InfoCard(
                     icon = Icons.Rounded.Group,
                     label = "RIDERS",
                     value = "$connectedDevices",
                     isActive = connectedDevices > 0,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
                 )
                 InfoCard(
                     icon = Icons.Rounded.SignalCellularAlt,
                     label = "SIGNAL",
                     value = if (isRunning) "GOOD" else "--",
                     isActive = isRunning,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
                 )
             }
         }
@@ -1349,14 +1309,14 @@ private fun BottomInfoSection(
         AnimatedVisibility(
             visible = !isRunning,
             enter = fadeIn(animationSpec = tween(300, delayMillis = 200)),
-            exit = fadeOut()
+            exit = fadeOut(),
         ) {
             Text(
                 text = "Tap START to create mesh network\nand connect with nearby riders",
                 style = MaterialTheme.typography.bodySmall,
                 color = TextTertiary,
                 textAlign = TextAlign.Center,
-                lineHeight = 20.sp
+                lineHeight = 20.sp,
             )
         }
     }
@@ -1366,23 +1326,17 @@ private fun BottomInfoSection(
  * Info card for bottom section
  */
 @Composable
-private fun InfoCard(
-    icon: ImageVector,
-    label: String,
-    value: String,
-    isActive: Boolean,
-    modifier: Modifier = Modifier
-) {
+private fun InfoCard(icon: ImageVector, label: String, value: String, isActive: Boolean, modifier: Modifier = Modifier) {
     val borderColor by animateColorAsState(
         targetValue = if (isActive) TechGreen.copy(alpha = 0.3f) else DarkBorder,
         animationSpec = tween(300),
-        label = "borderColor"
+        label = "borderColor",
     )
 
     val iconColor by animateColorAsState(
         targetValue = if (isActive) TechGreen else TextTertiary,
         animationSpec = tween(300),
-        label = "iconColor"
+        label = "iconColor",
     )
 
     Column(
@@ -1390,26 +1344,26 @@ private fun InfoCard(
             .background(DarkSurface, RoundedCornerShape(12.dp))
             .border(1.dp, borderColor, RoundedCornerShape(12.dp))
             .padding(12.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
             tint = iconColor,
-            modifier = Modifier.size(20.dp)
+            modifier = Modifier.size(20.dp),
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             text = value,
             style = MaterialTheme.typography.titleMedium,
             color = if (isActive) TextPrimary else TextTertiary,
-            fontWeight = FontWeight.Bold
+            fontWeight = FontWeight.Bold,
         )
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,
             color = TextTertiary,
-            letterSpacing = 0.5.sp
+            letterSpacing = 0.5.sp,
         )
     }
 }
