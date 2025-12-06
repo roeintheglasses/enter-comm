@@ -6,6 +6,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -13,7 +15,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -25,7 +30,16 @@ import com.entercomm.bikeintercom.mesh.MeshGroup
  * Group info header card showing current group status.
  */
 @Composable
-fun GroupInfoCard(group: MeshGroup?, memberCount: Int, nickname: String, groupCode: String?, onLeaveGroup: () -> Unit, onCreateGroup: () -> Unit, modifier: Modifier = Modifier) {
+fun GroupInfoCard(
+    group: MeshGroup?,
+    memberCount: Int,
+    nickname: String,
+    groupCode: String?,
+    onLeaveGroup: () -> Unit,
+    onCreateGroup: () -> Unit,
+    onJoinGroupByCode: () -> Unit = {},
+    modifier: Modifier = Modifier,
+) {
     Card(
         modifier = modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -156,8 +170,58 @@ fun GroupInfoCard(group: MeshGroup?, memberCount: Int, nickname: String, groupCo
                         )
                     }
                 }
+            } else if (groupCode != null) {
+                // Connected by code only (no full GroupManager group)
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column {
+                            Text(
+                                text = "Connected",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Text(
+                                text = "Listening on code $groupCode",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        TextButton(
+                            onClick = onLeaveGroup,
+                            colors = ButtonDefaults.textButtonColors(
+                                contentColor = MaterialTheme.colorScheme.error,
+                            ),
+                        ) {
+                            Text("Leave")
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Share,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Share code $groupCode to let others join",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
             } else {
-                // No group - show create button
+                // Not connected at all - show create and join buttons
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -167,15 +231,28 @@ fun GroupInfoCard(group: MeshGroup?, memberCount: Int, nickname: String, groupCo
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Button(onClick = onCreateGroup) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Create Group")
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Button(onClick = onCreateGroup) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Create Group")
+                        }
+                        OutlinedButton(onClick = onJoinGroupByCode) {
+                            Icon(
+                                imageVector = Icons.Default.Login,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Join Group")
+                        }
                     }
                 }
             }
@@ -601,4 +678,83 @@ private fun AvailableGroupItem(group: MeshGroup, onClick: () -> Unit) {
             )
         }
     }
+}
+
+/**
+ * Join group by code dialog - allows user to enter a group code manually.
+ */
+@Composable
+fun JoinGroupByCodeDialog(onDismiss: () -> Unit, onJoin: (groupCode: String) -> Unit, isValidCode: (String) -> Boolean) {
+    var groupCode by remember { mutableStateOf("") }
+    val focusManager = LocalFocusManager.current
+    val isValid = isValidCode(groupCode)
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Join Group") },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    text = "Enter the group code shared by your ride leader",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                OutlinedTextField(
+                    value = groupCode,
+                    onValueChange = { groupCode = it.uppercase().filter { c -> c.isLetterOrDigit() || c == '-' }.take(7) },
+                    label = { Text("Group Code") },
+                    placeholder = { Text("XXXX-XX") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Characters,
+                        imeAction = ImeAction.Done,
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onDone = {
+                            focusManager.clearFocus()
+                            if (isValid) {
+                                onJoin(groupCode)
+                                onDismiss()
+                            }
+                        },
+                    ),
+                    trailingIcon = {
+                        if (groupCode.isNotEmpty()) {
+                            Icon(
+                                imageVector = if (isValid) Icons.Default.Check else Icons.Default.Close,
+                                contentDescription = null,
+                                tint = if (isValid) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    },
+                    isError = groupCode.isNotEmpty() && !isValid,
+                    supportingText = if (groupCode.isNotEmpty() && !isValid) {
+                        { Text("Invalid code format (e.g., ABCD-EF)") }
+                    } else {
+                        null
+                    },
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onJoin(groupCode)
+                    onDismiss()
+                },
+                enabled = isValid,
+            ) {
+                Text("Join")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        },
+    )
 }

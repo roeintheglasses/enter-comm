@@ -4,7 +4,6 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -22,9 +21,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -40,9 +37,7 @@ import com.entercomm.bikeintercom.ui.theme.*
 enum class OnboardingStep {
     WELCOME,
     NICKNAME,
-    GROUP_CHOICE,
-    CREATE_GROUP,
-    JOIN_GROUP,
+    CONNECTION_INFO,
     TUTORIAL,
 }
 
@@ -53,8 +48,6 @@ enum class OnboardingStep {
 fun OnboardingScreen(onboardingManager: OnboardingManager, onComplete: (groupCode: String?, isCreator: Boolean) -> Unit) {
     var currentStep by remember { mutableStateOf(OnboardingStep.WELCOME) }
     var nickname by remember { mutableStateOf("") }
-    var groupCode by remember { mutableStateOf("") }
-    var isGroupCreator by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -78,48 +71,20 @@ fun OnboardingScreen(onboardingManager: OnboardingManager, onComplete: (groupCod
                     onNicknameChange = { nickname = it },
                     onNext = {
                         onboardingManager.setNickname(nickname)
-                        currentStep = OnboardingStep.GROUP_CHOICE
+                        currentStep = OnboardingStep.CONNECTION_INFO
                     },
                     onBack = { currentStep = OnboardingStep.WELCOME },
                 )
-                OnboardingStep.GROUP_CHOICE -> GroupChoiceScreen(
-                    onCreateGroup = {
-                        isGroupCreator = true
-                        groupCode = onboardingManager.generateGroupCode()
-                        currentStep = OnboardingStep.CREATE_GROUP
-                    },
-                    onJoinGroup = {
-                        isGroupCreator = false
-                        currentStep = OnboardingStep.JOIN_GROUP
-                    },
-                    onBack = { currentStep = OnboardingStep.NICKNAME },
-                )
-                OnboardingStep.CREATE_GROUP -> CreateGroupScreen(
-                    groupCode = groupCode,
+                OnboardingStep.CONNECTION_INFO -> ConnectionInfoScreen(
                     onNext = { currentStep = OnboardingStep.TUTORIAL },
-                    onBack = { currentStep = OnboardingStep.GROUP_CHOICE },
-                )
-                OnboardingStep.JOIN_GROUP -> JoinGroupScreen(
-                    groupCode = groupCode,
-                    onGroupCodeChange = { groupCode = it },
-                    onJoin = {
-                        if (onboardingManager.isValidGroupCode(groupCode)) {
-                            groupCode = onboardingManager.normalizeGroupCode(groupCode)
-                            currentStep = OnboardingStep.TUTORIAL
-                        }
-                    },
-                    onBack = { currentStep = OnboardingStep.GROUP_CHOICE },
-                    isValidCode = onboardingManager.isValidGroupCode(groupCode),
+                    onBack = { currentStep = OnboardingStep.NICKNAME },
                 )
                 OnboardingStep.TUTORIAL -> TutorialScreen(
                     onComplete = {
-                        onboardingManager.setCurrentGroupCode(groupCode)
                         onboardingManager.completeOnboarding()
-                        onComplete(groupCode, isGroupCreator)
+                        onComplete(null, false)
                     },
-                    onBack = {
-                        currentStep = if (isGroupCreator) OnboardingStep.CREATE_GROUP else OnboardingStep.JOIN_GROUP
-                    },
+                    onBack = { currentStep = OnboardingStep.CONNECTION_INFO },
                 )
             }
         }
@@ -142,13 +107,13 @@ private fun OnboardingProgress(currentStep: OnboardingStep, modifier: Modifier =
     val steps = listOf(
         OnboardingStep.WELCOME,
         OnboardingStep.NICKNAME,
-        OnboardingStep.GROUP_CHOICE,
+        OnboardingStep.CONNECTION_INFO,
         OnboardingStep.TUTORIAL,
     )
     val currentIndex = when (currentStep) {
         OnboardingStep.WELCOME -> 0
         OnboardingStep.NICKNAME -> 1
-        OnboardingStep.GROUP_CHOICE, OnboardingStep.CREATE_GROUP, OnboardingStep.JOIN_GROUP -> 2
+        OnboardingStep.CONNECTION_INFO -> 2
         OnboardingStep.TUTORIAL -> 3
     }
 
@@ -418,10 +383,10 @@ private fun NicknameScreen(nickname: String, onNicknameChange: (String) -> Unit,
 }
 
 /**
- * Group choice screen - create or join.
+ * Connection info screen - explains group functionality.
  */
 @Composable
-private fun GroupChoiceScreen(onCreateGroup: () -> Unit, onJoinGroup: () -> Unit, onBack: () -> Unit) {
+private fun ConnectionInfoScreen(onNext: () -> Unit, onBack: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -441,7 +406,7 @@ private fun GroupChoiceScreen(onCreateGroup: () -> Unit, onJoinGroup: () -> Unit
         Spacer(modifier = Modifier.height(24.dp))
 
         Text(
-            text = "Join a Riding Group",
+            text = "Riding Groups",
             style = MaterialTheme.typography.headlineSmall,
             color = TextPrimary,
             fontWeight = FontWeight.Bold,
@@ -450,201 +415,36 @@ private fun GroupChoiceScreen(onCreateGroup: () -> Unit, onJoinGroup: () -> Unit
         Spacer(modifier = Modifier.height(8.dp))
 
         Text(
-            text = "You'll only hear riders in your group",
+            text = "Connect with your riding buddies",
             style = MaterialTheme.typography.bodyMedium,
             color = TextSecondary,
             textAlign = TextAlign.Center,
         )
 
-        Spacer(modifier = Modifier.height(48.dp))
-
-        // Create group option
-        GroupOptionCard(
-            icon = Icons.Rounded.Add,
-            title = "Create a Group",
-            description = "Start a new group and share the code with your friends",
-            accentColor = TechGreen,
-            onClick = onCreateGroup,
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Text(
-            text = "or",
-            style = MaterialTheme.typography.bodyMedium,
-            color = TextTertiary,
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Join group option
-        GroupOptionCard(
-            icon = Icons.Rounded.Login,
-            title = "Join a Group",
-            description = "Enter a group code shared by your ride leader",
-            accentColor = TechCyan,
-            onClick = onJoinGroup,
-        )
-
-        Spacer(modifier = Modifier.weight(0.5f))
-
-        OutlinedButton(
-            onClick = onBack,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp),
-            shape = RoundedCornerShape(16.dp),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = TextSecondary),
-        ) {
-            Icon(Icons.Default.ArrowBack, contentDescription = null)
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("Back")
-        }
-    }
-}
-
-@Composable
-private fun GroupOptionCard(icon: ImageVector, title: String, description: String, accentColor: Color, onClick: () -> Unit) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(containerColor = DarkSurface),
-        shape = RoundedCornerShape(16.dp),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(20.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(56.dp)
-                    .clip(CircleShape)
-                    .background(accentColor.copy(alpha = 0.15f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = accentColor,
-                    modifier = Modifier.size(28.dp),
-                )
-            }
-
-            Spacer(modifier = Modifier.width(16.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = TextPrimary,
-                    fontWeight = FontWeight.Bold,
-                )
-                Text(
-                    text = description,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary,
-                )
-            }
-
-            Icon(
-                imageVector = Icons.Default.ChevronRight,
-                contentDescription = null,
-                tint = accentColor,
-            )
-        }
-    }
-}
-
-/**
- * Create group screen - shows the generated code.
- */
-@Composable
-private fun CreateGroupScreen(groupCode: String, onNext: () -> Unit, onBack: () -> Unit) {
-    val clipboardManager = LocalClipboardManager.current
-    var copied by remember { mutableStateOf(false) }
-
-    LaunchedEffect(copied) {
-        if (copied) {
-            kotlinx.coroutines.delay(2000)
-            copied = false
-        }
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Spacer(modifier = Modifier.weight(0.3f))
-
-        Icon(
-            imageVector = Icons.Rounded.CheckCircle,
-            contentDescription = null,
-            tint = TechGreen,
-            modifier = Modifier.size(64.dp),
-        )
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        Text(
-            text = "Your Group Code",
-            style = MaterialTheme.typography.headlineSmall,
-            color = TextPrimary,
-            fontWeight = FontWeight.Bold,
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Text(
-            text = "Share this code with your riding group",
-            style = MaterialTheme.typography.bodyMedium,
-            color = TextSecondary,
-        )
-
         Spacer(modifier = Modifier.height(32.dp))
 
-        // Group code display
+        // Info card about groups
         Card(
-            modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = DarkSurface),
             shape = RoundedCornerShape(16.dp),
         ) {
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                Text(
-                    text = groupCode,
-                    style = MaterialTheme.typography.displaySmall,
-                    color = TechGreen,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 4.sp,
+                GroupInfoItem(
+                    icon = Icons.Rounded.Add,
+                    title = "Create a Group",
+                    description = "Start a new group and share the code with friends",
+                    accentColor = TechGreen,
                 )
 
-                Spacer(modifier = Modifier.height(16.dp))
-
-                OutlinedButton(
-                    onClick = {
-                        clipboardManager.setText(AnnotatedString(groupCode))
-                        copied = true
-                    },
-                    shape = RoundedCornerShape(8.dp),
-                ) {
-                    Icon(
-                        imageVector = if (copied) Icons.Default.Check else Icons.Default.ContentCopy,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(if (copied) "Copied!" else "Copy Code")
-                }
+                GroupInfoItem(
+                    icon = Icons.Rounded.Login,
+                    title = "Join a Group",
+                    description = "Enter a code shared by your ride leader",
+                    accentColor = TechCyan,
+                )
             }
         }
 
@@ -666,7 +466,7 @@ private fun CreateGroupScreen(groupCode: String, onNext: () -> Unit, onBack: () 
                 )
                 Spacer(modifier = Modifier.width(12.dp))
                 Text(
-                    text = "Other riders can join by entering this code. You'll be the group leader.",
+                    text = "You can create or join a group anytime from the Group tab after setup.",
                     style = MaterialTheme.typography.bodySmall,
                     color = TechCyan,
                 )
@@ -700,7 +500,7 @@ private fun CreateGroupScreen(groupCode: String, onNext: () -> Unit, onBack: () 
                 colors = ButtonDefaults.buttonColors(containerColor = TechGreen),
                 shape = RoundedCornerShape(16.dp),
             ) {
-                Text("Continue")
+                Text("Got it!")
                 Spacer(modifier = Modifier.width(8.dp))
                 Icon(Icons.Default.ArrowForward, contentDescription = null)
             }
@@ -708,122 +508,39 @@ private fun CreateGroupScreen(groupCode: String, onNext: () -> Unit, onBack: () 
     }
 }
 
-/**
- * Join group screen - enter code.
- */
 @Composable
-private fun JoinGroupScreen(groupCode: String, onGroupCodeChange: (String) -> Unit, onJoin: () -> Unit, onBack: () -> Unit, isValidCode: Boolean) {
-    val focusManager = LocalFocusManager.current
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
+private fun GroupInfoItem(icon: ImageVector, title: String, description: String, accentColor: Color) {
+    Row(
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Spacer(modifier = Modifier.weight(0.3f))
-
-        Icon(
-            imageVector = Icons.Rounded.Login,
-            contentDescription = null,
-            tint = TechCyan,
-            modifier = Modifier.size(64.dp),
-        )
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        Text(
-            text = "Enter Group Code",
-            style = MaterialTheme.typography.headlineSmall,
-            color = TextPrimary,
-            fontWeight = FontWeight.Bold,
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Text(
-            text = "Ask your ride leader for the code",
-            style = MaterialTheme.typography.bodyMedium,
-            color = TextSecondary,
-        )
-
-        Spacer(modifier = Modifier.height(32.dp))
-
-        OutlinedTextField(
-            value = groupCode,
-            onValueChange = { onGroupCodeChange(it.uppercase().take(7)) },
-            label = { Text("Group Code") },
-            placeholder = { Text("XXXX-XX") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = if (groupCode.isNotEmpty() && isValidCode) TechGreen else TechCyan,
-                unfocusedBorderColor = DarkBorder,
-                focusedLabelColor = TechCyan,
-            ),
-            keyboardOptions = KeyboardOptions(
-                capitalization = KeyboardCapitalization.Characters,
-                imeAction = ImeAction.Done,
-            ),
-            keyboardActions = KeyboardActions(
-                onDone = {
-                    focusManager.clearFocus()
-                    if (isValidCode) onJoin()
-                },
-            ),
-            trailingIcon = {
-                if (groupCode.isNotEmpty()) {
-                    Icon(
-                        imageVector = if (isValidCode) Icons.Default.Check else Icons.Default.Close,
-                        contentDescription = null,
-                        tint = if (isValidCode) TechGreen else TechRed,
-                    )
-                }
-            },
-        )
-
-        if (groupCode.isNotEmpty() && !isValidCode) {
-            Text(
-                text = "Invalid code format. Codes are 6 characters (e.g., ABCD-EF)",
-                style = MaterialTheme.typography.labelSmall,
-                color = TechRed,
-                modifier = Modifier.padding(top = 8.dp),
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(accentColor.copy(alpha = 0.15f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = accentColor,
+                modifier = Modifier.size(20.dp),
             )
         }
 
-        Spacer(modifier = Modifier.weight(0.5f))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            OutlinedButton(
-                onClick = onBack,
-                modifier = Modifier
-                    .weight(1f)
-                    .height(56.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = TextSecondary),
-            ) {
-                Icon(Icons.Default.ArrowBack, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Back")
-            }
-
-            Button(
-                onClick = onJoin,
-                modifier = Modifier
-                    .weight(1f)
-                    .height(56.dp),
-                enabled = isValidCode,
-                colors = ButtonDefaults.buttonColors(containerColor = TechGreen),
-                shape = RoundedCornerShape(16.dp),
-            ) {
-                Text("Join")
-                Spacer(modifier = Modifier.width(8.dp))
-                Icon(Icons.Default.ArrowForward, contentDescription = null)
-            }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall,
+                color = TextPrimary,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary,
+            )
         }
     }
 }

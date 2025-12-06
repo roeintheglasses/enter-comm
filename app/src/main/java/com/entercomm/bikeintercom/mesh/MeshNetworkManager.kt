@@ -71,11 +71,9 @@ class MeshNetworkManager(
         private const val MIN_GROUP_CODE_LENGTH = 4
         private const val MAX_GROUP_CODE_LENGTH = 8
         private val GROUP_CODE_PATTERN = Regex("^[A-Z0-9]{4,8}$")
-        private val UUID_PATTERN = Regex("^[a-fA-F0-9-]{8,36}$")
 
-        // Rate limiting constants
-        private const val MAX_JOIN_ATTEMPTS_PER_IP = 3
-        private const val JOIN_ATTEMPT_WINDOW_MS = 60_000L // 1 minute
+        // Accepts node-XXXXXXXX format or UUID-like format
+        private val UUID_PATTERN = Regex("^(node-[a-fA-F0-9]{8}|[a-fA-F0-9-]{8,36})$")
 
         /**
          * Delimiter used in pipe-delimited message format.
@@ -145,45 +143,6 @@ class MeshNetworkManager(
             deviceName = sanitizeForDelimitedFormat(deviceName),
             groupCode = sanitizeForDelimitedFormat(groupCode),
         )
-    }
-
-    /**
-     * Rate limit tracking for join attempts per IP address.
-     */
-    private data class JoinAttemptTracker(
-        var count: Int = 0,
-        var windowStart: Long = System.currentTimeMillis(),
-    )
-
-    // Rate limiting tracker for join attempts (prevents brute-force group code guessing)
-    private val joinAttemptTrackers = ConcurrentHashMap<String, JoinAttemptTracker>()
-
-    /**
-     * Check if an IP address should be rate-limited for join attempts.
-     * Returns true if the IP has exceeded the rate limit and should be blocked.
-     */
-    private fun isRateLimited(ipAddress: String): Boolean {
-        val currentTime = System.currentTimeMillis()
-        val tracker = joinAttemptTrackers.compute(ipAddress) { _, existing ->
-            if (existing == null) {
-                JoinAttemptTracker(count = 1, windowStart = currentTime)
-            } else {
-                // Reset window if expired
-                if (currentTime - existing.windowStart > JOIN_ATTEMPT_WINDOW_MS) {
-                    existing.count = 1
-                    existing.windowStart = currentTime
-                } else {
-                    existing.count++
-                }
-                existing
-            }
-        }
-
-        val isLimited = tracker != null && tracker.count > MAX_JOIN_ATTEMPTS_PER_IP
-        if (isLimited) {
-            logW { "Rate limiting join attempts from $ipAddress (${tracker?.count} attempts in window)" }
-        }
-        return isLimited
     }
 
     // Sanitize device name at construction to ensure safe serialization
@@ -741,12 +700,6 @@ class MeshNetworkManager(
         logD { "Handling discovery message from $senderIp" }
         logD { "Message payload: ${String(message.payload)}" }
 
-        // Security: Check rate limiting first
-        if (isRateLimited(senderIp)) {
-            logW { "Rejecting discovery from rate-limited IP: $senderIp" }
-            return
-        }
-
         // Validate the discovery payload
         val payloadString = String(message.payload)
         val validatedPayload = validateDiscoveryPayload(payloadString)
@@ -761,7 +714,7 @@ class MeshNetworkManager(
 
         logD {
             "Parsed discovery: nodeId=$remoteNodeId, deviceName=$deviceName, " +
-                "groupCode=$remoteGroupCode, senderIp=$senderIp"
+                "groupCode=$remoteGroupCode, senderIp=$senderIp, ourGroupCode=$groupCode"
         }
 
         // Ignore messages from ourselves
@@ -770,15 +723,18 @@ class MeshNetworkManager(
             return
         }
 
-        // Group filtering: Only accept nodes with matching group code when group mode is enabled
-        if (groupModeEnabled && groupCode != null) {
-            val ourCode = groupCode!!
-            val theirCode = remoteGroupCode.uppercase()
-            if (ourCode != theirCode && theirCode != "OPEN" && ourCode != "OPEN") {
-                logD { "Ignoring node $remoteNodeId - group code mismatch (ours=$ourCode, theirs=$theirCode)" }
-                return
-            }
+        // Group filtering based on group code
+        // - If we have no group code (null/OPEN), accept everyone
+        // - If we have a group code, only accept nodes with the same code
+        val ourCode = groupCode?.uppercase()
+        val theirCode = remoteGroupCode.uppercase()
+
+        // We're in a group - only accept matching codes
+        if (ourCode != null && ourCode != "OPEN" && theirCode != ourCode) {
+            logD { "Ignoring node $remoteNodeId - group code mismatch (ours=$ourCode, theirs=$theirCode)" }
+            return
         }
+        // If we have no group code or are OPEN, accept all nodes
 
         // Check if we should respond (rate limiting with synchronized access)
         val currentTime = System.currentTimeMillis()
@@ -1175,7 +1131,9 @@ class MeshNetworkManager(
             try {
                 logD { "Sending discovery probe to $ipAddress:$port" }
 
-                val payload = "$nodeId|$deviceName".toByteArray()
+                // Include group code in discovery probe for filtering (matches broadcastDiscovery format)
+                val groupCodePart = groupCode ?: "OPEN"
+                val payload = "$nodeId|$deviceName|$groupCodePart".toByteArray()
                 val message = MeshMessage(
                     sourceId = nodeId,
                     destinationId = "discovery",
@@ -1465,15 +1423,6 @@ class MeshNetworkManager(
             expiredIps.forEach { ip ->
                 recentlySeenIps.remove(ip)
             }
-        }
-
-        // Clean up old join attempt trackers
-        val expiredTrackers = joinAttemptTrackers.filter { (_, tracker) ->
-            currentTime - tracker.windowStart > JOIN_ATTEMPT_WINDOW_MS * 2
-        }.keys.toList()
-
-        expiredTrackers.forEach { ip ->
-            joinAttemptTrackers.remove(ip)
         }
 
         if (expiredNodes.isNotEmpty() || expiredRoutes.isNotEmpty()) {

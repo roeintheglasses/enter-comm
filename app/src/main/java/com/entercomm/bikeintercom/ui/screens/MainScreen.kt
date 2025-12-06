@@ -102,6 +102,7 @@ fun IntercomMainScreen(meshService: MeshNetworkService?, isServiceBound: Boolean
     // Dialog states
     var showCreateGroupDialog by remember { mutableStateOf(false) }
     var showJoinGroupDialog by remember { mutableStateOf<MeshGroup?>(null) }
+    var showJoinGroupByCodeDialog by remember { mutableStateOf(false) }
 
     // Derive app mode from state - this drives all animations
     val appMode by remember(isServiceBound, serviceState) {
@@ -255,8 +256,16 @@ fun IntercomMainScreen(meshService: MeshNetworkService?, isServiceBound: Boolean
                         isOwner = groupManager?.isOwner() ?: false,
                         localNodeId = meshService?.getMeshNetworkManager()?.let { "" } ?: "",
                         onCreateGroup = { showCreateGroupDialog = true },
-                        onLeaveGroup = { groupManager?.leaveGroup() },
+                        onLeaveGroup = {
+                            // Leave the GroupManager group
+                            groupManager?.leaveGroup()
+                            // Clear the group code from OnboardingManager and MeshService
+                            onboardingManager?.setCurrentGroupCode(null)
+                            meshService?.setGroupCode(null)
+                            Toast.makeText(context, "Left group", Toast.LENGTH_SHORT).show()
+                        },
                         onJoinGroup = { group -> showJoinGroupDialog = group },
+                        onJoinGroupByCode = { showJoinGroupByCodeDialog = true },
                         onKickMember = { nodeId -> groupManager?.kickMember(nodeId) },
                         onBanMember = { nodeId -> groupManager?.banMember(nodeId) },
                         onChannelChange = { channel -> groupManager?.changeChannel(channel) },
@@ -297,7 +306,25 @@ fun IntercomMainScreen(meshService: MeshNetworkService?, isServiceBound: Boolean
         CreateGroupDialog(
             onDismiss = { showCreateGroupDialog = false },
             onCreate = { name, channel, password, maxSize ->
+                // Generate a new group code
+                val newGroupCode = onboardingManager?.generateGroupCode()
+                if (newGroupCode == null) {
+                    Toast.makeText(context, "Failed to create group", Toast.LENGTH_SHORT).show()
+                    return@CreateGroupDialog
+                }
+
+                // Store in OnboardingManager for persistence
+                onboardingManager.setCurrentGroupCode(newGroupCode)
+
+                // Set in MeshService for mesh filtering
+                meshService?.setGroupCode(newGroupCode)
+
+                // Create GroupManager group for advanced features (channels, passwords, members)
                 groupManager?.createGroup(name, channel, password, maxSize)
+
+                // Show confirmation with the shareable code
+                val formattedCode = onboardingManager.formatGroupCode(newGroupCode)
+                Toast.makeText(context, "Group created! Code: $formattedCode", Toast.LENGTH_LONG).show()
             },
         )
     }
@@ -309,6 +336,20 @@ fun IntercomMainScreen(meshService: MeshNetworkService?, isServiceBound: Boolean
             onJoin = { password ->
                 groupManager?.joinGroup(group.groupId, password)
             },
+        )
+    }
+
+    if (showJoinGroupByCodeDialog) {
+        JoinGroupByCodeDialog(
+            onDismiss = { showJoinGroupByCodeDialog = false },
+            onJoin = { code ->
+                val normalizedCode = onboardingManager?.normalizeGroupCode(code) ?: code.replace("-", "")
+                // Update both OnboardingManager (for persistence) and MeshService (for active connection)
+                onboardingManager?.setCurrentGroupCode(normalizedCode)
+                meshService?.setGroupCode(normalizedCode)
+                Toast.makeText(context, "Joined group: ${onboardingManager?.formatGroupCode(normalizedCode) ?: normalizedCode}", Toast.LENGTH_SHORT).show()
+            },
+            isValidCode = { code -> onboardingManager?.isValidGroupCode(code) ?: false },
         )
     }
 }
@@ -386,6 +427,7 @@ private fun GroupContent(
     onCreateGroup: () -> Unit,
     onLeaveGroup: () -> Unit,
     onJoinGroup: (MeshGroup) -> Unit,
+    onJoinGroupByCode: () -> Unit,
     onKickMember: (String) -> Unit,
     onBanMember: (String) -> Unit,
     onChannelChange: (Int) -> Unit,
@@ -413,6 +455,7 @@ private fun GroupContent(
             groupCode = groupCode,
             onLeaveGroup = onLeaveGroup,
             onCreateGroup = onCreateGroup,
+            onJoinGroupByCode = onJoinGroupByCode,
         )
 
         // Channel selector (if in group and owner)

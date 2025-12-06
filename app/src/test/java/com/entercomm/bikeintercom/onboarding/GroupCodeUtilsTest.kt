@@ -6,18 +6,17 @@ import org.junit.Test
 class GroupCodeUtilsTest {
 
     @Test
-    fun `generateGroupCode returns formatted code`() {
+    fun `generateGroupCode returns raw code`() {
         val code = GroupCodeUtils.generateGroupCode()
 
-        // Should be in format XXXX-XX
-        assertTrue("Code should contain dash", code.contains("-"))
-        assertEquals("Code should have correct format length", 7, code.length)
+        // Should be raw 6-character code without dash
+        assertFalse("Code should not contain dash", code.contains("-"))
+        assertEquals("Code should have correct length", 6, code.length)
 
         // All characters should be valid
-        val normalized = code.replace("-", "")
         assertTrue(
             "All characters should be valid",
-            normalized.all { it in GroupCodeUtils.CODE_CHARS },
+            code.all { it in GroupCodeUtils.CODE_CHARS },
         )
     }
 
@@ -97,12 +96,14 @@ class GroupCodeUtilsTest {
         repeat(50) {
             val generated = GroupCodeUtils.generateGroupCode()
             val normalized = GroupCodeUtils.normalizeGroupCode(generated)
-            val formatted = GroupCodeUtils.formatGroupCode(normalized)
+            val formatted = GroupCodeUtils.formatGroupCode(generated)
 
             assertTrue("Generated code should be valid", GroupCodeUtils.isValidGroupCode(generated))
             assertTrue("Normalized code should be valid", GroupCodeUtils.isValidGroupCode(normalized))
             assertTrue("Formatted code should be valid", GroupCodeUtils.isValidGroupCode(formatted))
-            assertEquals("Format should be consistent", generated, formatted)
+            // Generated is raw (ABCDEF), normalized is same (ABCDEF), formatted has dash (ABCD-EF)
+            assertEquals("Generated should equal normalized", generated, normalized)
+            assertEquals("Normalize of formatted should equal generated", generated, GroupCodeUtils.normalizeGroupCode(formatted))
         }
     }
 }

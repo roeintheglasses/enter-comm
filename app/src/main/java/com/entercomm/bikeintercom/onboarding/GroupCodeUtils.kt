@@ -12,15 +12,15 @@ object GroupCodeUtils {
 
     /**
      * Generate a new shareable group code.
-     * Format: XXXX-XX (e.g., "RIDE-4K", "TEAM-7X")
+     * Returns raw 6-character code (e.g., "RIDE4K", "TEAM7X").
+     * Use formatGroupCode() for display (e.g., "RIDE-4K").
      */
     fun generateGroupCode(): String {
-        val code = buildString {
+        return buildString {
             repeat(CODE_LENGTH) {
                 append(CODE_CHARS.random())
             }
         }
-        return formatGroupCode(code)
     }
 
     /**

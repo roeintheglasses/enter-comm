@@ -40,7 +40,8 @@
     <ID>DataClassShouldBeImmutable:MeshNetworkManager.kt$MeshNetworkManager.JoinAttemptTracker$var windowStart: Long = System.currentTimeMillis()</ID>
     <ID>LargeClass:MeshNetworkManager.kt$MeshNetworkManager</ID>
     <ID>LongMethod:GroupComponents.kt$@Composable fun CreateGroupDialog(onDismiss: () -&gt; Unit, onCreate: (name: String, channel: Int, password: String?, maxSize: Int) -&gt; Unit)</ID>
-    <ID>LongMethod:GroupComponents.kt$@Composable fun GroupInfoCard(group: MeshGroup?, memberCount: Int, nickname: String, groupCode: String?, onLeaveGroup: () -&gt; Unit, onCreateGroup: () -&gt; Unit, modifier: Modifier = Modifier)</ID>
+    <ID>LongMethod:GroupComponents.kt$@Composable fun GroupInfoCard( group: MeshGroup?, memberCount: Int, nickname: String, groupCode: String?, onLeaveGroup: () -&gt; Unit, onCreateGroup: () -&gt; Unit, onJoinGroupByCode: () -&gt; Unit = {}, modifier: Modifier = Modifier, )</ID>
+    <ID>LongMethod:GroupComponents.kt$@Composable fun JoinGroupByCodeDialog(onDismiss: () -&gt; Unit, onJoin: (groupCode: String) -&gt; Unit, isValidCode: (String) -&gt; Boolean)</ID>
     <ID>LongMethod:GroupComponents.kt$@Composable fun MemberListItem(member: GroupMember, isLocalUser: Boolean, isOwner: Boolean, onKick: (() -&gt; Unit)? = null, onBan: (() -&gt; Unit)? = null, modifier: Modifier = Modifier)</ID>
     <ID>LongMethod:MainScreen.kt$@Composable fun IntercomMainScreen(meshService: MeshNetworkService?, isServiceBound: Boolean, onboardingManager: OnboardingManager? = null)</ID>
     <ID>LongMethod:MainScreen.kt$@Composable private fun BottomInfoSection(appMode: AppMode, connectedDevices: Int, isRunning: Boolean, modifier: Modifier = Modifier)</ID>
@@ -52,10 +53,7 @@
     <ID>LongMethod:MeshNetworkManager.kt$MeshNetworkManager$private fun handleDiscoveryMessage(message: MeshMessage, senderIp: String)</ID>
     <ID>LongMethod:MeshNetworkService.kt$MeshNetworkService$fun startMeshNetwork()</ID>
     <ID>LongMethod:MeshNetworkService.kt$MeshNetworkService$private fun initializeManagers()</ID>
-    <ID>LongMethod:OnboardingScreen.kt$@Composable fun OnboardingScreen(onboardingManager: OnboardingManager, onComplete: (groupCode: String?, isCreator: Boolean) -&gt; Unit)</ID>
-    <ID>LongMethod:OnboardingScreen.kt$@Composable private fun CreateGroupScreen(groupCode: String, onNext: () -&gt; Unit, onBack: () -&gt; Unit)</ID>
-    <ID>LongMethod:OnboardingScreen.kt$@Composable private fun GroupChoiceScreen(onCreateGroup: () -&gt; Unit, onJoinGroup: () -&gt; Unit, onBack: () -&gt; Unit)</ID>
-    <ID>LongMethod:OnboardingScreen.kt$@Composable private fun JoinGroupScreen(groupCode: String, onGroupCodeChange: (String) -&gt; Unit, onJoin: () -&gt; Unit, onBack: () -&gt; Unit, isValidCode: Boolean)</ID>
+    <ID>LongMethod:OnboardingScreen.kt$@Composable private fun ConnectionInfoScreen(onNext: () -&gt; Unit, onBack: () -&gt; Unit)</ID>
     <ID>LongMethod:OnboardingScreen.kt$@Composable private fun NicknameScreen(nickname: String, onNicknameChange: (String) -&gt; Unit, onNext: () -&gt; Unit, onBack: () -&gt; Unit)</ID>
     <ID>LongMethod:OnboardingScreen.kt$@Composable private fun TutorialScreen(onComplete: () -&gt; Unit, onBack: () -&gt; Unit)</ID>
     <ID>LongMethod:OnboardingScreen.kt$@Composable private fun WelcomeScreen(onNext: () -&gt; Unit)</ID>
@@ -68,9 +66,9 @@
     <ID>LongMethod:TechnicalComponents.kt$@Composable fun PTTButton(isRecording: Boolean, onClick: () -&gt; Unit, modifier: Modifier = Modifier, enabled: Boolean = true, size: Dp = AppConfig.UI.PTT_BUTTON_SIZE_DP.dp)</ID>
     <ID>LongMethod:TechnicalComponents.kt$@Composable fun TechnicalButton( text: String, onClick: () -&gt; Unit, modifier: Modifier = Modifier, icon: ImageVector? = null, isActive: Boolean = false, buttonType: TechnicalButtonType = TechnicalButtonType.PRIMARY, enabled: Boolean = true, minHeight: Dp = AppConfig.UI.MIN_BUTTON_HEIGHT_DP.dp, )</ID>
     <ID>LongMethod:TechnicalComponents.kt$@Composable fun TechnicalStatusCard(title: String, status: String, isActive: Boolean = false, isError: Boolean = false, modifier: Modifier = Modifier, content: @Composable ColumnScope.() -&gt; Unit = {})</ID>
-    <ID>LongParameterList:GroupComponents.kt$(group: MeshGroup?, memberCount: Int, nickname: String, groupCode: String?, onLeaveGroup: () -&gt; Unit, onCreateGroup: () -&gt; Unit, modifier: Modifier = Modifier)</ID>
+    <ID>LongParameterList:GroupComponents.kt$( group: MeshGroup?, memberCount: Int, nickname: String, groupCode: String?, onLeaveGroup: () -&gt; Unit, onCreateGroup: () -&gt; Unit, onJoinGroupByCode: () -&gt; Unit = {}, modifier: Modifier = Modifier, )</ID>
     <ID>LongParameterList:MainScreen.kt$( appMode: AppMode, audioLevel: Float, serviceState: ServiceState, @Suppress("UNUSED_PARAMETER") meshTopology: MeshTopology?, onPTTPress: () -&gt; Unit, onStartStop: () -&gt; Unit, )</ID>
-    <ID>LongParameterList:MainScreen.kt$( currentGroup: MeshGroup?, members: List&lt;GroupMember&gt;, nickname: String, groupCode: String?, availableGroups: List&lt;MeshGroup&gt;, isOwner: Boolean, localNodeId: String, onCreateGroup: () -&gt; Unit, onLeaveGroup: () -&gt; Unit, onJoinGroup: (MeshGroup) -&gt; Unit, onKickMember: (String) -&gt; Unit, onBanMember: (String) -&gt; Unit, onChannelChange: (Int) -&gt; Unit, )</ID>
+    <ID>LongParameterList:MainScreen.kt$( currentGroup: MeshGroup?, members: List&lt;GroupMember&gt;, nickname: String, groupCode: String?, availableGroups: List&lt;MeshGroup&gt;, isOwner: Boolean, localNodeId: String, onCreateGroup: () -&gt; Unit, onLeaveGroup: () -&gt; Unit, onJoinGroup: (MeshGroup) -&gt; Unit, onJoinGroupByCode: () -&gt; Unit, onKickMember: (String) -&gt; Unit, onBanMember: (String) -&gt; Unit, onChannelChange: (Int) -&gt; Unit, )</ID>
     <ID>LongParameterList:TopologyData.kt$TopologyBuilder$(nodeId: String, displayName: String, isDirectNeighbor: Boolean, hopCount: Int, linkQuality: Float, lastSeen: Long)</ID>
     <ID>MatchingDeclarationName:OnboardingScreen.kt$OnboardingStep</ID>
     <ID>NestedBlockDepth:AudioManager.kt$AudioManager$private suspend fun processAudioInput()</ID>
