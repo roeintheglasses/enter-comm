@@ -164,7 +164,7 @@ fun IntercomMainScreen(meshService: MeshNetworkService?, isServiceBound: Boolean
                     colors = NavigationBarItemDefaults.colors(
                         selectedIconColor = TechGreen,
                         selectedTextColor = TechGreen,
-                        indicatorColor = TechGreen.copy(alpha = 0.2f),
+                        indicatorColor = DarkSurfaceElevated,
                         unselectedIconColor = TextTertiary,
                         unselectedTextColor = TextTertiary,
                     ),
@@ -177,7 +177,7 @@ fun IntercomMainScreen(meshService: MeshNetworkService?, isServiceBound: Boolean
                     colors = NavigationBarItemDefaults.colors(
                         selectedIconColor = TechCyan,
                         selectedTextColor = TechCyan,
-                        indicatorColor = TechCyan.copy(alpha = 0.2f),
+                        indicatorColor = DarkSurfaceElevated,
                         unselectedIconColor = TextTertiary,
                         unselectedTextColor = TextTertiary,
                     ),
@@ -190,7 +190,7 @@ fun IntercomMainScreen(meshService: MeshNetworkService?, isServiceBound: Boolean
                     colors = NavigationBarItemDefaults.colors(
                         selectedIconColor = TechOrange,
                         selectedTextColor = TechOrange,
-                        indicatorColor = TechOrange.copy(alpha = 0.2f),
+                        indicatorColor = DarkSurfaceElevated,
                         unselectedIconColor = TextTertiary,
                         unselectedTextColor = TextTertiary,
                     ),
@@ -201,9 +201,9 @@ fun IntercomMainScreen(meshService: MeshNetworkService?, isServiceBound: Boolean
                     icon = { Icon(Icons.Rounded.Settings, contentDescription = "Settings") },
                     label = { Text("Settings") },
                     colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = TextSecondary,
-                        selectedTextColor = TextSecondary,
-                        indicatorColor = TextSecondary.copy(alpha = 0.2f),
+                        selectedIconColor = TextPrimary,
+                        selectedTextColor = TextPrimary,
+                        indicatorColor = DarkSurfaceElevated,
                         unselectedIconColor = TextTertiary,
                         unselectedTextColor = TextTertiary,
                     ),
