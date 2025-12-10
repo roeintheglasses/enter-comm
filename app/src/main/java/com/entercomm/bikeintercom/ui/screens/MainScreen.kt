@@ -5,11 +5,9 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
@@ -500,118 +498,262 @@ private fun GroupContent(
 @Composable
 private fun RadarContent(radarData: RadarData, isTracking: Boolean, onStartTracking: () -> Unit, onStopTracking: () -> Unit, onRangeChange: () -> Unit) {
     val hasLocation = radarData.localLocation != null
-
-    // Debug logging on composition
-    LaunchedEffect(Unit) {
-        android.util.Log.d("RadarContent", "RadarContent composed! isTracking=$isTracking, hasLocation=$hasLocation")
-    }
-
-    // Log when isTracking changes
-    LaunchedEffect(isTracking) {
-        android.util.Log.d("RadarContent", "isTracking state changed to: $isTracking")
-    }
+    val peersInRange = radarData.peersInRange()
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(PitchBlack)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+            .padding(horizontal = 20.dp, vertical = 16.dp),
     ) {
+        // Header section
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
+            verticalAlignment = Alignment.Top,
         ) {
-            Text(
-                text = "Rider Radar",
-                style = MaterialTheme.typography.headlineMedium,
-                color = TextPrimary,
-                fontWeight = FontWeight.Bold,
-            )
-
-            // Location tracking toggle
-            Button(
-                onClick = {
-                    android.util.Log.d("RadarContent", "Button clicked! isTracking=$isTracking")
-                    if (isTracking) onStopTracking() else onStartTracking()
-                },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = when {
-                        isTracking && hasLocation -> TechGreen
-                        isTracking -> TechOrange
-                        else -> DarkSurfaceElevated
-                    },
-                    contentColor = when {
-                        isTracking -> Color.White
-                        else -> TechCyan
-                    },
-                ),
-                border = if (!isTracking) BorderStroke(1.dp, TechCyan.copy(alpha = 0.5f)) else null,
-            ) {
-                Icon(
-                    imageVector = when {
-                        isTracking && hasLocation -> Icons.Default.LocationOn
-                        isTracking -> Icons.Default.GpsNotFixed
-                        else -> Icons.Default.LocationOff
-                    },
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                )
-                Spacer(modifier = Modifier.width(8.dp))
+            Column {
                 Text(
-                    when {
-                        isTracking && hasLocation -> "GPS Active"
-                        isTracking -> "Acquiring..."
-                        else -> "Start GPS"
+                    text = "Rider Radar",
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = TextPrimary,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = when {
+                        !isTracking -> "GPS disabled"
+                        !hasLocation -> "Acquiring signal..."
+                        peersInRange.isEmpty() -> "No riders nearby"
+                        else -> "${peersInRange.size} rider${if (peersInRange.size > 1) "s" else ""} in range"
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = when {
+                        !isTracking -> TextTertiary
+                        !hasLocation -> TechOrange
+                        peersInRange.isEmpty() -> TextSecondary
+                        else -> TechGreen
                     },
                 )
             }
-        }
 
-        // Status message when tracking but no location yet
-        if (isTracking && !hasLocation) {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = TechOrange.copy(alpha = 0.2f)),
-            ) {
+            // Status indicator pill
+            if (isTracking) {
                 Row(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        .background(
+                            color = if (hasLocation) TechGreen.copy(alpha = 0.15f) else TechOrange.copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(16.dp),
+                        )
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        strokeWidth = 2.dp,
-                        color = TechOrange,
-                    )
+                    if (!hasLocation) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(12.dp),
+                            strokeWidth = 1.5.dp,
+                            color = TechOrange,
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .background(TechGreen, CircleShape),
+                        )
+                    }
                     Text(
-                        text = "Waiting for GPS signal... Make sure you're outdoors.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TechOrange,
+                        text = if (hasLocation) "LIVE" else "GPS",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (hasLocation) TechGreen else TechOrange,
+                        fontWeight = FontWeight.Bold,
                     )
                 }
             }
         }
 
-        // Show location coordinates when available
-        if (hasLocation) {
+        Spacer(modifier = Modifier.height(20.dp))
+
+        // Location info bar (when available)
+        AnimatedVisibility(
+            visible = hasLocation,
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically(),
+        ) {
             radarData.localLocation?.let { loc ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(DarkSurface, RoundedCornerShape(12.dp))
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.LocationOn,
+                            contentDescription = null,
+                            tint = TechGreen,
+                            modifier = Modifier.size(20.dp),
+                        )
+                        Column {
+                            Text(
+                                text = "Your Location",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TextTertiary,
+                            )
+                            Text(
+                                text = "%.4f, %.4f".format(loc.latitude, loc.longitude),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextPrimary,
+                                fontWeight = FontWeight.Medium,
+                            )
+                        }
+                    }
+                    if (loc.speed > 0) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Speed,
+                                contentDescription = null,
+                                tint = TechCyan,
+                                modifier = Modifier.size(16.dp),
+                            )
+                            Text(
+                                text = "${(loc.speed * 3.6).toInt()} km/h",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TechCyan,
+                                fontWeight = FontWeight.Medium,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Acquiring GPS message
+        AnimatedVisibility(
+            visible = isTracking && !hasLocation,
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically(),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(TechOrange.copy(alpha = 0.1f), RoundedCornerShape(12.dp))
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp,
+                    color = TechOrange,
+                )
                 Text(
-                    text = "Your location: %.5f, %.5f".format(loc.latitude, loc.longitude),
+                    text = "Searching for GPS signal...",
                     style = MaterialTheme.typography.bodySmall,
-                    color = TextTertiary,
+                    color = TechOrange,
                 )
             }
         }
 
-        // Radar view
-        RadarWithPeerList(
-            radarData = radarData,
-            onRangeChange = onRangeChange,
-            modifier = Modifier.fillMaxSize(),
-        )
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Radar view (main content)
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+            contentAlignment = Alignment.Center,
+        ) {
+            RadarWithPeerList(
+                radarData = radarData,
+                onRangeChange = onRangeChange,
+                modifier = Modifier.fillMaxSize(),
+            )
+
+            // Empty state overlay when GPS is off
+            if (!isTracking) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(PitchBlack.copy(alpha = 0.85f)),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.LocationOff,
+                        contentDescription = null,
+                        tint = TextTertiary,
+                        modifier = Modifier.size(64.dp),
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "GPS Disabled",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = TextSecondary,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Enable GPS to see nearby riders",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextTertiary,
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        // GPS toggle button at bottom
+        Button(
+            onClick = {
+                if (isTracking) onStopTracking() else onStartTracking()
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp),
+            shape = RoundedCornerShape(28.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = when {
+                    isTracking && hasLocation -> TechGreen
+                    isTracking -> TechOrange
+                    else -> DarkSurfaceElevated
+                },
+                contentColor = when {
+                    isTracking -> Color.White
+                    else -> TechCyan
+                },
+            ),
+            border = if (!isTracking) BorderStroke(1.5.dp, TechCyan.copy(alpha = 0.6f)) else null,
+        ) {
+            Icon(
+                imageVector = when {
+                    isTracking && hasLocation -> Icons.Default.LocationOn
+                    isTracking -> Icons.Default.GpsNotFixed
+                    else -> Icons.Default.LocationOff
+                },
+                contentDescription = null,
+                modifier = Modifier.size(24.dp),
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(
+                text = when {
+                    isTracking && hasLocation -> "GPS Active"
+                    isTracking -> "Acquiring GPS..."
+                    else -> "Enable GPS"
+                },
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
     }
 }
 
@@ -785,7 +927,7 @@ private fun SettingsContent(meshTopology: MeshTopology?, onboardingManager: Onbo
                     color = TextSecondary,
                 )
                 Text(
-                    text = "WiFi Direct Mesh Intercom for Cyclists",
+                    text = "WiFi Direct Mesh Intercom",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextTertiary,
                 )
@@ -1007,7 +1149,7 @@ private fun PTTHeroSection(appMode: AppMode, audioLevel: Float, isRecording: Boo
                         isRecording = isRecording,
                         audioLevel = audioLevel,
                         onPress = onPTTPress,
-                        onLongPress = onStartStop,
+                        onDisconnect = onStartStop,
                     )
                 }
             }
@@ -1127,14 +1269,128 @@ private fun StartButton(onClick: () -> Unit, enabled: Boolean) {
 }
 
 /**
+ * Audio level ring animation for PTT button
+ */
+@Composable
+private fun AudioLevelRing(index: Int, audioLevel: Float, infiniteTransition: InfiniteTransition) {
+    val delay = index * 200
+    val ringScale by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.5f + index * 0.2f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000, delayMillis = delay, easing = EaseOut),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "audioRing$index",
+    )
+    val ringAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.4f,
+        targetValue = 0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000, delayMillis = delay, easing = EaseOut),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "audioRingAlpha$index",
+    )
+
+    Box(
+        modifier = Modifier
+            .size(160.dp)
+            .scale(ringScale * (1f + audioLevel * 0.2f))
+            .border(width = 2.dp, color = TechRed.copy(alpha = ringAlpha * audioLevel), shape = CircleShape),
+    )
+}
+
+/**
+ * Rotating accent ring around PTT button
+ */
+@Composable
+private fun RotatingAccentRing(color: Color, rotation: Float) {
+    Canvas(modifier = Modifier.size(180.dp).rotate(rotation)) {
+        val strokeWidth = 3.dp.toPx()
+        drawArc(color.copy(alpha = 0.5f), 0f, 60f, false, style = Stroke(strokeWidth, cap = StrokeCap.Round))
+        drawArc(color.copy(alpha = 0.5f), 180f, 60f, false, style = Stroke(strokeWidth, cap = StrokeCap.Round))
+    }
+}
+
+/**
+ * Core circular PTT button with mic icon
+ */
+@Composable
+private fun PTTButtonCore(isRecording: Boolean, buttonColor: Color, scale: Float, interactionSource: MutableInteractionSource, onPress: () -> Unit) {
+    val haptic = rememberHapticFeedback()
+    Box(
+        modifier = Modifier
+            .size(160.dp)
+            .scale(scale)
+            .clip(CircleShape)
+            .background(
+                brush = Brush.radialGradient(
+                    listOf(buttonColor.copy(alpha = 0.25f), buttonColor.copy(alpha = 0.1f), Color.Transparent),
+                ),
+            )
+            .border(4.dp, buttonColor, CircleShape)
+            .clickable(interactionSource = interactionSource, indication = null) {
+                haptic.heavyClick()
+                onPress()
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(
+                imageVector = if (isRecording) Icons.Rounded.MicOff else Icons.Rounded.Mic,
+                contentDescription = if (isRecording) "Stop" else "Talk",
+                tint = buttonColor,
+                modifier = Modifier.size(48.dp),
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = if (isRecording) "RELEASE" else "PUSH",
+                style = MaterialTheme.typography.titleSmall,
+                color = buttonColor,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 2.sp,
+            )
+            Text(
+                text = if (isRecording) "TO STOP" else "TO TALK",
+                style = MaterialTheme.typography.labelSmall,
+                color = buttonColor.copy(alpha = 0.7f),
+                letterSpacing = 1.sp,
+            )
+        }
+    }
+}
+
+/**
+ * End session button
+ */
+@Composable
+private fun EndSessionButton(onDisconnect: () -> Unit) {
+    val haptic = rememberHapticFeedback()
+    OutlinedButton(
+        onClick = {
+            haptic.error()
+            onDisconnect()
+        },
+        modifier = Modifier.height(52.dp).widthIn(min = 160.dp),
+        shape = RoundedCornerShape(26.dp),
+        border = BorderStroke(1.5.dp, TechRed.copy(alpha = 0.6f)),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = TechRed),
+    ) {
+        Icon(Icons.Rounded.CallEnd, null, Modifier.size(22.dp))
+        Spacer(modifier = Modifier.width(10.dp))
+        Text("End Session", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium)
+    }
+}
+
+/**
  * Main PTT (Push-to-Talk) button with audio visualization
  */
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun PTTButton(isRecording: Boolean, audioLevel: Float, onPress: () -> Unit, onLongPress: () -> Unit) {
-    val haptic = rememberHapticFeedback()
+private fun PTTButton(isRecording: Boolean, audioLevel: Float, onPress: () -> Unit, onDisconnect: () -> Unit) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
+    val infiniteTransition = rememberInfiniteTransition(label = "pttAnim")
 
     val scale by animateFloatAsState(
         targetValue = when {
@@ -1145,152 +1401,28 @@ private fun PTTButton(isRecording: Boolean, audioLevel: Float, onPress: () -> Un
         animationSpec = spring(dampingRatio = 0.6f, stiffness = 300f),
         label = "pttScale",
     )
-
     val buttonColor by animateColorAsState(
         targetValue = if (isRecording) TechRed else TechGreen,
         animationSpec = tween(200),
         label = "pttColor",
     )
-
-    val infiniteTransition = rememberInfiniteTransition(label = "pttAnim")
-
     val ringRotation by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(4000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
+        animationSpec = infiniteRepeatable(tween(4000, easing = LinearEasing), RepeatMode.Restart),
         label = "ringRotation",
     )
 
-    Box(
-        contentAlignment = Alignment.Center,
-    ) {
-        // Audio level rings (only when recording)
-        if (isRecording) {
-            repeat(3) { index ->
-                val delay = index * 200
-                val ringScale by infiniteTransition.animateFloat(
-                    initialValue = 1f,
-                    targetValue = 1.5f + index * 0.2f,
-                    animationSpec = infiniteRepeatable(
-                        animation = tween(1000, delayMillis = delay, easing = EaseOut),
-                        repeatMode = RepeatMode.Restart,
-                    ),
-                    label = "audioRing$index",
-                )
-                val ringAlpha by infiniteTransition.animateFloat(
-                    initialValue = 0.4f,
-                    targetValue = 0f,
-                    animationSpec = infiniteRepeatable(
-                        animation = tween(1000, delayMillis = delay, easing = EaseOut),
-                        repeatMode = RepeatMode.Restart,
-                    ),
-                    label = "audioRingAlpha$index",
-                )
-
-                Box(
-                    modifier = Modifier
-                        .size(160.dp)
-                        .scale(ringScale * (1f + audioLevel * 0.2f))
-                        .border(
-                            width = 2.dp,
-                            color = TechRed.copy(alpha = ringAlpha * audioLevel),
-                            shape = CircleShape,
-                        ),
-                )
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(contentAlignment = Alignment.Center) {
+            if (isRecording) {
+                repeat(3) { index -> AudioLevelRing(index, audioLevel, infiniteTransition) }
             }
+            RotatingAccentRing(buttonColor, ringRotation)
+            PTTButtonCore(isRecording, buttonColor, scale, interactionSource, onPress)
         }
-
-        // Rotating accent ring
-        Canvas(
-            modifier = Modifier
-                .size(180.dp)
-                .rotate(ringRotation),
-        ) {
-            val strokeWidth = 3.dp.toPx()
-            drawArc(
-                color = buttonColor.copy(alpha = 0.5f),
-                startAngle = 0f,
-                sweepAngle = 60f,
-                useCenter = false,
-                style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
-            )
-            drawArc(
-                color = buttonColor.copy(alpha = 0.5f),
-                startAngle = 180f,
-                sweepAngle = 60f,
-                useCenter = false,
-                style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
-            )
-        }
-
-        // Main PTT button
-        Box(
-            modifier = Modifier
-                .size(160.dp)
-                .scale(scale)
-                .clip(CircleShape)
-                .background(
-                    brush = Brush.radialGradient(
-                        colors = listOf(
-                            buttonColor.copy(alpha = 0.25f),
-                            buttonColor.copy(alpha = 0.1f),
-                            Color.Transparent,
-                        ),
-                    ),
-                )
-                .border(4.dp, buttonColor, CircleShape)
-                .combinedClickable(
-                    interactionSource = interactionSource,
-                    indication = null,
-                    onClick = {
-                        haptic.heavyClick()
-                        onPress()
-                    },
-                    onLongClick = {
-                        haptic.error() // Different haptic for long press
-                        onLongPress()
-                    },
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Icon(
-                    imageVector = if (isRecording) Icons.Rounded.MicOff else Icons.Rounded.Mic,
-                    contentDescription = if (isRecording) "Stop" else "Talk",
-                    tint = buttonColor,
-                    modifier = Modifier.size(48.dp),
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = if (isRecording) "RELEASE" else "PUSH",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = buttonColor,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 2.sp,
-                )
-                Text(
-                    text = if (isRecording) "TO STOP" else "TO TALK",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = buttonColor.copy(alpha = 0.7f),
-                    letterSpacing = 1.sp,
-                )
-            }
-        }
-
-        // Long press hint for stopping network
-        Text(
-            text = "Hold to disconnect",
-            style = MaterialTheme.typography.labelSmall,
-            color = TextTertiary,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .offset(y = 100.dp),
-        )
+        Spacer(modifier = Modifier.height(40.dp))
+        EndSessionButton(onDisconnect)
     }
 }
 

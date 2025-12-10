@@ -212,7 +212,7 @@ private fun WelcomeScreen(onNext: () -> Unit) {
         Spacer(modifier = Modifier.height(32.dp))
 
         Text(
-            text = "Connect with your riding group using WiFi Direct mesh networking. No internet or cell service required.",
+            text = "Connect with your group using WiFi Direct mesh networking. No internet or cell service required.",
             style = MaterialTheme.typography.bodyLarge,
             color = TextSecondary,
             textAlign = TextAlign.Center,
@@ -406,7 +406,7 @@ private fun ConnectionInfoScreen(onNext: () -> Unit, onBack: () -> Unit) {
         Spacer(modifier = Modifier.height(24.dp))
 
         Text(
-            text = "Riding Groups",
+            text = "Groups",
             style = MaterialTheme.typography.headlineSmall,
             color = TextPrimary,
             fontWeight = FontWeight.Bold,
@@ -415,7 +415,7 @@ private fun ConnectionInfoScreen(onNext: () -> Unit, onBack: () -> Unit) {
         Spacer(modifier = Modifier.height(8.dp))
 
         Text(
-            text = "Connect with your riding buddies",
+            text = "Connect with your group members",
             style = MaterialTheme.typography.bodyMedium,
             color = TextSecondary,
             textAlign = TextAlign.Center,
@@ -442,7 +442,7 @@ private fun ConnectionInfoScreen(onNext: () -> Unit, onBack: () -> Unit) {
                 GroupInfoItem(
                     icon = Icons.Rounded.Login,
                     title = "Join a Group",
-                    description = "Enter a code shared by your ride leader",
+                    description = "Enter a code shared by your group leader",
                     accentColor = TechCyan,
                 )
             }
@@ -621,7 +621,7 @@ private fun TutorialScreen(onComplete: () -> Unit, onBack: () -> Unit) {
                 )
                 Spacer(modifier = Modifier.width(12.dp))
                 Text(
-                    text = "You're all set! Tap below to start riding.",
+                    text = "You're all set! Tap below to get started.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = TechGreen,
                 )
@@ -655,9 +655,9 @@ private fun TutorialScreen(onComplete: () -> Unit, onBack: () -> Unit) {
                 colors = ButtonDefaults.buttonColors(containerColor = TechGreen),
                 shape = RoundedCornerShape(16.dp),
             ) {
-                Text("Let's Ride!")
+                Text("Let's Go!")
                 Spacer(modifier = Modifier.width(8.dp))
-                Icon(Icons.Rounded.TwoWheeler, contentDescription = null)
+                Icon(Icons.Default.ArrowForward, contentDescription = null)
             }
         }
     }

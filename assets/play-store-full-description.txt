@@ -1,0 +1,63 @@
+ENTER-COMM — Mesh Intercom for Groups
+
+Turn your phone into a walkie-talkie. Connect with your group using WiFi Direct mesh networking — no internet, no cell service, no monthly fees.
+
+PUSH-TO-TALK COMMUNICATION
+Simple walkie-talkie interface. Press to talk, release to listen. Your voice reaches everyone in your group instantly.
+
+WORKS COMPLETELY OFFLINE
+Uses WiFi Direct to create a private mesh network between phones. Perfect for mountain trails, remote roads, festivals, or anywhere without cell coverage. Range of 100-200 meters between devices.
+
+MESH NETWORKING
+Messages hop between phones, extending range beyond direct WiFi. The more people in your group, the stronger and wider the network becomes.
+
+PRIVATE GROUPS
+Create a group and share a simple code with friends. Only people with the code can join and hear your conversations. Your communication stays private.
+
+GROUP RADAR
+Enable GPS to see where your group members are on a real-time radar display. Track distances and never lose sight of your team.
+
+BATTERY SMART
+Adaptive power management keeps you connected all day. Discovery intervals adjust automatically based on your battery level.
+
+PERFECT FOR:
+• Motorcycle group rides
+• Mountain biking and cycling
+• Hiking and backpacking
+• Skiing and snowboarding
+• Music festivals and events
+• Camping trips
+• Tour groups
+• Event coordination and volunteers
+• Any outdoor group activity
+
+HOW IT WORKS:
+1. Start the app and create or join a group
+2. Share the group code with your friends
+3. Press the big button to talk
+4. Everyone in range hears you instantly
+
+KEY FEATURES:
+• No internet connection required
+• No accounts or sign-ups needed
+• No subscription fees — completely free
+• Push-to-talk voice communication
+• Private group codes
+• Real-time GPS radar
+• Works in airplane mode
+• Mesh network extends range
+• Clean, easy-to-use interface
+
+REQUIREMENTS:
+• Android 7.0 or higher
+• WiFi Direct capable device (most modern phones)
+• Location permission (required for WiFi Direct)
+• Microphone permission (for voice communication)
+
+PRIVACY:
+Enter-Comm respects your privacy. Voice data is transmitted directly between devices in your group — never through external servers. Location data stays on your device and is only shared with your group members when you enable the radar feature.
+
+FREE FOREVER
+No ads. No subscriptions. No in-app purchases. Just download and start communicating.
+
+Questions or feedback? We'd love to hear from you!

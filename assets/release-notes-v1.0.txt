@@ -1,0 +1,44 @@
+Enter-Comm v1.0 - Initial Release
+
+We're excited to launch Enter-Comm, a free mesh intercom app for groups!
+
+WHAT'S NEW
+
+Push-to-Talk Communication
+• Walkie-talkie style voice communication
+• Press to talk, release to listen
+• Crystal clear audio with noise reduction
+
+Mesh Networking
+• Works completely offline - no internet required
+• WiFi Direct creates a private network between phones
+• Multi-hop routing extends range through your group
+• 100-200m range between devices
+
+Private Groups
+• Create groups with unique codes
+• Share codes with friends to let them join
+• Only group members can hear your conversations
+
+Group Radar
+• Real-time GPS tracking of group members
+• See distances and directions to teammates
+• Works in remote areas without cell coverage
+
+Designed for Adventure
+• Perfect for motorcycle rides, hiking, cycling, skiing
+• Clean dark interface readable in bright sunlight
+• Battery-efficient with adaptive power management
+• Works in airplane mode
+
+REQUIREMENTS
+• Android 7.0 or higher
+• WiFi Direct capable device
+• Location & microphone permissions
+
+FREE FOREVER
+No ads. No subscriptions. No accounts required.
+
+---
+
+Thank you for trying Enter-Comm! We'd love to hear your feedback.

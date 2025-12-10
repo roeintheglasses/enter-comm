@@ -35,10 +35,10 @@ class NotificationHelper(private val context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 AppConfig.Service.NOTIFICATION_CHANNEL_ID,
-                "Bike Intercom",
+                "Enter-Comm",
                 NotificationManager.IMPORTANCE_LOW,
             ).apply {
-                description = "Mesh network communication for bike intercom"
+                description = "Mesh network communication"
                 enableVibration(false)
                 setSound(null, null)
             }
@@ -80,7 +80,7 @@ class NotificationHelper(private val context: Context) {
         val muteText = if (isMuted) "Unmute" else "Mute"
 
         return NotificationCompat.Builder(context, AppConfig.Service.NOTIFICATION_CHANNEL_ID)
-            .setContentTitle("Bike Intercom Active")
+            .setContentTitle("Enter-Comm Active")
             .setContentText("${state.networkStatus} • ${if (state.isRecording) "Recording" else "Standby"}")
             .setSmallIcon(R.drawable.ic_notification)
             .setOngoing(true)
