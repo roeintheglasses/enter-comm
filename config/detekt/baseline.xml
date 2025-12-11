@@ -109,6 +109,7 @@
     <ID>TooGenericExceptionCaught:Result.kt$Result.Companion$e: Exception</ID>
     <ID>TooGenericExceptionCaught:WiFiDirectManager.kt$WiFiDirectManager$e: Exception</ID>
     <ID>TooManyFunctions:DistanceVectorRouter.kt$DistanceVectorRouter</ID>
+    <ID>TooManyFunctions:GroupManager.kt$GroupManager</ID>
     <ID>TooManyFunctions:MeshNetworkManager.kt$MeshNetworkManager</ID>
     <ID>TooManyFunctions:MeshNetworkService.kt$MeshNetworkService : Service</ID>
     <ID>TooManyFunctions:VoiceFeedback.kt$VoiceFeedback</ID>

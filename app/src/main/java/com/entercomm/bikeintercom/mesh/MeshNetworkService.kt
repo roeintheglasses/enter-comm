@@ -219,6 +219,14 @@ class MeshNetworkService : Service() {
                 meshNetworkManager.onGroupMessageReceived = { type, senderId, payload ->
                     groupManager.processGroupMessage(type, senderId, payload)
                 }
+                // Sync peer discovery with group membership
+                meshNetworkManager.onPeerDiscovered = { peerNodeId, peerDeviceName ->
+                    groupManager.addDiscoveredPeer(peerNodeId, peerDeviceName)
+                }
+                // Sync peer disconnection with group membership
+                meshNetworkManager.onPeerDisconnected = { peerNodeId ->
+                    groupManager.removeDisconnectedPeer(peerNodeId)
+                }
                 logD { "Group Manager initialized successfully" }
             } catch (e: Exception) {
                 logE({ "Failed to initialize Group Manager" }, e)
@@ -579,6 +587,11 @@ class MeshNetworkService : Service() {
         if (::meshNetworkManager.isInitialized) {
             meshNetworkManager.setGroupCode(code)
             logD { "Group code set to: $code" }
+
+            // Ensure self is in the GroupManager member list when using group code
+            if (code != null && ::groupManager.isInitialized) {
+                groupManager.ensureSelfInMembers()
+            }
         } else {
             logW { "Cannot set group code - mesh network manager not initialized" }
         }

@@ -225,6 +225,20 @@ class MeshNetworkManager(
     private var groupCode: String? = null
     private var groupModeEnabled = true // Default to group mode for privacy
 
+    // Callbacks for audio, control, group, and location messages
+    var onAudioDataReceived: ((ByteArray, String) -> Unit)? = null
+    var onControlMessageReceived: ((String, String) -> Unit)? = null
+    var onGroupMessageReceived: ((GroupMessageType, String, ByteArray) -> Unit)? = null
+    var onLocationMessageReceived: ((LocationMessageType, String, ByteArray) -> Unit)? = null
+
+    // Callback for peer discovery - called when a peer with matching group code is discovered
+    // Parameters: nodeId, deviceName
+    var onPeerDiscovered: ((String, String) -> Unit)? = null
+
+    // Callback for peer disconnection - called when a peer is removed from the network
+    // Parameter: nodeId
+    var onPeerDisconnected: ((String) -> Unit)? = null
+
     /**
      * Set the group code for filtering connections.
      * Only nodes with matching group codes will connect.
@@ -252,12 +266,6 @@ class MeshNetworkManager(
      * Check if group mode is enabled.
      */
     fun isGroupModeEnabled(): Boolean = groupModeEnabled
-
-    // Callbacks for audio, control, group, and location messages
-    var onAudioDataReceived: ((ByteArray, String) -> Unit)? = null
-    var onControlMessageReceived: ((String, String) -> Unit)? = null
-    var onGroupMessageReceived: ((GroupMessageType, String, ByteArray) -> Unit)? = null
-    var onLocationMessageReceived: ((LocationMessageType, String, ByteArray) -> Unit)? = null
 
     fun startMeshNetwork(localPort: Int = DISCOVERY_PORT) {
         if (isRunning) {
@@ -781,6 +789,9 @@ class MeshNetworkManager(
             linkQuality = 1.0f,
         )
 
+        // Check if this is a new node (not just an update)
+        val isNewNode = !nodes.containsKey(remoteNodeId)
+
         nodes[remoteNodeId] = node
         routingTable[remoteNodeId] = MeshRoute(
             destinationId = remoteNodeId,
@@ -792,6 +803,11 @@ class MeshNetworkManager(
         router.addNeighbor(remoteNodeId, senderIp, DISCOVERY_PORT, 1.0f)
 
         updateConnectedNodesList()
+
+        // Notify about new peer discovery (for GroupManager sync)
+        if (isNewNode) {
+            onPeerDiscovered?.invoke(remoteNodeId, deviceName)
+        }
 
         logD { "Mesh network updated: discovered $deviceName ($remoteNodeId) at $senderIp" }
         logD { "Total connected nodes: ${nodes.size}" }
@@ -1380,6 +1396,8 @@ class MeshNetworkManager(
             routingTable.remove(expiredNodeId)
             // Notify router about removed neighbor
             router.removeNeighbor(expiredNodeId)
+            // Notify about peer disconnection (for GroupManager sync)
+            onPeerDisconnected?.invoke(expiredNodeId)
             logD { "Removed expired node: $expiredNodeId" }
         }
 

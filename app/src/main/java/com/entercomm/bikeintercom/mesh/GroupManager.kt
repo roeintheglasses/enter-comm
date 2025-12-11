@@ -150,6 +150,74 @@ class GroupManager(
     }
 
     /**
+     * Add a discovered peer as a group member.
+     * This is called when a peer with a matching group code is discovered on the mesh network.
+     * Used to sync GroupManager members with mesh network connections.
+     */
+    fun addDiscoveredPeer(nodeId: String, deviceName: String) {
+        // Don't add ourselves
+        if (nodeId == localNodeId) return
+
+        // Check if already a member
+        if (memberMap.containsKey(nodeId)) {
+            // Update last seen time
+            memberMap[nodeId]?.let { member ->
+                memberMap[nodeId] = member.copy(lastSeen = System.currentTimeMillis())
+            }
+            return
+        }
+
+        // Check if banned
+        if (bannedNodes.contains(nodeId)) {
+            logD { "Not adding banned node: $nodeId" }
+            return
+        }
+
+        val newMember = GroupMember(
+            nodeId = nodeId,
+            nickname = deviceName,
+            role = MemberRole.MEMBER,
+        )
+        memberMap[nodeId] = newMember
+        updateMembersList()
+
+        emitEvent(GroupEvent.MemberJoined(newMember))
+        logD { "Added discovered peer as member: $deviceName ($nodeId)" }
+    }
+
+    /**
+     * Remove a peer that has disconnected from the mesh network.
+     */
+    fun removeDisconnectedPeer(nodeId: String) {
+        // Don't remove ourselves
+        if (nodeId == localNodeId) return
+
+        val member = memberMap.remove(nodeId)
+        if (member != null) {
+            updateMembersList()
+            emitEvent(GroupEvent.MemberLeft(nodeId, member.nickname))
+            logD { "Removed disconnected peer: ${member.nickname} ($nodeId)" }
+        }
+    }
+
+    /**
+     * Ensure self is in the member list when using group code mode.
+     * Called when setting a group code to ensure UI shows at least "me".
+     */
+    fun ensureSelfInMembers() {
+        if (!memberMap.containsKey(localNodeId)) {
+            val selfMember = GroupMember(
+                nodeId = localNodeId,
+                nickname = _nickname.value,
+                role = MemberRole.MEMBER,
+            )
+            memberMap[localNodeId] = selfMember
+            updateMembersList()
+            logD { "Added self to members list" }
+        }
+    }
+
+    /**
      * Create a new group.
      */
     fun createGroup(name: String, channel: Int = MeshGroup.DEFAULT_CHANNEL, password: String? = null, maxSize: Int = MeshGroup.DEFAULT_MAX_SIZE): MeshGroup {
