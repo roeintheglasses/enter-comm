@@ -100,11 +100,13 @@ class MeshNetworkManager(
         val nodeId: String,
         val deviceName: String,
         val groupCode: String,
+        val nickname: String,
     )
 
     /**
      * Validates a discovery message payload and returns a validated DiscoveryPayload if valid.
      * Returns null if the message is malformed or fails validation.
+     * Format: nodeId|deviceName|groupCode|nickname (nickname is optional for backwards compatibility)
      */
     private fun validateDiscoveryPayload(payload: String): DiscoveryPayload? {
         val parts = payload.split("|")
@@ -138,15 +140,26 @@ class MeshNetworkManager(
             return null
         }
 
+        // Get nickname (optional field, defaults to deviceName for backwards compatibility)
+        val nickname = if (parts.size >= 4 && parts[3].isNotEmpty()) {
+            sanitizeForDelimitedFormat(parts[3].take(MAX_DEVICE_NAME_LENGTH))
+        } else {
+            sanitizeForDelimitedFormat(deviceName)
+        }
+
         return DiscoveryPayload(
             nodeId = nodeId,
             deviceName = sanitizeForDelimitedFormat(deviceName),
             groupCode = sanitizeForDelimitedFormat(groupCode),
+            nickname = nickname,
         )
     }
 
     // Sanitize device name at construction to ensure safe serialization
     private val deviceName: String = sanitizeForDelimitedFormat(deviceName)
+
+    // User's nickname for display in group member lists
+    private var userNickname: String = sanitizeForDelimitedFormat(deviceName)
 
     private val supervisorJob = SupervisorJob()
     private val scope = CoroutineScope(Dispatchers.IO + supervisorJob)
@@ -266,6 +279,15 @@ class MeshNetworkManager(
      * Check if group mode is enabled.
      */
     fun isGroupModeEnabled(): Boolean = groupModeEnabled
+
+    /**
+     * Set the user's nickname for discovery messages.
+     * This is the name displayed to other users in the group.
+     */
+    fun setNickname(nickname: String) {
+        userNickname = sanitizeForDelimitedFormat(nickname.take(MAX_DEVICE_NAME_LENGTH))
+        logD { "Nickname set to: $userNickname" }
+    }
 
     fun startMeshNetwork(localPort: Int = DISCOVERY_PORT) {
         if (isRunning) {
@@ -719,10 +741,11 @@ class MeshNetworkManager(
         val remoteNodeId = validatedPayload.nodeId
         val deviceName = validatedPayload.deviceName
         val remoteGroupCode = validatedPayload.groupCode
+        val remoteNickname = validatedPayload.nickname
 
         logD {
             "Parsed discovery: nodeId=$remoteNodeId, deviceName=$deviceName, " +
-                "groupCode=$remoteGroupCode, senderIp=$senderIp, ourGroupCode=$groupCode"
+                "nickname=$remoteNickname, groupCode=$remoteGroupCode, senderIp=$senderIp, ourGroupCode=$groupCode"
         }
 
         // Ignore messages from ourselves
@@ -805,11 +828,12 @@ class MeshNetworkManager(
         updateConnectedNodesList()
 
         // Notify about new peer discovery (for GroupManager sync)
+        // Use nickname for display, falling back to deviceName if not available
         if (isNewNode) {
-            onPeerDiscovered?.invoke(remoteNodeId, deviceName)
+            onPeerDiscovered?.invoke(remoteNodeId, remoteNickname)
         }
 
-        logD { "Mesh network updated: discovered $deviceName ($remoteNodeId) at $senderIp" }
+        logD { "Mesh network updated: discovered $remoteNickname ($remoteNodeId) at $senderIp" }
         logD { "Total connected nodes: ${nodes.size}" }
         logD { "Reachable destinations: ${router.getReachableDestinations().size}" }
     }
@@ -1068,7 +1092,7 @@ class MeshNetworkManager(
         scope.launch {
             // Include group code in discovery payload for filtering
             val groupCodePart = groupCode ?: "OPEN"
-            val payload = "$nodeId|$deviceName|$groupCodePart".toByteArray()
+            val payload = "$nodeId|$deviceName|$groupCodePart|$userNickname".toByteArray()
             val message = MeshMessage(
                 sourceId = nodeId,
                 destinationId = "broadcast",
@@ -1111,7 +1135,7 @@ class MeshNetworkManager(
 
                 // Include group code in discovery payload for filtering
                 val groupCodePart = groupCode ?: "OPEN"
-                val payload = "$nodeId|$deviceName|$groupCodePart".toByteArray()
+                val payload = "$nodeId|$deviceName|$groupCodePart|$userNickname".toByteArray()
                 val message = MeshMessage(
                     sourceId = nodeId,
                     destinationId = "discovery",
@@ -1149,7 +1173,7 @@ class MeshNetworkManager(
 
                 // Include group code in discovery probe for filtering (matches broadcastDiscovery format)
                 val groupCodePart = groupCode ?: "OPEN"
-                val payload = "$nodeId|$deviceName|$groupCodePart".toByteArray()
+                val payload = "$nodeId|$deviceName|$groupCodePart|$userNickname".toByteArray()
                 val message = MeshMessage(
                     sourceId = nodeId,
                     destinationId = "discovery",

@@ -218,6 +218,53 @@ class GroupManager(
     }
 
     /**
+     * Join a group by code. Creates a minimal group representation for UI display.
+     * Used when joining via group code without a full group discovery handshake.
+     */
+    fun joinByCode(groupCode: String) {
+        // Create a minimal group representation for the UI
+        val group = MeshGroup(
+            groupId = groupCode, // Use group code as ID
+            groupName = "Group $groupCode",
+            channelNumber = MeshGroup.DEFAULT_CHANNEL,
+            ownerId = "unknown", // We don't know the owner when joining by code
+            maxSize = MeshGroup.DEFAULT_MAX_SIZE,
+            isPasswordProtected = false,
+        )
+
+        _currentGroup.value = group
+        memberMap.clear()
+
+        // Add ourselves as a regular member
+        val selfMember = GroupMember(
+            nodeId = localNodeId,
+            nickname = _nickname.value,
+            role = MemberRole.MEMBER,
+        )
+        memberMap[localNodeId] = selfMember
+        updateMembersList()
+
+        emitEvent(GroupEvent.GroupJoined(group))
+        logD { "Joined group by code: $groupCode" }
+    }
+
+    /**
+     * Leave the current group (when joined by code).
+     * Clears the group state without notifying other members.
+     */
+    fun leaveGroupByCode() {
+        val group = _currentGroup.value
+        if (group != null) {
+            val groupId = group.groupId
+            _currentGroup.value = null
+            memberMap.clear()
+            updateMembersList()
+            emitEvent(GroupEvent.GroupLeft(groupId))
+            logD { "Left group: $groupId" }
+        }
+    }
+
+    /**
      * Create a new group.
      */
     fun createGroup(name: String, channel: Int = MeshGroup.DEFAULT_CHANNEL, password: String? = null, maxSize: Int = MeshGroup.DEFAULT_MAX_SIZE): MeshGroup {

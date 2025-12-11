@@ -220,13 +220,15 @@ class MeshNetworkService : Service() {
                     groupManager.processGroupMessage(type, senderId, payload)
                 }
                 // Sync peer discovery with group membership
-                meshNetworkManager.onPeerDiscovered = { peerNodeId, peerDeviceName ->
-                    groupManager.addDiscoveredPeer(peerNodeId, peerDeviceName)
+                meshNetworkManager.onPeerDiscovered = { peerNodeId, peerNickname ->
+                    groupManager.addDiscoveredPeer(peerNodeId, peerNickname)
                 }
                 // Sync peer disconnection with group membership
                 meshNetworkManager.onPeerDisconnected = { peerNodeId ->
                     groupManager.removeDisconnectedPeer(peerNodeId)
                 }
+                // Sync the user's nickname to mesh network for discovery messages
+                meshNetworkManager.setNickname(groupManager.nickname.value)
                 logD { "Group Manager initialized successfully" }
             } catch (e: Exception) {
                 logE({ "Failed to initialize Group Manager" }, e)
@@ -236,7 +238,9 @@ class MeshNetworkService : Service() {
             try {
                 logD { "Initializing Location Manager..." }
                 locationManager = LocationManager(this)
-                locationManager.initialize(nodeId, deviceName)
+                // Use nickname from GroupManager if available, otherwise fall back to deviceName
+                val nickname = if (::groupManager.isInitialized) groupManager.nickname.value else deviceName
+                locationManager.initialize(nodeId, nickname)
                 // Connect location manager to mesh network
                 locationManager.sendLocationMessage = { type, destination, payload ->
                     meshNetworkManager.sendLocationMessage(type, destination, payload)
@@ -588,9 +592,11 @@ class MeshNetworkService : Service() {
             meshNetworkManager.setGroupCode(code)
             logD { "Group code set to: $code" }
 
-            // Ensure self is in the GroupManager member list when using group code
+            // Create/update group in GroupManager when using group code
             if (code != null && ::groupManager.isInitialized) {
-                groupManager.ensureSelfInMembers()
+                groupManager.joinByCode(code)
+            } else if (code == null && ::groupManager.isInitialized) {
+                groupManager.leaveGroupByCode()
             }
         } else {
             logW { "Cannot set group code - mesh network manager not initialized" }
@@ -630,6 +636,23 @@ class MeshNetworkService : Service() {
             meshNetworkManager.isGroupModeEnabled()
         } else {
             true // Default to group mode for safety
+        }
+    }
+
+    /**
+     * Update the user's nickname for mesh network discovery and location sharing.
+     * This should be called when the user changes their nickname.
+     */
+    fun setNickname(nickname: String) {
+        if (::meshNetworkManager.isInitialized) {
+            meshNetworkManager.setNickname(nickname)
+            logD { "Nickname updated to: $nickname" }
+        }
+        if (::groupManager.isInitialized) {
+            groupManager.setNickname(nickname)
+        }
+        if (::locationManager.isInitialized) {
+            locationManager.updateNickname(nickname)
         }
     }
 
