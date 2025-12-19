@@ -47,6 +47,7 @@ import com.entercomm.bikeintercom.ui.components.*
 import com.entercomm.bikeintercom.ui.theme.*
 import com.entercomm.bikeintercom.util.AccessibilityManager
 import com.entercomm.bikeintercom.util.AccessibilitySettings
+import com.entercomm.bikeintercom.util.BoneConductionMode
 import com.entercomm.bikeintercom.util.rememberHapticFeedback
 import kotlinx.coroutines.delay
 
@@ -810,6 +811,11 @@ private fun SettingsContent(meshTopology: MeshTopology?, onboardingManager: Onbo
             DisplayAccessibilityCard(accessibilitySettings!!, accessibilityManager)
         }
 
+        // Riding Mode section
+        if (accessibilitySettings != null && accessibilityManager != null) {
+            RidingModeCard(accessibilitySettings!!, accessibilityManager)
+        }
+
         // Network topology section
         NetworkTopologyCard(meshTopology)
 
@@ -1080,6 +1086,100 @@ private fun DisplayAccessibilityCard(settings: AccessibilitySettings, accessibil
             )
         }
     }
+}
+
+/**
+ * Riding Mode settings card with bone conduction, volume PTT, swipe gestures, and one-handed mode.
+ */
+@Composable
+private fun RidingModeCard(settings: AccessibilitySettings, accessibilityManager: AccessibilityManager) {
+    val isBoneConductionDetected by accessibilityManager.isBoneConductionDetected.collectAsState()
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = DarkSurface),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            RidingModeCardHeader()
+            Spacer(modifier = Modifier.height(12.dp))
+            RidingModeCardContent(settings, accessibilityManager, isBoneConductionDetected)
+        }
+    }
+}
+
+@Composable
+private fun RidingModeCardHeader() {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = Icons.Filled.TwoWheeler,
+            contentDescription = null,
+            tint = TechCyan,
+            modifier = Modifier.size(24.dp),
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = "Riding Mode",
+            style = MaterialTheme.typography.titleMedium,
+            color = TextPrimary,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+}
+
+@Composable
+private fun RidingModeCardContent(
+    settings: AccessibilitySettings,
+    accessibilityManager: AccessibilityManager,
+    isBoneConductionDetected: Boolean,
+) {
+    // Bone conduction mode dropdown
+    val boneConductionDescription = if (settings.boneConduction == BoneConductionMode.AUTO) {
+        if (isBoneConductionDetected) "Detected: Active" else "Not detected"
+    } else {
+        null
+    }
+
+    SettingsDropdown(
+        label = "Bone Conduction",
+        selectedOption = settings.boneConduction,
+        options = BoneConductionMode.entries.toList(),
+        onOptionSelected = { mode ->
+            accessibilityManager.updateSetting { it.copy(boneConduction = mode) }
+        },
+        optionLabel = { it.displayName() },
+        description = boneConductionDescription,
+    )
+
+    // Volume button PTT toggle
+    SettingsToggle(
+        label = "Volume Button PTT",
+        description = "Use volume buttons for push-to-talk",
+        checked = settings.volumeButtonPtt,
+        onCheckedChange = { enabled ->
+            accessibilityManager.updateSetting { it.copy(volumeButtonPtt = enabled) }
+        },
+    )
+
+    // Swipe gestures toggle
+    SettingsToggle(
+        label = "Swipe Gestures",
+        description = "Enable swipe gestures for quick actions",
+        checked = settings.swipeGesturesEnabled,
+        onCheckedChange = { enabled ->
+            accessibilityManager.updateSetting { it.copy(swipeGesturesEnabled = enabled) }
+        },
+    )
+
+    // One-handed mode toggle
+    SettingsToggle(
+        label = "One-Handed Mode",
+        description = "Optimize layout for single-hand operation",
+        checked = settings.oneHandedMode,
+        onCheckedChange = { enabled ->
+            accessibilityManager.updateSetting { it.copy(oneHandedMode = enabled) }
+        },
+    )
 }
 
 /**
