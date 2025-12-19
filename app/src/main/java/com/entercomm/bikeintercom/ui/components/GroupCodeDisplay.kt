@@ -50,6 +50,7 @@ import com.entercomm.bikeintercom.ui.theme.TextPrimary
 import com.entercomm.bikeintercom.ui.theme.TextSecondary
 import com.entercomm.bikeintercom.util.ClipboardUtils
 import com.entercomm.bikeintercom.util.ShareUtils
+import com.entercomm.bikeintercom.util.rememberHapticFeedback
 import kotlinx.coroutines.delay
 
 /**
@@ -79,6 +80,7 @@ private const val COPY_FEEDBACK_DURATION_MS = 1500L
 @Composable
 fun GroupCodeDisplay(groupCode: String, modifier: Modifier = Modifier, onCopied: (() -> Unit)? = null) {
     val context = LocalContext.current
+    val haptic = rememberHapticFeedback()
     var showCopySuccess by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
@@ -112,6 +114,7 @@ fun GroupCodeDisplay(groupCode: String, modifier: Modifier = Modifier, onCopied:
                     label = CLIPBOARD_LABEL,
                 )
                 if (success) {
+                    haptic.click()
                     showCopySuccess = true
                     onCopied?.invoke()
                 }
@@ -177,6 +180,7 @@ fun GroupCodeDisplay(groupCode: String, modifier: Modifier = Modifier, onCopied:
 @Composable
 fun GroupCodeShareRow(groupCode: String, modifier: Modifier = Modifier, onCopied: (() -> Unit)? = null, onShared: (() -> Unit)? = null) {
     val context = LocalContext.current
+    val haptic = rememberHapticFeedback()
     var showCopySuccess by remember { mutableStateOf(false) }
 
     // Reset the copy success state after a delay
@@ -236,6 +240,7 @@ fun GroupCodeShareRow(groupCode: String, modifier: Modifier = Modifier, onCopied
                         label = CLIPBOARD_LABEL,
                     )
                     if (success) {
+                        haptic.click()
                         showCopySuccess = true
                         onCopied?.invoke()
                     }
@@ -270,6 +275,7 @@ fun GroupCodeShareRow(groupCode: String, modifier: Modifier = Modifier, onCopied
                         groupCode = groupCode,
                     )
                     if (success) {
+                        haptic.click()
                         onShared?.invoke()
                     }
                 },
