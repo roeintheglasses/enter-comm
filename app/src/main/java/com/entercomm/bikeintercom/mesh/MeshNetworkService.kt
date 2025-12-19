@@ -20,6 +20,7 @@ import com.entercomm.bikeintercom.location.LocationManager
 import com.entercomm.bikeintercom.service.ConnectionCoordinator
 import com.entercomm.bikeintercom.service.ConnectionEvent
 import com.entercomm.bikeintercom.service.NotificationHelper
+import com.entercomm.bikeintercom.util.AccessibilityManager
 import com.entercomm.bikeintercom.util.logD
 import com.entercomm.bikeintercom.util.logE
 import com.entercomm.bikeintercom.util.logW
@@ -56,6 +57,7 @@ class MeshNetworkService : Service() {
     private lateinit var audioManager: AudioManager
     private lateinit var groupManager: GroupManager
     private lateinit var locationManager: LocationManager
+    private lateinit var accessibilityManager: AccessibilityManager
 
     // Extracted components
     private lateinit var notificationHelper: NotificationHelper
@@ -93,6 +95,11 @@ class MeshNetworkService : Service() {
             // Initialize notification helper (handles channel creation)
             notificationHelper = NotificationHelper(this)
             logD { "Notification helper initialized" }
+
+            // Initialize accessibility manager
+            accessibilityManager = AccessibilityManager(this)
+            accessibilityManager.initialize()
+            logD { "Accessibility manager initialized" }
 
             // Try to initialize managers, but don't fail the service if it doesn't work
             try {
@@ -584,6 +591,13 @@ class MeshNetworkService : Service() {
     }
 
     /**
+     * Get the accessibility manager for accessibility settings.
+     */
+    fun getAccessibilityManager(): AccessibilityManager? {
+        return if (::accessibilityManager.isInitialized) accessibilityManager else null
+    }
+
+    /**
      * Set the group code for mesh filtering.
      * Only nodes with matching group codes will connect.
      */
@@ -809,6 +823,10 @@ class MeshNetworkService : Service() {
             if (::wifiDirectManager.isInitialized) {
                 wifiDirectManager.cleanup()
                 logD { "WiFi Direct manager cleaned up" }
+            }
+            if (::accessibilityManager.isInitialized) {
+                accessibilityManager.shutdown()
+                logD { "Accessibility manager cleaned up" }
             }
             logD { "All managers cleaned up" }
         } catch (e: Exception) {
