@@ -39,6 +39,8 @@
     <ID>DataClassShouldBeImmutable:MeshNetworkManager.kt$MeshNetworkManager.JoinAttemptTracker$var count: Int = 0</ID>
     <ID>DataClassShouldBeImmutable:MeshNetworkManager.kt$MeshNetworkManager.JoinAttemptTracker$var windowStart: Long = System.currentTimeMillis()</ID>
     <ID>LargeClass:MeshNetworkManager.kt$MeshNetworkManager</ID>
+    <ID>LongMethod:GroupCodeDisplay.kt$@Composable fun GroupCodeDisplay(groupCode: String, modifier: Modifier = Modifier, onCopied: (() -&gt; Unit)? = null)</ID>
+    <ID>LongMethod:GroupCodeDisplay.kt$@Composable fun GroupCodeShareRow(groupCode: String, modifier: Modifier = Modifier, onCopied: (() -&gt; Unit)? = null, onShared: (() -&gt; Unit)? = null)</ID>
     <ID>LongMethod:GroupComponents.kt$@Composable fun CreateGroupDialog(onDismiss: () -&gt; Unit, onCreate: (name: String, channel: Int, password: String?, maxSize: Int) -&gt; Unit)</ID>
     <ID>LongMethod:GroupComponents.kt$@Composable fun GroupInfoCard( group: MeshGroup?, memberCount: Int, nickname: String, groupCode: String?, onLeaveGroup: () -&gt; Unit, onCreateGroup: () -&gt; Unit, onJoinGroupByCode: () -&gt; Unit = {}, modifier: Modifier = Modifier, )</ID>
     <ID>LongMethod:GroupComponents.kt$@Composable fun JoinGroupByCodeDialog(onDismiss: () -&gt; Unit, onJoin: (groupCode: String) -&gt; Unit, isValidCode: (String) -&gt; Boolean)</ID>

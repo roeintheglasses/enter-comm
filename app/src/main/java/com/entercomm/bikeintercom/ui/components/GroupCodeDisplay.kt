@@ -15,6 +15,7 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -22,7 +23,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -43,7 +47,9 @@ import com.entercomm.bikeintercom.ui.theme.DarkSurfaceVariant
 import com.entercomm.bikeintercom.ui.theme.TechCyan
 import com.entercomm.bikeintercom.ui.theme.TechGreen
 import com.entercomm.bikeintercom.ui.theme.TextPrimary
+import com.entercomm.bikeintercom.ui.theme.TextSecondary
 import com.entercomm.bikeintercom.util.ClipboardUtils
+import com.entercomm.bikeintercom.util.ShareUtils
 import kotlinx.coroutines.delay
 
 /**
@@ -71,11 +77,7 @@ private const val COPY_FEEDBACK_DURATION_MS = 1500L
  * @param onCopied Optional callback invoked after the code is copied successfully
  */
 @Composable
-fun GroupCodeDisplay(
-    groupCode: String,
-    modifier: Modifier = Modifier,
-    onCopied: (() -> Unit)? = null,
-) {
+fun GroupCodeDisplay(groupCode: String, modifier: Modifier = Modifier, onCopied: (() -> Unit)? = null) {
     val context = LocalContext.current
     var showCopySuccess by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
@@ -149,6 +151,138 @@ fun GroupCodeDisplay(
                     contentDescription = if (isCopied) "Copied" else "Tap to copy",
                     modifier = Modifier.size(14.dp),
                     tint = if (isCopied) TechGreen else TextPrimary.copy(alpha = 0.6f),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * A composable row that displays a group code with copy and share action buttons.
+ *
+ * This component is designed to replace the static "Share code X to let others join" text
+ * with interactive copy and share functionality.
+ *
+ * Features:
+ * - Displays shareable group code with descriptive text
+ * - Copy button with animated checkmark feedback on success
+ * - Share button that opens the Android share sheet
+ * - Consistent styling with app theme
+ *
+ * @param groupCode The group code to display and share
+ * @param modifier Modifier for the composable
+ * @param onCopied Optional callback invoked after the code is copied successfully
+ * @param onShared Optional callback invoked after the share sheet is opened
+ */
+@Composable
+fun GroupCodeShareRow(groupCode: String, modifier: Modifier = Modifier, onCopied: (() -> Unit)? = null, onShared: (() -> Unit)? = null) {
+    val context = LocalContext.current
+    var showCopySuccess by remember { mutableStateOf(false) }
+
+    // Reset the copy success state after a delay
+    LaunchedEffect(showCopySuccess) {
+        if (showCopySuccess) {
+            delay(COPY_FEEDBACK_DURATION_MS)
+            showCopySuccess = false
+        }
+    }
+
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        // Left side: Share icon and text with code
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.weight(1f),
+        ) {
+            Icon(
+                imageVector = Icons.Default.Share,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = TextSecondary,
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = "Share code ",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary,
+            )
+            Text(
+                text = groupCode,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Bold,
+                color = TechCyan,
+            )
+            Text(
+                text = " to let others join",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary,
+            )
+        }
+
+        // Right side: Action buttons
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            // Copy button with animated feedback
+            IconButton(
+                onClick = {
+                    val success = ClipboardUtils.copyToClipboard(
+                        context = context,
+                        text = groupCode,
+                        label = CLIPBOARD_LABEL,
+                    )
+                    if (success) {
+                        showCopySuccess = true
+                        onCopied?.invoke()
+                    }
+                },
+                modifier = Modifier.size(32.dp),
+                colors = IconButtonDefaults.iconButtonColors(
+                    containerColor = DarkSurfaceVariant,
+                ),
+            ) {
+                AnimatedContent(
+                    targetState = showCopySuccess,
+                    transitionSpec = {
+                        (fadeIn(animationSpec = tween(200)) + scaleIn(animationSpec = tween(200)))
+                            .togetherWith(fadeOut(animationSpec = tween(200)) + scaleOut(animationSpec = tween(200)))
+                    },
+                    label = "copyButtonAnimation",
+                ) { isCopied ->
+                    Icon(
+                        imageVector = if (isCopied) Icons.Default.Check else Icons.Default.ContentCopy,
+                        contentDescription = if (isCopied) "Copied" else "Copy code",
+                        modifier = Modifier.size(16.dp),
+                        tint = if (isCopied) TechGreen else TextPrimary,
+                    )
+                }
+            }
+
+            // Share button
+            IconButton(
+                onClick = {
+                    val success = ShareUtils.shareGroupCode(
+                        context = context,
+                        groupCode = groupCode,
+                    )
+                    if (success) {
+                        onShared?.invoke()
+                    }
+                },
+                modifier = Modifier.size(32.dp),
+                colors = IconButtonDefaults.iconButtonColors(
+                    containerColor = DarkSurfaceVariant,
+                ),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Share,
+                    contentDescription = "Share code",
+                    modifier = Modifier.size(16.dp),
+                    tint = TextPrimary,
                 )
             }
         }
