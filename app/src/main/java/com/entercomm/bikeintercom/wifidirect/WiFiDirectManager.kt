@@ -54,6 +54,8 @@ sealed class WiFiDirectEvent {
     data class MatchingServiceDiscovered(val service: DiscoveredService) : WiFiDirectEvent()
     object ServiceDiscoveryStarted : WiFiDirectEvent()
     object ServiceDiscoveryStopped : WiFiDirectEvent()
+    data class AutoConnectionStarted(val service: DiscoveredService) : WiFiDirectEvent()
+    data class AutoConnectionFailed(val reason: String) : WiFiDirectEvent()
     data class Error(val message: String) : WiFiDirectEvent()
 }
 
@@ -73,6 +75,9 @@ class WiFiDirectManager(
     private var currentServiceInfo: WifiP2pDnsSdServiceInfo? = null
     private var isServiceDiscoveryActive = false
     private var currentServiceRequest: WifiP2pDnsSdServiceRequest? = null
+    private var isAutoConnecting = false
+    private var lastAutoConnectAttempt = 0L
+    private var autoConnectEnabled = false
 
     private val _groupCode = MutableStateFlow<String?>(null)
     val groupCode: StateFlow<String?> = _groupCode.asStateFlow()
@@ -710,6 +715,165 @@ class WiFiDirectManager(
     fun getMatchingServices(): List<DiscoveredService> {
         val ourGroupCode = _groupCode.value ?: return emptyList()
         return _discoveredServices.value.filter { it.groupCode == ourGroupCode }
+    }
+
+    /**
+     * Enable or disable automatic connection to matching peers.
+     * When enabled, the manager will automatically attempt to connect
+     * to peers with matching group codes when discovered.
+     */
+    fun setAutoConnectEnabled(enabled: Boolean) {
+        autoConnectEnabled = enabled
+        logD { "Auto-connect ${if (enabled) "enabled" else "disabled"}" }
+    }
+
+    /**
+     * Check if auto-connect is enabled.
+     */
+    fun isAutoConnectEnabled(): Boolean = autoConnectEnabled
+
+    /**
+     * Attempt to auto-connect to a matching service.
+     * This is called internally when a MatchingServiceDiscovered event occurs,
+     * or can be called externally to trigger connection to a known matching service.
+     *
+     * @param service The discovered service to connect to
+     * @return true if connection attempt was initiated, false if connection was skipped
+     */
+    @SuppressLint("MissingPermission") // Permission is checked in hasWifiDirectPermission()
+    fun autoConnectToMatchingPeer(service: DiscoveredService): Boolean {
+        val validationResult = validateAutoConnectConditions(service)
+        if (!validationResult.isValid) {
+            validationResult.failureReason?.let { reason ->
+                eventChannel.trySend(WiFiDirectEvent.AutoConnectionFailed(reason))
+            }
+            return false
+        }
+
+        val device = service.device ?: return false // Should never happen after validation
+
+        isAutoConnecting = true
+        lastAutoConnectAttempt = System.currentTimeMillis()
+
+        logD { "Auto-connecting to matching peer: ${device.deviceName} (${device.deviceAddress})" }
+        eventChannel.trySend(WiFiDirectEvent.AutoConnectionStarted(service))
+
+        // Initiate the connection
+        connectToPeer(device)
+
+        return true
+    }
+
+    /**
+     * Validates all conditions required for auto-connection.
+     * @return ValidationResult indicating if connection should proceed
+     */
+    @Suppress("ReturnCount") // Complex validation logic requires multiple early returns for clarity
+    private fun validateAutoConnectConditions(service: DiscoveredService): AutoConnectValidationResult {
+        // Check basic state conditions
+        val stateValidation = validateAutoConnectState(service)
+        if (!stateValidation.isValid) {
+            return stateValidation
+        }
+
+        // Check service and group code conditions
+        return validateServiceConditions(service)
+    }
+
+    /**
+     * Validates auto-connect state conditions (enabled, in-progress, cooldown, already connected).
+     */
+    private fun validateAutoConnectState(service: DiscoveredService): AutoConnectValidationResult {
+        if (!autoConnectEnabled) {
+            logD { "Auto-connect disabled, skipping connection to ${service.deviceAddress}" }
+            return AutoConnectValidationResult(isValid = false, failureReason = null)
+        }
+
+        if (isAutoConnecting) {
+            logW { "Auto-connection already in progress" }
+            return AutoConnectValidationResult(isValid = false, failureReason = null)
+        }
+
+        val now = System.currentTimeMillis()
+        val isInCooldown = now - lastAutoConnectAttempt < AppConfig.WiFiDirect.CONNECTION_COOLDOWN_MS
+        if (isInCooldown) {
+            val waitTime = (AppConfig.WiFiDirect.CONNECTION_COOLDOWN_MS - (now - lastAutoConnectAttempt)) / 1000
+            logW { "Auto-connection attempt too soon, wait $waitTime seconds" }
+            return AutoConnectValidationResult(isValid = false, failureReason = null)
+        }
+
+        val isAlreadyConnected = _connectionInfo.value?.groupFormed == true
+        return if (isAlreadyConnected) {
+            logD { "Already connected to a WiFi Direct group, skipping auto-connect" }
+            AutoConnectValidationResult(isValid = false, failureReason = null)
+        } else {
+            AutoConnectValidationResult(isValid = true, failureReason = null)
+        }
+    }
+
+    /**
+     * Validates service conditions (device info, group code match).
+     */
+    private fun validateServiceConditions(service: DiscoveredService): AutoConnectValidationResult {
+        if (service.device == null) {
+            logW { "Cannot auto-connect: service has no device info" }
+            return AutoConnectValidationResult(isValid = false, failureReason = "No device info available")
+        }
+
+        val ourGroupCode = _groupCode.value
+        val groupCodeMatches = ourGroupCode != null && service.groupCode == ourGroupCode
+        return if (!groupCodeMatches) {
+            logW { "Group code mismatch, skipping auto-connect. Ours: $ourGroupCode, theirs: ${service.groupCode}" }
+            AutoConnectValidationResult(isValid = false, failureReason = "Group code mismatch")
+        } else {
+            AutoConnectValidationResult(isValid = true, failureReason = null)
+        }
+    }
+
+    /**
+     * Result of auto-connect validation check.
+     */
+    private data class AutoConnectValidationResult(
+        val isValid: Boolean,
+        val failureReason: String?,
+    )
+
+    /**
+     * Reset auto-connection state.
+     * Call this when a connection attempt completes (success or failure).
+     */
+    fun resetAutoConnectState() {
+        isAutoConnecting = false
+        logD { "Auto-connect state reset" }
+    }
+
+    /**
+     * Check if an auto-connection attempt is currently in progress.
+     */
+    fun isAutoConnecting(): Boolean = isAutoConnecting
+
+    /**
+     * Attempt to connect to the first available matching service.
+     * Useful for initiating connection when services have already been discovered.
+     *
+     * @return true if connection attempt was initiated, false otherwise
+     */
+    fun connectToFirstMatchingService(): Boolean {
+        val matchingServices = getMatchingServices()
+        if (matchingServices.isEmpty()) {
+            logD { "No matching services available for connection" }
+            return false
+        }
+
+        // Try to connect to the first service with a valid device
+        for (service in matchingServices) {
+            if (service.device != null) {
+                return autoConnectToMatchingPeer(service)
+            }
+        }
+
+        logW { "No matching services with device info available" }
+        return false
     }
 
     private fun getErrorMessage(reason: Int): String {
