@@ -171,8 +171,9 @@
             "command": "cd /Users/roe/Dev/enter-comm && ./gradlew compileDebugKotlin 2>&1 | grep -E '(BUILD|error)' | head -5",
             "expected": "BUILD SUCCESSFUL"
           },
-          "status": "pending",
-          "notes": "Handle new ServiceDiscoveredEvent in monitorWiFiDirectEvents(). Auto-connect when matching group code peer is discovered."
+          "status": "completed",
+          "notes": "Added service discovery event handling to ConnectionCoordinator:\n- Added auto-connect logic to handleMatchingServiceDiscovered() that triggers automatic connection when matching service is discovered\n- Added shouldAutoConnect() helper method to check conditions (auto-connect enabled, not already connecting/connected)\n- All WiFi Direct events are now handled exhaustively (no else clause needed)\n- Added handlers for WiFi P2P state events, local service events, group code/mode change events\n- WiFi P2P disabled event properly cleans up discovery state\n- Group code changes during discovery trigger re-registration of local service\n- Build verification passed successfully",
+          "updated_at": "2025-12-19T23:44:07.109344+00:00"
         },
         {
           "id": "subtask-3-3",
@@ -190,8 +191,9 @@
             "command": "cd /Users/roe/Dev/enter-comm && ./gradlew compileDebugKotlin 2>&1 | grep -E '(BUILD|error)' | head -5",
             "expected": "BUILD SUCCESSFUL"
           },
-          "status": "pending",
-          "notes": "Add setGroupCode() to ConnectionCoordinator that propagates to both WiFiDirectManager and MeshNetworkManager."
+          "status": "completed",
+          "notes": "Added group code synchronization between ConnectionCoordinator and WiFiDirectManager:\n- Added setGroupCode() that propagates to both WiFiDirectManager and MeshNetworkManager\n- Added getGroupCode(), setGroupModeEnabled(), isGroupModeEnabled(), clearGroupCode() methods\n- Exposed groupCode and groupModeEnabled StateFlows for UI observation\n- Enhanced handleGroupCodeChanged() to sync group code to MeshNetworkManager when WiFi Direct group code changes\n- Updated startDiscovery() to use setGroupCode() for proper synchronization\n- Added TooManyFunctions suppress annotation for coordinator class\n- Build, Spotless, Detekt, and Lint checks all pass",
+          "updated_at": "2025-12-19T23:46:34.012737+00:00"
         }
       ]
     },
@@ -522,5 +524,5 @@
   "planStatus": "in_progress",
   "updated_at": "2025-12-19T23:19:32.426Z",
   "recoveryNote": "Task recovered from stuck state at 2025-12-19T23:19:32.426Z",
-  "last_updated": "2025-12-19T23:41:36.640857+00:00"
+  "last_updated": "2025-12-19T23:46:34.012744+00:00"
 }

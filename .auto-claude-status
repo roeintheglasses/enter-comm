@@ -3,13 +3,13 @@
   "spec": "001-enable-peer-to-peer-voice-connectivity-across-netw",
   "state": "building",
   "subtasks": {
-    "completed": 6,
+    "completed": 8,
     "total": 18,
     "in_progress": 1,
     "failed": 0
   },
   "phase": {
-    "current": "Connection Flow Prioritization",
+    "current": "Service Integration",
     "id": null,
     "total": 3
   },
@@ -18,8 +18,8 @@
     "max": 1
   },
   "session": {
-    "number": 7,
+    "number": 9,
     "started_at": "2025-12-20T04:49:32.897116"
   },
-  "last_update": "2025-12-20T05:12:00.247816"
+  "last_update": "2025-12-20T05:17:02.315394"
 }

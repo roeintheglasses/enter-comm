@@ -377,8 +377,14 @@ class MeshNetworkService : Service() {
                 meshNetworkManager.startMeshNetwork()
 
                 // Start device discovery and monitoring via connection coordinator
-                connectionCoordinator.startDiscovery()
+                // Pass current group code to enable WiFi Direct service discovery with group filtering
+                val currentGroupCode = meshNetworkManager.getGroupCode()
+                connectionCoordinator.startDiscovery(currentGroupCode)
                 connectionCoordinator.startMonitoring()
+
+                // Enable auto-connect to matching peers with same group code
+                connectionCoordinator.setAutoConnectEnabled(true)
+                logD { "WiFi Direct service discovery started with group code: $currentGroupCode" }
 
                 // Cancel any existing scan job before starting a new one
                 periodicScanJob?.cancel()

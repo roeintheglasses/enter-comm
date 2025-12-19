@@ -6,10 +6,10 @@
       "discovered_at": "2025-12-19T23:20:43.287649+00:00"
     },
     "app/src/main/java/com/entercomm/bikeintercom/service/ConnectionCoordinator.kt": {
-      "description": "ConnectionCoordinator now uses WiFi Direct service discovery as primary mechanism (startServiceDiscoveryPrimary) with peer discovery (startPeerDiscoveryFallback) as automatic fallback after DISCOVERY_TIMEOUT_MS. Service discovery enables group code filtering via TXT records for automatic group matching.",
+      "description": "ConnectionCoordinator now synchronizes group code between WiFiDirectManager and MeshNetworkManager. setGroupCode() propagates to both managers. The handleGroupCodeChanged event handler also syncs to MeshNetworkManager when WiFi Direct group code changes externally. Use @Suppress(\"TooManyFunctions\") for coordinator classes that legitimately need many methods.",
       "category": "architecture",
-      "discovered_at": "2025-12-19T23:41:10.114695+00:00"
+      "discovered_at": "2025-12-19T23:46:40.909181+00:00"
     }
   },
-  "last_updated": "2025-12-19T23:41:10.114717+00:00"
+  "last_updated": "2025-12-19T23:46:40.909197+00:00"
 }
