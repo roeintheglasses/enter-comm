@@ -27,8 +27,9 @@
             "command": "cd /Users/roe/Dev/enter-comm && ./gradlew compileDebugKotlin 2>&1 | grep -E '(BUILD|error)' | head -5",
             "expected": "BUILD SUCCESSFUL"
           },
-          "status": "pending",
-          "notes": "Add constants for: DISCOVERY_TIMEOUT_MS (30s), AUTO_CONNECT_DELAY_MS (15s), SERVICE_DISCOVERY_INTERVAL_MS (5s), GROUP_OWNER_INTENT (15 - prefer to be client)"
+          "status": "completed",
+          "notes": "Added WiFi Direct service discovery configuration constants: DISCOVERY_TIMEOUT_MS (30s), AUTO_CONNECT_DELAY_MS (15s), SERVICE_DISCOVERY_INTERVAL_MS (5s), GROUP_OWNER_INTENT (15), SERVICE_TYPE (_entercomm._tcp), SERVICE_INSTANCE_NAME (EnterComm). Build and lint checks pass.",
+          "updated_at": "2025-12-19T23:20:43.271087+00:00"
         }
       ]
     },
@@ -58,8 +59,9 @@
             "command": "cd /Users/roe/Dev/enter-comm && ./gradlew compileDebugKotlin 2>&1 | grep -E '(BUILD|error)' | head -5",
             "expected": "BUILD SUCCESSFUL"
           },
-          "status": "pending",
-          "notes": "Add registerLocalService() method using WifiP2pDnsSdServiceInfo with SERVICE_TYPE and group code in TXT record"
+          "status": "completed",
+          "notes": "Added WiFi Direct local service registration with group code in TXT record:\n- Added WifiP2pDnsSdServiceInfo import for DNS-SD service discovery\n- Added LocalServiceRegistered and LocalServiceUnregistered events to WiFiDirectEvent sealed class\n- Added registerLocalService(groupCode: String) method using WifiP2pDnsSdServiceInfo with group code in TXT record\n- Added unregisterLocalService() and clearLocalServices() cleanup methods\n- Added setGroupCode()/getGroupCode() methods with StateFlow for group code state management\n- Updated cleanup() to call clearLocalServices() before stopping discovery\n- Uses AppConfig.WiFiDirect.SERVICE_TYPE and SERVICE_INSTANCE_NAME constants\n- Build verified successful",
+          "updated_at": "2025-12-19T23:23:47.774254+00:00"
         },
         {
           "id": "subtask-2-2",
@@ -77,8 +79,9 @@
             "command": "cd /Users/roe/Dev/enter-comm && ./gradlew compileDebugKotlin 2>&1 | grep -E '(BUILD|error)' | head -5",
             "expected": "BUILD SUCCESSFUL"
           },
-          "status": "pending",
-          "notes": "Add discoverServices() method that filters peers by matching group code in TXT record. Add ServiceDiscoveredEvent to sealed class."
+          "status": "completed",
+          "notes": "Added WiFi Direct service discovery with group code filtering:\n- Added DiscoveredService data class to represent discovered services with group code information\n- Added new events: ServiceDiscovered, MatchingServiceDiscovered, ServiceDiscoveryStarted, ServiceDiscoveryStopped\n- Added StateFlows: _discoveredServices, _isServiceDiscovering for reactive state management\n- Implemented startServiceDiscovery() with DNS-SD TXT record listener for group code extraction\n- Implemented stopServiceDiscovery() and clearServiceRequests() for proper cleanup\n- Added getMatchingServices() to filter discovered services by matching group code\n- DNS-SD TXT record listener extracts group_code from service records and emits MatchingServiceDiscovered when group codes match\n- Updated cleanup() to properly clean up service discovery resources\n- Build verification passed successfully",
+          "updated_at": "2025-12-19T23:28:15.105798+00:00"
         },
         {
           "id": "subtask-2-3",
@@ -96,8 +99,9 @@
             "command": "cd /Users/roe/Dev/enter-comm && ./gradlew compileDebugKotlin 2>&1 | grep -E '(BUILD|error)' | head -5",
             "expected": "BUILD SUCCESSFUL"
           },
-          "status": "pending",
-          "notes": "Add autoConnectToMatchingPeer() that triggers on ServiceDiscoveredEvent with matching group code. Use retry pattern from ConnectionCoordinator."
+          "status": "completed",
+          "notes": "Added automatic connection to matching group code peers:\n- Added AutoConnectionStarted and AutoConnectionFailed events to WiFiDirectEvent sealed class\n- Added auto-connection state tracking (isAutoConnecting, lastAutoConnectAttempt, autoConnectEnabled)\n- Implemented setAutoConnectEnabled()/isAutoConnectEnabled() to control auto-connection behavior\n- Implemented autoConnectToMatchingPeer() with duplicate connection prevention, cooldown respect, group code validation\n- Split validation logic into validateAutoConnectConditions(), validateAutoConnectState(), validateServiceConditions() to satisfy Detekt rules\n- Added resetAutoConnectState() for cleaning up after connection attempts\n- Added connectToFirstMatchingService() helper for initiating connection to available services\n- Build, Spotless, Detekt, and Lint checks all pass",
+          "updated_at": "2025-12-19T23:32:24.089716+00:00"
         },
         {
           "id": "subtask-2-4",
@@ -515,5 +519,6 @@
   "status": "in_progress",
   "planStatus": "in_progress",
   "updated_at": "2025-12-19T23:19:32.426Z",
-  "recoveryNote": "Task recovered from stuck state at 2025-12-19T23:19:32.426Z"
+  "recoveryNote": "Task recovered from stuck state at 2025-12-19T23:19:32.426Z",
+  "last_updated": "2025-12-19T23:32:24.089726+00:00"
 }

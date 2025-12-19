@@ -56,6 +56,8 @@ sealed class WiFiDirectEvent {
     object ServiceDiscoveryStopped : WiFiDirectEvent()
     data class AutoConnectionStarted(val service: DiscoveredService) : WiFiDirectEvent()
     data class AutoConnectionFailed(val reason: String) : WiFiDirectEvent()
+    data class GroupCodeChanged(val previousCode: String?, val newCode: String?) : WiFiDirectEvent()
+    data class GroupModeChanged(val enabled: Boolean) : WiFiDirectEvent()
     data class Error(val message: String) : WiFiDirectEvent()
 }
 
@@ -68,6 +70,36 @@ class WiFiDirectManager(
 
     companion object {
         private const val TXT_RECORD_GROUP_CODE_KEY = "group_code"
+
+        // Group code validation pattern: 4-8 uppercase alphanumeric characters
+        private val GROUP_CODE_PATTERN = Regex("^[A-Z0-9]{4,8}$")
+
+        /**
+         * Validates a group code format.
+         * Valid codes are 4-8 uppercase alphanumeric characters, or "OPEN" for open groups.
+         *
+         * @param code The group code to validate
+         * @return true if the code is valid, false otherwise
+         */
+        fun isValidGroupCode(code: String?): Boolean {
+            if (code == null) return true // null means no group code (open)
+            val normalizedCode = code.uppercase()
+            if (normalizedCode == "OPEN") return true
+            return GROUP_CODE_PATTERN.matches(normalizedCode)
+        }
+
+        /**
+         * Normalizes a group code for consistent comparison.
+         * Converts to uppercase and removes hyphens.
+         *
+         * @param code The group code to normalize
+         * @return The normalized code, or null if input is null or "OPEN"
+         */
+        fun normalizeGroupCode(code: String?): String? {
+            if (code == null) return null
+            val normalized = code.uppercase().replace("-", "")
+            return if (normalized == "OPEN") null else normalized
+        }
     }
 
     private var isReceiverRegistered = false
@@ -81,6 +113,10 @@ class WiFiDirectManager(
 
     private val _groupCode = MutableStateFlow<String?>(null)
     val groupCode: StateFlow<String?> = _groupCode.asStateFlow()
+
+    // Group mode enabled - when true, only connect to devices with matching group codes
+    private val _groupModeEnabled = MutableStateFlow(true)
+    val groupModeEnabled: StateFlow<Boolean> = _groupModeEnabled.asStateFlow()
 
     private val _discoveredServices = MutableStateFlow<List<DiscoveredService>>(emptyList())
     val discoveredServices: StateFlow<List<DiscoveredService>> = _discoveredServices.asStateFlow()
@@ -379,26 +415,113 @@ class WiFiDirectManager(
 
     /**
      * Set the group code for service discovery filtering.
+     * The code will be normalized (uppercase, hyphens removed) and validated.
      * If a local service is already registered, it will be re-registered with the new group code.
+     *
+     * @param code The group code to set (4-8 alphanumeric characters, or null for open mode)
+     * @return true if the group code was set successfully, false if validation failed
      */
-    fun setGroupCode(code: String?) {
+    fun setGroupCode(code: String?): Boolean {
+        // Validate the group code format
+        if (!isValidGroupCode(code)) {
+            logW { "Invalid group code format: $code (must be 4-8 alphanumeric characters)" }
+            eventChannel.trySend(
+                WiFiDirectEvent.Error("Invalid group code format. Must be 4-8 alphanumeric characters."),
+            )
+            return false
+        }
+
+        // Normalize the code for consistent storage
+        val normalizedCode = normalizeGroupCode(code)
         val previousCode = _groupCode.value
-        _groupCode.value = code
-        logD { "Group code set: $code (was: $previousCode)" }
+
+        // Skip if the code hasn't changed
+        if (normalizedCode == previousCode) {
+            logD { "Group code unchanged: $normalizedCode" }
+            return true
+        }
+
+        _groupCode.value = normalizedCode
+        logD { "Group code set: $normalizedCode (was: $previousCode)" }
+
+        // Emit event for listeners
+        eventChannel.trySend(WiFiDirectEvent.GroupCodeChanged(previousCode, normalizedCode))
 
         // Re-register local service if already registered with new group code
-        if (isLocalServiceRegistered && code != previousCode) {
+        if (isLocalServiceRegistered) {
             unregisterLocalService()
-            if (code != null) {
-                registerLocalService(code)
+            if (normalizedCode != null) {
+                registerLocalService(normalizedCode)
             }
         }
+
+        return true
     }
 
     /**
      * Get the current group code.
      */
     fun getGroupCode(): String? = _groupCode.value
+
+    /**
+     * Enable or disable group mode filtering.
+     * When enabled, only devices with matching group codes will be considered for connection.
+     * When disabled, all discovered devices are eligible for connection (open mode).
+     *
+     * @param enabled true to enable group code filtering, false for open mode
+     */
+    fun setGroupModeEnabled(enabled: Boolean) {
+        val previousValue = _groupModeEnabled.value
+        if (enabled == previousValue) {
+            return
+        }
+
+        _groupModeEnabled.value = enabled
+        logD { "Group mode ${if (enabled) "enabled" else "disabled"}" }
+
+        // Emit event for listeners
+        eventChannel.trySend(WiFiDirectEvent.GroupModeChanged(enabled))
+    }
+
+    /**
+     * Check if group mode filtering is enabled.
+     *
+     * @return true if group code filtering is active, false if in open mode
+     */
+    fun isGroupModeEnabled(): Boolean = _groupModeEnabled.value
+
+    /**
+     * Check if a discovered service matches the current group code.
+     * Takes into account both the group code and group mode enabled state.
+     *
+     * @param service The discovered service to check
+     * @return true if the service matches (or if group mode is disabled), false otherwise
+     */
+    fun isMatchingService(service: DiscoveredService): Boolean {
+        // If group mode is disabled, all services match
+        if (!_groupModeEnabled.value) {
+            return true
+        }
+
+        val ourGroupCode = _groupCode.value
+
+        // If we have no group code (open mode), accept all services
+        if (ourGroupCode == null) {
+            return true
+        }
+
+        // Check if the service's group code matches ours
+        val theirGroupCode = normalizeGroupCode(service.groupCode)
+        return ourGroupCode == theirGroupCode
+    }
+
+    /**
+     * Clear the current group code and switch to open mode.
+     * This unregisters the local service if registered.
+     */
+    fun clearGroupCode() {
+        setGroupCode(null)
+    }
 
     /**
      * Register a local WiFi Direct service with the group code in the TXT record.
@@ -548,9 +671,8 @@ class WiFiDirectManager(
             // Emit general service discovered event
             eventChannel.trySend(WiFiDirectEvent.ServiceDiscovered(service))
 
-            // Check if group code matches our current group code
-            val ourGroupCode = _groupCode.value
-            if (ourGroupCode != null && groupCode == ourGroupCode) {
+            // Check if group code matches our current group code (using normalized comparison)
+            if (isMatchingService(service)) {
                 logD { "Found matching service! Group code: $groupCode, device: ${srcDevice.deviceName}" }
                 eventChannel.trySend(WiFiDirectEvent.MatchingServiceDiscovered(service))
             }
@@ -711,10 +833,12 @@ class WiFiDirectManager(
 
     /**
      * Get discovered services that match the current group code.
+     * Uses normalized group code comparison and respects group mode enabled state.
+     *
+     * @return List of discovered services matching the current group criteria
      */
     fun getMatchingServices(): List<DiscoveredService> {
-        val ourGroupCode = _groupCode.value ?: return emptyList()
-        return _discoveredServices.value.filter { it.groupCode == ourGroupCode }
+        return _discoveredServices.value.filter { isMatchingService(it) }
     }
 
     /**
@@ -820,10 +944,12 @@ class WiFiDirectManager(
             return AutoConnectValidationResult(isValid = false, failureReason = "No device info available")
         }
 
-        val ourGroupCode = _groupCode.value
-        val groupCodeMatches = ourGroupCode != null && service.groupCode == ourGroupCode
-        return if (!groupCodeMatches) {
-            logW { "Group code mismatch, skipping auto-connect. Ours: $ourGroupCode, theirs: ${service.groupCode}" }
+        // Use isMatchingService for consistent group code validation
+        return if (!isMatchingService(service)) {
+            logW {
+                "Group code mismatch, skipping auto-connect. " +
+                    "Ours: ${_groupCode.value}, theirs: ${service.groupCode}"
+            }
             AutoConnectValidationResult(isValid = false, failureReason = "Group code mismatch")
         } else {
             AutoConnectValidationResult(isValid = true, failureReason = null)
