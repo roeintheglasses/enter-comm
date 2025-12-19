@@ -93,6 +93,7 @@
     <ID>SwallowedException:WiFiDirectManager.kt$WiFiDirectManager$e: IllegalArgumentException</ID>
     <ID>TooGenericExceptionCaught:AdpcmCodec.kt$AdpcmCodec$e: Exception</ID>
     <ID>TooGenericExceptionCaught:ClipboardUtils.kt$ClipboardUtils$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:ShareUtils.kt$ShareUtils$e: Exception</ID>
     <ID>TooGenericExceptionCaught:AudioEffectsProcessor.kt$AudioEffectsProcessor$e: Exception</ID>
     <ID>TooGenericExceptionCaught:AudioManager.kt$AudioManager$e: Exception</ID>
     <ID>TooGenericExceptionCaught:AudioManager.kt$AudioManager.PlaybackProcessor$e: Exception</ID>
