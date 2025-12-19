@@ -608,6 +608,12 @@ class MeshNetworkService : Service() {
             meshNetworkManager.setGroupCode(code)
             logD { "Group code set to: $code" }
 
+            // Propagate group code to WiFiDirectManager for service discovery filtering
+            if (::wifiDirectManager.isInitialized) {
+                wifiDirectManager.setGroupCode(code)
+                logD { "Group code propagated to WiFiDirectManager: $code" }
+            }
+
             // Create/update group in GroupManager when using group code
             if (code != null && ::groupManager.isInitialized) {
                 groupManager.joinByCode(code)
