@@ -42,9 +42,11 @@ import com.entercomm.bikeintercom.location.RadarData
 import com.entercomm.bikeintercom.mesh.*
 import com.entercomm.bikeintercom.onboarding.ConnectionMode
 import com.entercomm.bikeintercom.onboarding.OnboardingManager
+import com.entercomm.bikeintercom.onboarding.UserPreferences
 import com.entercomm.bikeintercom.ui.components.*
 import com.entercomm.bikeintercom.ui.theme.*
 import com.entercomm.bikeintercom.util.AccessibilityManager
+import com.entercomm.bikeintercom.util.AccessibilitySettings
 import com.entercomm.bikeintercom.util.rememberHapticFeedback
 import kotlinx.coroutines.delay
 
@@ -765,10 +767,14 @@ private fun RadarContent(radarData: RadarData, isTracking: Boolean, onStartTrack
 /**
  * Settings tab content
  */
-@Suppress("LongMethod", "UnusedParameter") // LongMethod: pre-existing, UnusedParameter: accessibilityManager will be used in upcoming subtasks (3.1-3.4)
+@Suppress("LongMethod") // LongMethod: pre-existing due to multiple settings sections
 @Composable
 private fun SettingsContent(meshTopology: MeshTopology?, onboardingManager: OnboardingManager?, accessibilityManager: AccessibilityManager?) {
     val userPrefs by onboardingManager?.userPreferences?.collectAsState()
+        ?: remember { mutableStateOf(null) }
+
+    // Observe accessibility settings
+    val accessibilitySettings by accessibilityManager?.settings?.collectAsState()
         ?: remember { mutableStateOf(null) }
 
     Column(
@@ -787,157 +793,250 @@ private fun SettingsContent(meshTopology: MeshTopology?, onboardingManager: Onbo
         )
 
         // Profile section
-        Card(
-            colors = CardDefaults.cardColors(containerColor = DarkSurface),
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Person,
-                        contentDescription = null,
-                        tint = TechCyan,
-                        modifier = Modifier.size(24.dp),
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Profile",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = TextPrimary,
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
-                Spacer(modifier = Modifier.height(12.dp))
+        ProfileSettingsCard(userPrefs, onboardingManager)
 
-                // Nickname
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Text(
-                        text = "Nickname",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TextSecondary,
-                    )
-                    Text(
-                        text = userPrefs?.nickname ?: "Rider",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TextPrimary,
-                        fontWeight = FontWeight.Medium,
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Group Code
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Text(
-                        text = "Group Code",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TextSecondary,
-                    )
-                    Text(
-                        text = userPrefs?.currentGroupCode?.let {
-                            onboardingManager?.formatGroupCode(it)
-                        } ?: "None",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (userPrefs?.currentGroupCode != null) TechCyan else TextTertiary,
-                        fontWeight = FontWeight.Medium,
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Connection Mode
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Text(
-                        text = "Connection Mode",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TextSecondary,
-                    )
-                    Text(
-                        text = when (userPrefs?.connectionMode) {
-                            ConnectionMode.GROUP_MODE -> "Group Only"
-                            ConnectionMode.OPEN_MODE -> "Open Mode"
-                            else -> "Group Only"
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = when (userPrefs?.connectionMode) {
-                            ConnectionMode.OPEN_MODE -> TechOrange
-                            else -> TechGreen
-                        },
-                        fontWeight = FontWeight.Medium,
-                    )
-                }
-            }
+        // Voice Feedback section
+        if (accessibilitySettings != null && accessibilityManager != null) {
+            VoiceFeedbackCard(accessibilitySettings!!, accessibilityManager)
         }
 
         // Network topology section
-        Card(
-            colors = CardDefaults.cardColors(containerColor = DarkSurface),
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = "Network Topology",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = TextPrimary,
-                    fontWeight = FontWeight.Bold,
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-
-                if (meshTopology != null && meshTopology.nodes.isNotEmpty()) {
-                    EnhancedNetworkTopology(
-                        topology = meshTopology,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(300.dp),
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(200.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text = "No network connections",
-                            color = TextTertiary,
-                        )
-                    }
-                }
-            }
-        }
+        NetworkTopologyCard(meshTopology)
 
         // About section
-        Card(
-            colors = CardDefaults.cardColors(containerColor = DarkSurface),
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
+        AboutCard()
+    }
+}
+
+/**
+ * Profile settings card
+ */
+@Composable
+private fun ProfileSettingsCard(userPrefs: UserPreferences?, onboardingManager: OnboardingManager?) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = DarkSurface),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Person,
+                    contentDescription = null,
+                    tint = TechCyan,
+                    modifier = Modifier.size(24.dp),
+                )
+                Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "About",
+                    text = "Profile",
                     style = MaterialTheme.typography.titleMedium,
                     color = TextPrimary,
                     fontWeight = FontWeight.Bold,
                 )
-                Spacer(modifier = Modifier.height(8.dp))
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Nickname
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
                 Text(
-                    text = "Enter-Comm v1.0",
+                    text = "Nickname",
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextSecondary,
                 )
                 Text(
-                    text = "WiFi Direct Mesh Intercom",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextTertiary,
+                    text = userPrefs?.nickname ?: "Rider",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextPrimary,
+                    fontWeight = FontWeight.Medium,
                 )
             }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Group Code
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    text = "Group Code",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary,
+                )
+                Text(
+                    text = userPrefs?.currentGroupCode?.let {
+                        onboardingManager?.formatGroupCode(it)
+                    } ?: "None",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (userPrefs?.currentGroupCode != null) TechCyan else TextTertiary,
+                    fontWeight = FontWeight.Medium,
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Connection Mode
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    text = "Connection Mode",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary,
+                )
+                Text(
+                    text = when (userPrefs?.connectionMode) {
+                        ConnectionMode.GROUP_MODE -> "Group Only"
+                        ConnectionMode.OPEN_MODE -> "Open Mode"
+                        else -> "Group Only"
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = when (userPrefs?.connectionMode) {
+                        ConnectionMode.OPEN_MODE -> TechOrange
+                        else -> TechGreen
+                    },
+                    fontWeight = FontWeight.Medium,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Voice Feedback settings card with enable toggle, volume slider, and speech rate slider.
+ */
+@Composable
+private fun VoiceFeedbackCard(settings: AccessibilitySettings, accessibilityManager: AccessibilityManager) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = DarkSurface),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.RecordVoiceOver,
+                    contentDescription = null,
+                    tint = TechCyan,
+                    modifier = Modifier.size(24.dp),
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Voice Feedback",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = TextPrimary,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Enable/Disable toggle
+            SettingsToggle(
+                label = "Voice Feedback",
+                description = "Announce events and status changes",
+                checked = settings.voiceFeedbackEnabled,
+                onCheckedChange = { enabled ->
+                    accessibilityManager.updateSetting { it.copy(voiceFeedbackEnabled = enabled) }
+                },
+            )
+
+            // Volume slider
+            SettingsSlider(
+                label = "Volume",
+                value = settings.voiceVolume,
+                onValueChange = { volume ->
+                    accessibilityManager.updateSetting { it.copy(voiceVolume = volume) }
+                },
+                valueRange = 0f..1f,
+                enabled = settings.voiceFeedbackEnabled,
+            )
+
+            // Speech rate slider
+            SettingsSlider(
+                label = "Speech Rate",
+                value = settings.speechRate,
+                onValueChange = { rate ->
+                    accessibilityManager.updateSetting { it.copy(speechRate = rate) }
+                },
+                valueRange = 0.5f..2f,
+                valueFormatter = { "%.1fx".format(it) },
+                enabled = settings.voiceFeedbackEnabled,
+            )
+        }
+    }
+}
+
+/**
+ * Network topology settings card
+ */
+@Composable
+private fun NetworkTopologyCard(meshTopology: MeshTopology?) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = DarkSurface),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = "Network Topology",
+                style = MaterialTheme.typography.titleMedium,
+                color = TextPrimary,
+                fontWeight = FontWeight.Bold,
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+
+            if (meshTopology != null && meshTopology.nodes.isNotEmpty()) {
+                EnhancedNetworkTopology(
+                    topology = meshTopology,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(300.dp),
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(200.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "No network connections",
+                        color = TextTertiary,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * About card
+ */
+@Composable
+private fun AboutCard() {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = DarkSurface),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = "About",
+                style = MaterialTheme.typography.titleMedium,
+                color = TextPrimary,
+                fontWeight = FontWeight.Bold,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "Enter-Comm v1.0",
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextSecondary,
+            )
+            Text(
+                text = "WiFi Direct Mesh Intercom",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextTertiary,
+            )
         }
     }
 }
