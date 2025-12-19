@@ -44,6 +44,7 @@ import com.entercomm.bikeintercom.onboarding.ConnectionMode
 import com.entercomm.bikeintercom.onboarding.OnboardingManager
 import com.entercomm.bikeintercom.ui.components.*
 import com.entercomm.bikeintercom.ui.theme.*
+import com.entercomm.bikeintercom.util.AccessibilityManager
 import com.entercomm.bikeintercom.util.rememberHapticFeedback
 import kotlinx.coroutines.delay
 
@@ -93,6 +94,9 @@ fun IntercomMainScreen(meshService: MeshNetworkService?, isServiceBound: Boolean
     val locationManager = meshService?.getLocationManager()
     val radarData by locationManager?.radarData?.collectAsState() ?: remember { mutableStateOf(RadarData.EMPTY) }
     val isLocationTracking by locationManager?.isTracking?.collectAsState() ?: remember { mutableStateOf(false) }
+
+    // Accessibility state
+    val accessibilityManager = meshService?.getAccessibilityManager()
 
     // Topology state
     var meshTopology by remember { mutableStateOf<MeshTopology?>(null) }
@@ -293,6 +297,7 @@ fun IntercomMainScreen(meshService: MeshNetworkService?, isServiceBound: Boolean
                     SettingsContent(
                         meshTopology = meshTopology,
                         onboardingManager = onboardingManager,
+                        accessibilityManager = accessibilityManager,
                     )
                 }
             }
@@ -760,8 +765,9 @@ private fun RadarContent(radarData: RadarData, isTracking: Boolean, onStartTrack
 /**
  * Settings tab content
  */
+@Suppress("LongMethod", "UnusedParameter") // LongMethod: pre-existing, UnusedParameter: accessibilityManager will be used in upcoming subtasks (3.1-3.4)
 @Composable
-private fun SettingsContent(meshTopology: MeshTopology?, onboardingManager: OnboardingManager?) {
+private fun SettingsContent(meshTopology: MeshTopology?, onboardingManager: OnboardingManager?, accessibilityManager: AccessibilityManager?) {
     val userPrefs by onboardingManager?.userPreferences?.collectAsState()
         ?: remember { mutableStateOf(null) }
 
