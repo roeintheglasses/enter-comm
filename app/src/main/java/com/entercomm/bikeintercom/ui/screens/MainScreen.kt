@@ -800,6 +800,11 @@ private fun SettingsContent(meshTopology: MeshTopology?, onboardingManager: Onbo
             VoiceFeedbackCard(accessibilitySettings!!, accessibilityManager)
         }
 
+        // Haptic Feedback section
+        if (accessibilitySettings != null && accessibilityManager != null) {
+            HapticFeedbackCard(accessibilitySettings!!, accessibilityManager)
+        }
+
         // Network topology section
         NetworkTopologyCard(meshTopology)
 
@@ -965,6 +970,57 @@ private fun VoiceFeedbackCard(settings: AccessibilitySettings, accessibilityMana
                 valueRange = 0.5f..2f,
                 valueFormatter = { "%.1fx".format(it) },
                 enabled = settings.voiceFeedbackEnabled,
+            )
+        }
+    }
+}
+
+/**
+ * Haptic Feedback settings card with enhanced haptics toggle and intensity slider.
+ */
+@Composable
+private fun HapticFeedbackCard(settings: AccessibilitySettings, accessibilityManager: AccessibilityManager) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = DarkSurface),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Vibration,
+                    contentDescription = null,
+                    tint = TechCyan,
+                    modifier = Modifier.size(24.dp),
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Haptic Feedback",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = TextPrimary,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Enhanced haptics toggle
+            SettingsToggle(
+                label = "Enhanced Haptics",
+                description = "Stronger vibration feedback for actions",
+                checked = settings.enhancedHaptics,
+                onCheckedChange = { enabled ->
+                    accessibilityManager.updateSetting { it.copy(enhancedHaptics = enabled) }
+                },
+            )
+
+            // Haptic intensity slider
+            SettingsSlider(
+                label = "Intensity",
+                value = settings.hapticIntensity,
+                onValueChange = { intensity ->
+                    accessibilityManager.updateSetting { it.copy(hapticIntensity = intensity) }
+                },
+                valueRange = 0f..1f,
             )
         }
     }
