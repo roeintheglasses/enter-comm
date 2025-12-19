@@ -6,9 +6,9 @@
       "discovered_at": "2025-12-19T23:24:07.103837+00:00"
     },
     "app/src/main/java/com/entercomm/bikeintercom/ui/screens/MainScreen.kt": {
-      "description": "HapticFeedbackCard added following the VoiceFeedbackCard pattern: takes AccessibilitySettings and AccessibilityManager, uses Card with DarkSurface color, has header row with icon/title, and uses SettingsToggle/SettingsSlider components for controls. Settings cards should be conditionally rendered when accessibilitySettings != null && accessibilityManager != null.",
-      "category": "ui-patterns",
-      "discovered_at": "2025-12-19T23:38:37.218283+00:00"
+      "description": "RidingModeCard added following the established accessibility card pattern: observes isBoneConductionDetected StateFlow from AccessibilityManager for dynamic detection status display. Uses BoneConductionMode.entries.toList() for enum dropdown options and displayName() extension function for human-readable labels. Card is split into RidingModeCardHeader and RidingModeCardContent helper composables to stay within Detekt's method length limits.",
+      "category": "ui_pattern",
+      "discovered_at": "2025-12-19T23:42:24.782287+00:00"
     },
     "app/src/main/java/com/entercomm/bikeintercom/ui/components/AccessibilityComponents.kt": {
       "description": "Created reusable accessibility UI components: SettingsToggle, SettingsSlider, and SettingsDropdown. These follow the pattern from GroupComponents.kt and use wildcard imports for foundation.layout.*, material3.*, runtime.*, etc. Detekt enforces max 60 lines per function (LongMethod rule), so larger composables need to be broken into smaller private helper composables.",
@@ -16,5 +16,5 @@
       "discovered_at": "2025-12-19T23:32:28.587914+00:00"
     }
   },
-  "last_updated": "2025-12-19T23:38:37.218292+00:00"
+  "last_updated": "2025-12-19T23:42:24.782298+00:00"
 }

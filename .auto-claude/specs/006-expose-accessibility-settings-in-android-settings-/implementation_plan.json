@@ -75,16 +75,18 @@
           "title": "Add Display/Accessibility section to Settings",
           "description": "Add a card for Display accessibility: large text mode toggle, high contrast mode toggle.",
           "file_path": "app/src/main/java/com/entercomm/bikeintercom/ui/screens/MainScreen.kt",
-          "status": "pending",
-          "notes": ""
+          "status": "completed",
+          "notes": "Added DisplayAccessibilityCard composable with large text mode toggle (with description) and high contrast mode toggle (with description). Integrated into SettingsContent between Haptic Feedback and Network Topology sections. Uses Icons.Filled.Visibility for the card header icon. Follows the same pattern as VoiceFeedbackCard and HapticFeedbackCard using SettingsToggle component from AccessibilityComponents.kt. Commit: e298f5e",
+          "updated_at": "2025-12-19T23:40:17.429247+00:00"
         },
         {
           "id": "3.4",
           "title": "Add Riding Mode section to Settings",
           "description": "Add a card for Riding/Motorcycle-specific features: bone conduction mode dropdown (Auto/Enabled/Disabled with detected status), volume button PTT toggle, swipe gestures toggle, one-handed mode toggle.",
           "file_path": "app/src/main/java/com/entercomm/bikeintercom/ui/screens/MainScreen.kt",
-          "status": "pending",
-          "notes": ""
+          "status": "completed",
+          "notes": "Added RidingModeCard composable with motorcycle-specific accessibility features: bone conduction mode dropdown (Auto/Enabled/Disabled) with detection status display, volume button PTT toggle, swipe gestures toggle, and one-handed mode toggle. The card follows the established pattern of other accessibility cards and is broken into helper composables (RidingModeCardHeader, RidingModeCardContent) to satisfy Detekt's LongMethod rule. Uses Icons.Filled.TwoWheeler for the header icon. Commit: fef598e",
+          "updated_at": "2025-12-19T23:42:18.335851+00:00"
         }
       ]
     },
@@ -98,8 +100,9 @@
           "title": "Build and verify compilation",
           "description": "Run ./gradlew assembleDebug to verify the changes compile successfully.",
           "file_path": "",
-          "status": "pending",
-          "notes": ""
+          "status": "completed",
+          "notes": "Build verification successful. ./gradlew assembleDebug completed with BUILD SUCCESSFUL in 11s. Debug APK (16.9 MB) created at app/build/outputs/apk/debug/app-debug.apk. Only deprecation warnings (no errors) from pre-existing code (AudioTrack constructor, WIFI_MODE_FULL_HIGH_PERF, unused parameters in RadarComponents/TechnicalComponents/Theme). All accessibility settings implementation compiles correctly.",
+          "updated_at": "2025-12-19T23:44:19.947137+00:00"
         },
         {
           "id": "4.2",
@@ -126,5 +129,5 @@
     "App compiles successfully with no errors"
   ],
   "spec_file": "spec.md",
-  "last_updated": "2025-12-19T23:38:31.209884+00:00"
+  "last_updated": "2025-12-19T23:44:19.947155+00:00"
 }
