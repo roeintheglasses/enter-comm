@@ -1,0 +1,68 @@
+=== AUTO-BUILD PROGRESS ===
+
+Project: Enable peer-to-peer voice connectivity across networks
+Workspace: /Users/roe/Dev/enter-comm
+Spec Directory: .auto-claude/specs/001-enable-peer-to-peer-voice-connectivity-across-netw
+Started: 2025-12-20
+
+Workflow Type: feature
+Rationale: This is a feature enhancement that changes the primary connection flow from
+LAN-based discovery to WiFi Direct-based peer-to-peer connectivity. The WiFi Direct
+infrastructure already exists but needs to be prioritized and integrated with group
+code matching.
+
+Session 1 (Planner):
+- Created implementation_plan.json
+- Phases: 7
+- Total subtasks: 17
+- Created init.sh
+- Updated project_index.json with service details
+- Updated context.json with patterns and existing implementations
+
+Phase Summary:
+- Phase 1 (Config Foundation): 1 subtask - Add WiFi Direct service discovery config
+- Phase 2 (WiFi Direct Enhancement): 4 subtasks - Service discovery, group code filtering
+- Phase 3 (Connection Flow): 3 subtasks - Make WiFi Direct primary discovery mechanism
+- Phase 4 (Service Integration): 3 subtasks - Auto-start WiFi Direct in MeshNetworkService
+- Phase 5 (Mesh Integration): 2 subtasks - Ensure mesh works over WiFi Direct interface
+- Phase 6 (Testing): 3 subtasks - Unit tests and verification
+- Phase 7 (Integration): 2 subtasks - End-to-end verification
+
+Services Involved:
+- app: Android bike intercom application with mesh networking
+
+Files to Modify:
+- app/src/main/java/com/entercomm/bikeintercom/config/AppConfig.kt
+- app/src/main/java/com/entercomm/bikeintercom/wifidirect/WiFiDirectManager.kt
+- app/src/main/java/com/entercomm/bikeintercom/service/ConnectionCoordinator.kt
+- app/src/main/java/com/entercomm/bikeintercom/mesh/MeshNetworkService.kt
+- app/src/main/java/com/entercomm/bikeintercom/mesh/MeshNetworkManager.kt
+
+Files to Create:
+- app/src/test/java/com/entercomm/bikeintercom/wifidirect/WiFiDirectManagerTest.kt
+- app/src/test/java/com/entercomm/bikeintercom/service/ConnectionCoordinatorTest.kt
+
+Key Patterns Identified:
+- StateFlow: Private MutableStateFlow + public StateFlow via asStateFlow()
+- Events: Sealed classes + Channel.UNLIMITED + receiveAsFlow()
+- Retry: repeat() with exponential backoff, state verification
+- Logging: logD{}, logW{}, logE({}, exception) from util/Logger.kt
+- Config: All timing constants in AppConfig nested objects
+
+Parallelism Analysis:
+- Max parallel phases: 1
+- Recommended workers: 1
+- Reason: Single service with sequential dependencies between phases
+
+Verification Strategy:
+- Risk level: medium
+- Required tests: unit, integration
+- Commands: make test, make build, make check
+
+=== STARTUP COMMAND ===
+
+To continue building this spec, run:
+
+  source auto-claude/.venv/bin/activate && python auto-claude/run.py --spec 001 --parallel 1
+
+=== END SESSION 1 ===

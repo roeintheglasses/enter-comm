@@ -1,0 +1,38 @@
+{
+  "project_root": "/Users/roe/Dev/enter-comm",
+  "project_type": "single",
+  "services": {
+    "app": {
+      "path": "app",
+      "tech_stack": ["kotlin", "android", "jetpack-compose", "gradle"],
+      "port": null,
+      "dev_command": "make run",
+      "test_command": "make test",
+      "build_command": "make build",
+      "lint_command": "make check"
+    }
+  },
+  "infrastructure": {
+    "ci": "GitHub Actions",
+    "ci_workflows": ["release.yml", "ci.yml"],
+    "docker": false,
+    "database": null
+  },
+  "conventions": {
+    "linter": "detekt",
+    "formatter": "ktlint",
+    "testing": "junit",
+    "logging": "util/Logger.kt (logD, logW, logE)",
+    "config": "config/AppConfig.kt",
+    "state_management": "StateFlow",
+    "events": "Channel with sealed classes"
+  },
+  "entry_points": {
+    "main": "app/src/main/java/com/entercomm/bikeintercom/MainActivity.kt",
+    "service": "app/src/main/java/com/entercomm/bikeintercom/mesh/MeshNetworkService.kt"
+  },
+  "ports": {
+    "discovery": 8888,
+    "audio": 8889
+  }
+}

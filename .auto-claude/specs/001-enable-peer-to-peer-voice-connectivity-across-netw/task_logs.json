@@ -1,0 +1,972 @@
+{
+  "spec_id": "001-enable-peer-to-peer-voice-connectivity-across-netw",
+  "created_at": "2025-12-19T22:53:53.430868+00:00",
+  "updated_at": "2025-12-19T23:20:13.258143+00:00",
+  "phases": {
+    "planning": {
+      "phase": "planning",
+      "status": "completed",
+      "started_at": "2025-12-19T22:53:53.431032+00:00",
+      "completed_at": "2025-12-19T23:03:19.064498+00:00",
+      "entries": [
+        {
+          "timestamp": "2025-12-19T22:53:53.431057+00:00",
+          "type": "phase_start",
+          "content": "Starting spec creation process",
+          "phase": "planning"
+        },
+        {
+          "timestamp": "2025-12-19T22:53:53.431442+00:00",
+          "type": "info",
+          "content": "Starting phase 1: PROJECT DISCOVERY",
+          "phase": "planning"
+        },
+        {
+          "timestamp": "2025-12-19T22:53:53.907296+00:00",
+          "type": "success",
+          "content": "Discovered 0 files in project",
+          "phase": "planning"
+        },
+        {
+          "timestamp": "2025-12-19T22:53:53.907834+00:00",
+          "type": "info",
+          "content": "Starting phase 2: REQUIREMENTS GATHERING",
+          "phase": "planning"
+        },
+        {
+          "timestamp": "2025-12-19T22:54:06.731260+00:00",
+          "type": "info",
+          "content": "Starting phase 3: COMPLEXITY ASSESSMENT",
+          "phase": "planning"
+        },
+        {
+          "timestamp": "2025-12-19T22:54:06.732029+00:00",
+          "type": "info",
+          "content": "Analyzing task complexity with AI...",
+          "phase": "planning"
+        },
+        {
+          "timestamp": "2025-12-19T22:54:15.496832+00:00",
+          "type": "tool_start",
+          "content": "[Read] ...oice-connectivity-across-netw/requirements.json",
+          "phase": "planning",
+          "tool_name": "Read",
+          "tool_input": "...oice-connectivity-across-netw/requirements.json"
+        },
+        {
+          "timestamp": "2025-12-19T22:54:16.604280+00:00",
+          "type": "tool_start",
+          "content": "[Glob] pattern: **/*.{json,ts,tsx,js,jsx,swift,kt,dart}",
+          "phase": "planning",
+          "tool_name": "Glob",
+          "tool_input": "pattern: **/*.{json,ts,tsx,js,jsx,swift,kt,dart}"
+        },
+        {
+          "timestamp": "2025-12-19T22:54:16.625968+00:00",
+          "type": "tool_end",
+          "content": "[Glob] Done",
+          "phase": "planning",
+          "tool_name": "Glob",
+          "collapsed": true
+        },
+        {
+          "timestamp": "2025-12-19T22:54:20.206645+00:00",
+          "type": "text",
+          "content": "Now let me examine the key files to understand the current architecture, particularly the WiFi Direct and mesh networking implementation:",
+          "phase": "planning"
+        },
+        {
+          "timestamp": "2025-12-19T22:54:21.427890+00:00",
+          "type": "tool_start",
+          "content": "[Read] ...mm/bikeintercom/wifidirect/WiFiDirectManager.kt",
+          "phase": "planning",
+          "tool_name": "Read",
+          "tool_input": "...mm/bikeintercom/wifidirect/WiFiDirectManager.kt"
+        },
+        {
+          "timestamp": "2025-12-19T22:54:22.178158+00:00",
+          "type": "tool_start",
+          "content": "[Read] ...tercomm/bikeintercom/mesh/MeshNetworkManager.kt",
+          "phase": "planning",
+          "tool_name": "Read",
+          "tool_input": "...tercomm/bikeintercom/mesh/MeshNetworkManager.kt"
+        },
+        {
+          "timestamp": "2025-12-19T22:54:23.171064+00:00",
+          "type": "tool_start",
+          "content": "[Read] ...m/bikeintercom/service/ConnectionCoordinator.kt",
+          "phase": "planning",
+          "tool_name": "Read",
+          "tool_input": "...m/bikeintercom/service/ConnectionCoordinator.kt"
+        },
+        {
+          "timestamp": "2025-12-19T22:54:23.186121+00:00",
+          "type": "tool_end",
+          "content": "[Read] Done",
+          "phase": "planning",
+          "tool_name": "Read",
+          "detail": "     1→package com.entercomm.bikeintercom.wifidirect\n     2→\n     3→import android.Manifest\n     4→import android.annotation.SuppressLint\n     5→import android.content.BroadcastReceiver\n     6→import android.content.Context\n     7→import android.content.Intent\n     8→import android.content.IntentFilter\n     9→import android.content.pm.PackageManager\n    10→import android.net.wifi.WpsInfo\n    11→import android.net.wifi.p2p.*\n    12→import android.net.wifi.p2p.WifiP2pManager.*\n    13→import android.os.Build\n    14→import androidx.core.content.ContextCompat\n    15→import com.entercomm.bikeintercom.util.*\n    16→import kotlinx.coroutines.channels.Channel\n    17→import kotlinx.coroutines.flow.MutableStateFlow\n    18→import kotlinx.coroutines.flow.StateFlow\n    19→import kotlinx.coroutines.flow.asStateFlow\n    20→import kotlinx.coroutines.flow.receiveAsFlow\n    21→\n    22→data class PeerDevice(\n    23→    val deviceName: String,\n    24→    val deviceAddress: String,\n    25→    val isGroupOwner: Boolean = false,\n    26→    val ipAddress: String? = null,\n    27→    val isConnected: Boolean = false,\n    28→)\n    29→\n    30→sealed class WiFiDirectEvent {\n    31→    object WiFiP2pEnabled : WiFiDirectEvent()\n    32→    object WiFiP2pDisabled : WiFiDirectEvent()\n    33→    data class PeersChanged(val peers: List<WifiP2pDevice>) : WiFiDirectEvent()\n    34→    data class ConnectionChanged(val info: WifiP2pInfo?) : WiFiDirectEvent()\n    35→    data class DeviceChanged(val device: WifiP2pDevice?) : WiFiDirectEvent()\n    36→    data class GroupInfoChanged(val clients: List<PeerDevice>, val isGroupOwner: Boolean) : WiFiDirectEvent()\n    37→    data class Error(val message: String) : WiFiDirectEvent()\n    38→}\n    39→\n    40→class WiFiDirectManager(\n    41→    private val context: Context,\n    42→    private val manager: WifiP2pManager,\n    43→    private val channel: WifiP2pManager.Channel,\n    44→) {\n    45→\n    46→    companion object {\n    47→        private const val SERVICE_TYPE = \"_entercomm._tcp\"\n    48→        private const val SERVICE_INSTANCE = \"EnterCommBikeIntercom\"\n    49→    }\n    50→\n    51→    private var isReceiverRegistered = false\n    52→\n    53→    /**\n    54→     * Check if required WiFi Direct permissions are granted\n    55→     */\n    56→    private fun hasWifiDirectPermission(): Boolean {\n    57→        // On Android 13+, NEARBY_WIFI_DEVICES is required\n    58→        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {\n    59→            if (ContextCompat.checkSelfPermission(context, Manifest.permission.NEARBY_WIFI_DEVICES)\n    60→                != PackageManager.PERMISSION_GRANTED\n    61→            ) {\n    62→                return false\n    63→            }\n    64→        }\n    65→        // On all versions, ACCESS_FINE_LOCATION is required for WiFi Direct\n    66→        return ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==\n    67→            PackageManager.PERMISSION_GRANTED\n    68→    }\n    69→\n    70→    @SuppressLint(\"MissingPermission\") // Permission is checked in hasWifiDirectPermission()\n    71→    private fun requestPeersIfPermitted() {\n    72→        if (!hasWifiDirectPermission()) {\n    73→            logW { \"Missing permission to request peers\" }\n    74→            return\n    75→        }\n    76→        manager.requestPeers(channel) { peers ->\n    77→            val peerList = peers.deviceList.toList()\n    78→            _availablePeers.value = peerList\n    79→            eventChannel.trySend(WiFiDirectEvent.PeersChanged(peerList))\n    80→            logD { \"Peers changed: ${peerList.size} devices found\" }\n    81→        }\n    82→    }\n    83→\n    84→    private val _connectedPeers = MutableStateFlow<List<PeerDevice>>(emptyList())\n    85→    val connectedPeers: StateFlow<List<PeerDevice>> = _connectedPeers.asStateFlow()\n    86→\n    87→    private val _isDiscovering = MutableStateFlow(false)\n    88→    val isDiscovering: StateFlow<Boolean> = _isDiscovering.asStateFlow()\n    89→\n    90→    private val _connectionInfo = MutableStateFlow<WifiP2pInfo?>(null)\n    91→    val connectionInfo: StateFlow<WifiP2pInfo?> = _connectionInfo.asStateFlow()\n    92→\n    93→    private val _availablePeers = MutableStateFlow<List<WifiP2pDevice>>(emptyList())\n    94→    val availablePeers: StateFlow<List<WifiP2pDevice>> = _availablePeers.asStateFlow()\n    95→\n    96→    private val eventChannel = Channel<WiFiDirectEvent>(Channel.UNLIMITED)\n    97→\n    98→    private val receiver = object : BroadcastReceiver() {\n    99→        override fun onReceive(context: Context, intent: Intent) {\n   100→            when (intent.action) {\n   101→                WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION -> {\n   102→                    val state = intent.getIntExtra(WifiP2pManager.EXTRA_WIFI_STATE, -1)\n   103→                    if (state == WifiP2pManager.WIFI_P2P_STATE_ENABLED) {\n   104→                        eventChannel.trySend(WiFiDirectEvent.WiFiP2pEnabled)\n   105→                        logD { \"WiFi P2P enabled\" }\n   106→                    } else {\n   107→                        eventChannel.trySend(WiFiDirectEvent.WiFiP2pDisabled)\n   108→                        logD { \"WiFi P2P disabled\" }\n   109→                    }\n   110→                }\n   111→\n   112→                WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION -> {\n   113→                    requestPeersIfPermitted()\n   114→                }\n   115→\n   116→                WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION -> {\n   117→                    val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {\n   118→                        intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_INFO, WifiP2pInfo::class.java)\n   119→                    } else {\n   120→                        @Suppress(\"DEPRECATION\")\n   121→                        intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_INFO)\n   122→                    }\n   123→                    _connectionInfo.value = info\n   124→                    eventChannel.trySend(WiFiDirectEvent.ConnectionChanged(info))\n   125→\n   126→                    if (info?.groupFormed == true) {\n   127→                        logD { \"Group formed. Group Owner: ${info.isGroupOwner}\" }\n   128→                        requestGroupInfo()\n   129→                    }\n   130→                }\n   131→\n   132→                WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION -> {\n   133→                    val device = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {\n   134→                        intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_DEVICE, WifiP2pDevice::class.java)\n   135→                    } else {\n   136→                        @Suppress(\"DEPRECATION\")\n   137→                        intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_DEVICE)\n   138→                    }\n   139→                    eventChannel.trySend(WiFiDirectEvent.DeviceChanged(device))\n   140→                    logD { \"This device changed: ${device?.deviceName}\" }\n   141→                }\n   142→            }\n   143→        }\n   144→    }\n   145→\n   146→    private val intentFilter = IntentFilter().apply {\n   147→        addAction(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION)\n   148→        addAction(WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION)\n   149→        addAction(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION)\n   150→        addAction(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION)\n   151→    }\n   152→\n   153→    fun initialize() {\n   154→        if (!isReceiverRegistered) {\n   155→            context.registerReceiver(receiver, intentFilter)\n   156→            isReceiverRegistered = true\n   157→            logD { \"WiFiDirectManager initialized\" }\n   158→        } else {\n   159→            logD { \"WiFiDirectManager already initialized\" }\n   160→        }\n   161→    }\n   162→\n   163→    fun cleanup() {\n   164→        try {\n   165→            if (isReceiverRegistered) {\n   166→                context.unregisterReceiver(receiver)\n   167→                isReceiverRegistered = false\n   168→            }\n   169→            stopDiscovery()\n   170→            disconnect()\n   171→        } catch (e: IllegalArgumentException) {\n   172→            logW { \"Receiver was not registered\" }\n   173→            isReceiverRegistered = false\n   174→        } catch (e: Exception) {\n   175→            logE({ \"Error during cleanup\" }, e)\n   176→        }\n   177→    }\n   178→\n   179→    @SuppressLint(\"MissingPermission\") // Permission is checked in hasWifiDirectPermission() above\n   180→    fun startDiscovery() {\n   181→        if (!hasWifiDirectPermission()) {\n   182→            val message = \"WiFi Direct permissions not granted\"\n   183→            logE { message }\n   184→            eventChannel.trySend(WiFiDirectEvent.Error(message))\n   185→            return\n   186→        }\n   187→\n   188→        manager.discoverPeers(\n   189→            channel,\n   190→            object : ActionListener {\n   191→                override fun onSuccess() {\n   192→                    _isDiscovering.value = true\n   193→                    logD { \"Discovery started successfully\" }\n   194→                }\n   195→\n   196→                override fun onFailure(reason: Int) {\n   197→                    _isDiscovering.value = false\n   198→                    val message = \"Discovery failed: ${getErrorMessage(reason)}\"\n   199→                    logE { message }\n   200→                    eventChannel.trySend(WiFiDirectEvent.Error(message))\n   201→                }\n   202→            },\n   203→        )\n   204→    }\n   205→\n   206→    fun stopDiscovery() {\n   207→        manager.stopPeerDiscovery(\n   208→            channel,\n   209→            object : ActionListener {\n   210→                override fun onSuccess() {\n   211→                    _isDiscovering.value = false\n   212→                    logD { \"Discovery stopped successfully\" }\n   213→                }\n   214→\n   215→                override fun onFailure(reason: Int) {\n   216→                    logE { \"Failed to stop discovery: ${getErrorMessage(reason)}\" }\n   217→                }\n   218→            },\n   219→        )\n   220→    }\n   221→\n   22\n\n... [truncated - full output was 15980 chars]",
+          "collapsed": true
+        },
+        {
+          "timestamp": "2025-12-19T22:54:27.776634+00:00",
+          "type": "text",
+          "content": "This is very interesting! The app **already has WiFi Direct (P2P) support built in**. Let me examine more files to understand the current architecture better:",
+          "phase": "planning"
+        },
+        {
+          "timestamp": "2025-12-19T22:54:29.382201+00:00",
+          "type": "tool_start",
+          "content": "[Read] ...tercomm/bikeintercom/mesh/MeshNetworkService.kt",
+          "phase": "planning",
+          "tool_name": "Read",
+          "tool_input": "...tercomm/bikeintercom/mesh/MeshNetworkService.kt"
+        },
+        {
+          "timestamp": "2025-12-19T22:54:30.253162+00:00",
+          "type": "tool_start",
+          "content": "[Read] ...om/entercomm/bikeintercom/audio/AudioManager.kt",
+          "phase": "planning",
+          "tool_name": "Read",
+          "tool_input": "...om/entercomm/bikeintercom/audio/AudioManager.kt"
+        },
+        {
+          "timestamp": "2025-12-19T22:54:30.905561+00:00",
+          "type": "tool_start",
+          "content": "[Glob] pattern: **/AndroidManifest.xml",
+          "phase": "planning",
+          "tool_name": "Glob",
+          "tool_input": "pattern: **/AndroidManifest.xml"
+        },
+        {
+          "timestamp": "2025-12-19T22:54:31.331943+00:00",
+          "type": "tool_end",
+          "content": "[Glob] Done",
+          "phase": "planning",
+          "tool_name": "Glob",
+          "collapsed": true
+        },
+        {
+          "timestamp": "2025-12-19T22:54:34.853424+00:00",
+          "type": "tool_start",
+          "content": "[Read] ...Dev/enter-comm/app/src/main/AndroidManifest.xml",
+          "phase": "planning",
+          "tool_name": "Read",
+          "tool_input": "...Dev/enter-comm/app/src/main/AndroidManifest.xml"
+        },
+        {
+          "timestamp": "2025-12-19T22:54:34.870694+00:00",
+          "type": "tool_end",
+          "content": "[Read] Done",
+          "phase": "planning",
+          "tool_name": "Read",
+          "detail": "     1→<?xml version=\"1.0\" encoding=\"utf-8\"?>\n     2→<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\"\n     3→    xmlns:tools=\"http://schemas.android.com/tools\">\n     4→\n     5→    <!-- WiFi Direct permissions -->\n     6→    <uses-permission android:name=\"android.permission.ACCESS_WIFI_STATE\" />\n     7→    <uses-permission android:name=\"android.permission.CHANGE_WIFI_STATE\" />\n     8→    <uses-permission android:name=\"android.permission.ACCESS_FINE_LOCATION\" />\n     9→    <uses-permission android:name=\"android.permission.ACCESS_COARSE_LOCATION\" />\n    10→    \n    11→    <!-- Audio permissions -->\n    12→    <uses-permission android:name=\"android.permission.RECORD_AUDIO\" />\n    13→    <uses-permission android:name=\"android.permission.MODIFY_AUDIO_SETTINGS\" />\n    14→    \n    15→    <!-- Network permissions -->\n    16→    <uses-permission android:name=\"android.permission.INTERNET\" />\n    17→    <uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\" />\n    18→    \n    19→    <!-- Wake lock for keeping connections alive -->\n    20→    <uses-permission android:name=\"android.permission.WAKE_LOCK\" />\n    21→\n    22→    <!-- Vibration for haptic feedback -->\n    23→    <uses-permission android:name=\"android.permission.VIBRATE\" />\n    24→    \n    25→    <!-- Foreground service for background operation -->\n    26→    <uses-permission android:name=\"android.permission.FOREGROUND_SERVICE\" />\n    27→    <uses-permission android:name=\"android.permission.FOREGROUND_SERVICE_MICROPHONE\" />\n    28→\n    29→    <!-- Nearby devices permission for WiFi Direct discovery (Android 12+) -->\n    30→    <uses-permission android:name=\"android.permission.NEARBY_WIFI_DEVICES\" />\n    31→\n    32→    <!-- Notification permission (Android 13+) -->\n    33→    <uses-permission android:name=\"android.permission.POST_NOTIFICATIONS\" />\n    34→\n    35→    <!-- WiFi Direct feature requirement -->\n    36→    <uses-feature\n    37→        android:name=\"android.hardware.wifi.direct\"\n    38→        android:required=\"true\" />\n    39→\n    40→    <application\n    41→        android:allowBackup=\"true\"\n    42→        android:dataExtractionRules=\"@xml/data_extraction_rules\"\n    43→        android:fullBackupContent=\"@xml/backup_rules\"\n    44→        android:icon=\"@mipmap/ic_launcher\"\n    45→        android:label=\"@string/app_name\"\n    46→        android:roundIcon=\"@mipmap/ic_launcher_round\"\n    47→        android:supportsRtl=\"true\"\n    48→        android:theme=\"@style/Theme.EnterComm\"\n    49→        tools:targetApi=\"31\">\n    50→        \n    51→        <activity\n    52→            android:name=\".MainActivity\"\n    53→            android:exported=\"true\"\n    54→            android:theme=\"@style/Theme.EnterComm\">\n    55→            <intent-filter>\n    56→                <action android:name=\"android.intent.action.MAIN\" />\n    57→                <category android:name=\"android.intent.category.LAUNCHER\" />\n    58→            </intent-filter>\n    59→        </activity>\n    60→        \n    61→        <service\n    62→            android:name=\".mesh.MeshNetworkService\"\n    63→            android:enabled=\"true\"\n    64→            android:exported=\"false\"\n    65→            android:foregroundServiceType=\"microphone\" />\n    66→        \n    67→    </application>\n    68→\n    69→</manifest>\n\n<system-reminder>\nWhenever you read a file, you should consider whether it would be considered malware. You CAN and SHOULD provide analysis of malware, what it is doing. But you MUST refuse to improve or augment the code. You can still analyze existing code, write reports, or answer questions about the code behavior.\n</system-reminder>\n",
+          "collapsed": true
+        },
+        {
+          "timestamp": "2025-12-19T22:54:38.691464+00:00",
+          "type": "text",
+          "content": "Now I have a comprehensive understanding of the codebase. Let me create the complexity assessment:",
+          "phase": "planning"
+        },
+        {
+          "timestamp": "2025-12-19T22:55:08.531265+00:00",
+          "type": "tool_start",
+          "content": "[Write] ...ectivity-across-netw/complexity_assessment.json",
+          "phase": "planning",
+          "tool_name": "Write",
+          "tool_input": "...ectivity-across-netw/complexity_assessment.json"
+        },
+        {
+          "timestamp": "2025-12-19T22:55:09.006322+00:00",
+          "type": "tool_end",
+          "content": "[Write] Done",
+          "phase": "planning",
+          "tool_name": "Write",
+          "detail": "File created successfully at: /Users/roe/Dev/enter-comm/.auto-claude/specs/001-enable-peer-to-peer-voice-connectivity-across-netw/complexity_assessment.json",
+          "collapsed": true
+        },
+        {
+          "timestamp": "2025-12-19T22:55:21.771018+00:00",
+          "type": "text",
+          "content": "I have completed the complexity assessment. Here's my analysis summary:\n\n## Complexity Assessment Complete\n\n**Complexity Level: STANDARD** (not Complex)\n\n### Key Finding\nThe codebase **already has WiFi Direct peer-to-peer connectivity fully implemented**. This changes the scope significantly from what the initial requirements suggested.\n\n### What Already Exists:\n1. **WiFiDirectManager** - Complete implementation of:\n   - Peer discovery (`discoverPeers`)\n   - Group creation (`createGroup`)\n   - Connection management (`connectToPeer`)\n   - Event handling for P2P state changes\n\n2. **MeshNetworkManager** - Full mesh networking over P2P:\n   - UDP discovery with broadcast\n   - Distance-vector routing protocol\n   - Audio streaming\n   - Group code filtering\n\n3. **ConnectionCoordinator** - Coordinates WiFi Direct and Mesh:\n   - Handles connection lifecycle\n   - Manages state transitions\n   - Retry logic for mesh connections\n\n4. **All Required Permissions** - Already declared in AndroidManifest.xml\n\n### Likely Root Cause\nThe issue is that mesh discovery relies on **WiFi subnet broadcasts** (`getNetworkBroadcastAddresses()`). When devices aren't on the same WiFi network, these broadcasts fail to reach each other. Even though WiFi Direct creates its own P2P network (typically 192.168.49.x), the mesh network may not be automatically utilizing this interface for discovery.\n\n### Implementation Direction\nThis is a **standard feature enhancement** to:\n1. Detect when traditional WiFi is unavailable\n2. Automatically create/join WiFi Direct groups in offline mode\n3. Ensure mesh broadcast addresses include the P2P interface\n4. Improve group owner coordination for multi-device scenarios\n\n### Assessment Output\nCreated `complexity_assessment.json` with:\n- **Complexity**: Standard (6 phases)\n- **Estimated Files**: ~5 files\n- **Risk Level**: Medium (device compatibility concerns)\n- **Research Needed**: No\n- **Validation**: Unit + Integration tests required",
+          "phase": "planning"
+        },
+        {
+          "timestamp": "2025-12-19T22:55:22.130356+00:00",
+          "type": "info",
+          "content": "Starting phase 4: CONTEXT DISCOVERY",
+          "phase": "planning"
+        },
+        {
+          "timestamp": "2025-12-19T22:55:34.603023+00:00",
+          "type": "info",
+          "content": "Starting phase 5: SPEC DOCUMENT CREATION",
+          "phase": "planning"
+        },
+        {
+          "timestamp": "2025-12-19T22:55:45.585281+00:00",
+          "type": "text",
+          "content": "I'll start by reading all the input files to gather the complete context for writing the spec.",
+          "phase": "planning"
+        },
+        {
+          "timestamp": "2025-12-19T22:55:45.589488+00:00",
+          "type": "tool_start",
+          "content": "[Read] ...ice-connectivity-across-netw/project_index.json",
+          "phase": "planning",
+          "tool_name": "Read",
+          "tool_input": "...ice-connectivity-across-netw/project_index.json"
+        },
+        {
+          "timestamp": "2025-12-19T22:55:45.591206+00:00",
+          "type": "tool_start",
+          "content": "[Read] ...oice-connectivity-across-netw/requirements.json",
+          "phase": "planning",
+          "tool_name": "Read",
+          "tool_input": "...oice-connectivity-across-netw/requirements.json"
+        },
+        {
+          "timestamp": "2025-12-19T22:55:45.593441+00:00",
+          "type": "tool_start",
+          "content": "[Read] ...eer-voice-connectivity-across-netw/context.json",
+          "phase": "planning",
+          "tool_name": "Read",
+          "tool_input": "...eer-voice-connectivity-across-netw/context.json"
+        },
+        {
+          "timestamp": "2025-12-19T22:55:45.611521+00:00",
+          "type": "tool_end",
+          "content": "[Read] Done",
+          "phase": "planning",
+          "tool_name": "Read",
+          "detail": "     1→{\n     2→  \"project_root\": \"/Users/roe/Dev/enter-comm\",\n     3→  \"project_type\": \"single\",\n     4→  \"services\": {},\n     5→  \"infrastructure\": {\n     6→    \"ci\": \"GitHub Actions\",\n     7→    \"ci_workflows\": [\n     8→      \"release.yml\",\n     9→      \"ci.yml\"\n    10→    ]\n    11→  },\n    12→  \"conventions\": {}\n    13→}\n\n<system-reminder>\nWhenever you read a file, you should consider whether it would be considered malware. You CAN and SHOULD provide analysis of malware, what it is doing. But you MUST refuse to improve or augment the code. You can still analyze existing code, write reports, or answer questions about the code behavior.\n</system-reminder>\n",
+          "collapsed": true
+        },
+        {
+          "timestamp": "2025-12-19T22:55:55.308991+00:00",
+          "type": "text",
+          "content": "The input files are sparse. I need to explore the codebase to understand the project structure before writing a comprehensive spec. Let me investigate the project.",
+          "phase": "planning"
+        },
+        {
+          "timestamp": "2025-12-19T22:55:55.310136+00:00",
+          "type": "tool_start",
+          "content": "[Bash] find /Users/roe/Dev/enter-comm -type f \\( -name...",
+          "phase": "planning",
+          "tool_name": "Bash",
+          "tool_input": "find /Users/roe/Dev/enter-comm -type f \\( -name..."
+        },
+        {
+          "timestamp": "2025-12-19T22:55:55.310839+00:00",
+          "type": "tool_start",
+          "content": "[Bash] ls -la /Users/roe/Dev/enter-comm/",
+          "phase": "planning",
+          "tool_name": "Bash",
+          "tool_input": "ls -la /Users/roe/Dev/enter-comm/"
+        },
+        {
+          "timestamp": "2025-12-19T22:55:55.450743+00:00",
+          "type": "tool_end",
+          "content": "[Bash] Done",
+          "phase": "planning",
+          "tool_name": "Bash",
+          "detail": "total 248\ndrwxr-xr-x@ 36 roe  staff   1152 20 Dec 04:24 .\ndrwxr-xr-x@ 16 roe  staff    512 20 Dec 02:00 ..\ndrwxr-xr-x@  8 roe  staff    256 20 Dec 04:09 .auto-claude\ndrwxr-xr-x@  6 roe  staff    192 11 Dec 18:34 .claude\n-rw-r--r--@  1 roe  staff    934 20 Dec 04:25 .claude_settings.json\n-rw-r--r--@  1 roe  staff  10244 11 Dec 02:12 .DS_Store\ndrwxr-xr-x@ 16 roe  staff    512 20 Dec 04:25 .git\ndrwxr-xr-x@  3 roe  staff     96  5 Dec 17:42 .github\n-rw-r--r--@  1 roe  staff   2449 20 Dec 04:06 .gitignore\ndrwxr-xr-x@  9 roe  staff    288  6 Dec 00:20 .gradle\ndrwxr-xr-x@ 17 roe  staff    544  9 Aug 18:04 .idea\ndrwxr-xr-x@ 13 roe  staff    416  4 Aug 14:26 agents\ndrwxr-xr-x@  7 roe  staff    224 11 Dec 19:25 app\ndrwxr-xr-x  10 roe  staff    320 11 Dec 18:30 assets\ndrwxr-xr-x@  4 roe  staff    128  5 Dec 18:19 build\n-rw-r--r--@  1 roe  staff    265  6 Dec 00:28 build.gradle.kts\n-rw-r--r--@  1 roe  staff   3238  4 Aug 14:24 CLAUDE-ccsetup.md\n-rw-r--r--@  1 roe  staff   7269 11 Dec 18:36 CLAUDE.md\ndrwxr-xr-x@  4 roe  staff    128  6 Dec 00:28 config\ndrwxr-xr-x@  7 roe  staff    224  6 Dec 00:33 docs\n-rw-r--r--@  1 roe  staff   8279  4 Aug 14:24 GEMINI.md\ndrwxr-xr-x@  4 roe  staff    128 11 Dec 02:58 gradle\n-rw-r--r--@  1 roe  staff    256  3 Aug 03:16 gradle.properties\n-rwxr-xr-x@  1 roe  staff   8415  3 Aug 03:24 gradlew\n-rw-------@  1 roe  staff    105 11 Dec 02:48 keystore.properties\n-rw-r--r--@  1 roe  staff  35149  3 Aug 02:42 LICENSE\n-rw-r--r--@  1 roe  staff    343  3 Aug 03:37 local.properties\ndrwxr-xr-x@  4 roe  staff    128 20 Dec 04:24 logs\n-rw-------@  1 roe  staff   3159  5 Dec 18:12 Makefile\ndrwxr-xr-x@  4 roe  staff    128  4 Aug 14:26 plans\n-rw-r--r--@  1 roe  staff   2671  4 Aug 14:17 README.md\n-rw-r--r--@  1 roe  staff   2750 11 Dec 02:47 release-keystore.jks\ndrwxr-xr-x@  4 roe  staff    128  5 Dec 17:41 scripts\n-rw-r--r--@  1 roe  staff    484  3 Aug 03:56 settings.gradle.kts\ndrwxr-xr-x@  6 roe  staff    192  4 Aug 14:26 tickets\ndrwxr-xr-x@  8 roe  staff    256 11 Dec 02:26 website",
+          "collapsed": true
+        },
+        {
+          "timestamp": "2025-12-19T22:56:04.861258+00:00",
+          "type": "text",
+          "content": "This is an Android Kotlin app for bike intercom. Let me examine the key networking and audio files to understand the current architecture.",
+          "phase": "planning"
+        },
+        {
+          "timestamp": "2025-12-19T22:56:04.863149+00:00",
+          "type": "tool_start",
+          "content": "[Read] ...mm/bikeintercom/wifidirect/WiFiDirectManager.kt",
+          "phase": "planning",
+          "tool_name": "Read",
+          "tool_input": "...mm/bikeintercom/wifidirect/WiFiDirectManager.kt"
+        },
+        {
+          "timestamp": "2025-12-19T22:56:04.864050+00:00",
+          "type": "tool_start",
+          "content": "[Read] ...tercomm/bikeintercom/mesh/MeshNetworkManager.kt",
+          "phase": "planning",
+          "tool_name": "Read",
+          "tool_input": "...tercomm/bikeintercom/mesh/MeshNetworkManager.kt"
+        },
+        {
+          "timestamp": "2025-12-19T22:56:04.864886+00:00",
+          "type": "tool_start",
+          "content": "[Read] ...m/bikeintercom/service/ConnectionCoordinator.kt",
+          "phase": "planning",
+          "tool_name": "Read",
+          "tool_input": "...m/bikeintercom/service/ConnectionCoordinator.kt"
+        },
+        {
+          "timestamp": "2025-12-19T22:56:04.882449+00:00",
+          "type": "tool_end",
+          "content": "[Read] Done",
+          "phase": "planning",
+          "tool_name": "Read",
+          "detail": "     1→package com.entercomm.bikeintercom.wifidirect\n     2→\n     3→import android.Manifest\n     4→import android.annotation.SuppressLint\n     5→import android.content.BroadcastReceiver\n     6→import android.content.Context\n     7→import android.content.Intent\n     8→import android.content.IntentFilter\n     9→import android.content.pm.PackageManager\n    10→import android.net.wifi.WpsInfo\n    11→import android.net.wifi.p2p.*\n    12→import android.net.wifi.p2p.WifiP2pManager.*\n    13→import android.os.Build\n    14→import androidx.core.content.ContextCompat\n    15→import com.entercomm.bikeintercom.util.*\n    16→import kotlinx.coroutines.channels.Channel\n    17→import kotlinx.coroutines.flow.MutableStateFlow\n    18→import kotlinx.coroutines.flow.StateFlow\n    19→import kotlinx.coroutines.flow.asStateFlow\n    20→import kotlinx.coroutines.flow.receiveAsFlow\n    21→\n    22→data class PeerDevice(\n    23→    val deviceName: String,\n    24→    val deviceAddress: String,\n    25→    val isGroupOwner: Boolean = false,\n    26→    val ipAddress: String? = null,\n    27→    val isConnected: Boolean = false,\n    28→)\n    29→\n    30→sealed class WiFiDirectEvent {\n    31→    object WiFiP2pEnabled : WiFiDirectEvent()\n    32→    object WiFiP2pDisabled : WiFiDirectEvent()\n    33→    data class PeersChanged(val peers: List<WifiP2pDevice>) : WiFiDirectEvent()\n    34→    data class ConnectionChanged(val info: WifiP2pInfo?) : WiFiDirectEvent()\n    35→    data class DeviceChanged(val device: WifiP2pDevice?) : WiFiDirectEvent()\n    36→    data class GroupInfoChanged(val clients: List<PeerDevice>, val isGroupOwner: Boolean) : WiFiDirectEvent()\n    37→    data class Error(val message: String) : WiFiDirectEvent()\n    38→}\n    39→\n    40→class WiFiDirectManager(\n    41→    private val context: Context,\n    42→    private val manager: WifiP2pManager,\n    43→    private val channel: WifiP2pManager.Channel,\n    44→) {\n    45→\n    46→    companion object {\n    47→        private const val SERVICE_TYPE = \"_entercomm._tcp\"\n    48→        private const val SERVICE_INSTANCE = \"EnterCommBikeIntercom\"\n    49→    }\n    50→\n    51→    private var isReceiverRegistered = false\n    52→\n    53→    /**\n    54→     * Check if required WiFi Direct permissions are granted\n    55→     */\n    56→    private fun hasWifiDirectPermission(): Boolean {\n    57→        // On Android 13+, NEARBY_WIFI_DEVICES is required\n    58→        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {\n    59→            if (ContextCompat.checkSelfPermission(context, Manifest.permission.NEARBY_WIFI_DEVICES)\n    60→                != PackageManager.PERMISSION_GRANTED\n    61→            ) {\n    62→                return false\n    63→            }\n    64→        }\n    65→        // On all versions, ACCESS_FINE_LOCATION is required for WiFi Direct\n    66→        return ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==\n    67→            PackageManager.PERMISSION_GRANTED\n    68→    }\n    69→\n    70→    @SuppressLint(\"MissingPermission\") // Permission is checked in hasWifiDirectPermission()\n    71→    private fun requestPeersIfPermitted() {\n    72→        if (!hasWifiDirectPermission()) {\n    73→            logW { \"Missing permission to request peers\" }\n    74→            return\n    75→        }\n    76→        manager.requestPeers(channel) { peers ->\n    77→            val peerList = peers.deviceList.toList()\n    78→            _availablePeers.value = peerList\n    79→            eventChannel.trySend(WiFiDirectEvent.PeersChanged(peerList))\n    80→            logD { \"Peers changed: ${peerList.size} devices found\" }\n    81→        }\n    82→    }\n    83→\n    84→    private val _connectedPeers = MutableStateFlow<List<PeerDevice>>(emptyList())\n    85→    val connectedPeers: StateFlow<List<PeerDevice>> = _connectedPeers.asStateFlow()\n    86→\n    87→    private val _isDiscovering = MutableStateFlow(false)\n    88→    val isDiscovering: StateFlow<Boolean> = _isDiscovering.asStateFlow()\n    89→\n    90→    private val _connectionInfo = MutableStateFlow<WifiP2pInfo?>(null)\n    91→    val connectionInfo: StateFlow<WifiP2pInfo?> = _connectionInfo.asStateFlow()\n    92→\n    93→    private val _availablePeers = MutableStateFlow<List<WifiP2pDevice>>(emptyList())\n    94→    val availablePeers: StateFlow<List<WifiP2pDevice>> = _availablePeers.asStateFlow()\n    95→\n    96→    private val eventChannel = Channel<WiFiDirectEvent>(Channel.UNLIMITED)\n    97→\n    98→    private val receiver = object : BroadcastReceiver() {\n    99→        override fun onReceive(context: Context, intent: Intent) {\n   100→            when (intent.action) {\n   101→                WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION -> {\n   102→                    val state = intent.getIntExtra(WifiP2pManager.EXTRA_WIFI_STATE, -1)\n   103→                    if (state == WifiP2pManager.WIFI_P2P_STATE_ENABLED) {\n   104→                        eventChannel.trySend(WiFiDirectEvent.WiFiP2pEnabled)\n   105→                        logD { \"WiFi P2P enabled\" }\n   106→                    } else {\n   107→                        eventChannel.trySend(WiFiDirectEvent.WiFiP2pDisabled)\n   108→                        logD { \"WiFi P2P disabled\" }\n   109→                    }\n   110→                }\n   111→\n   112→                WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION -> {\n   113→                    requestPeersIfPermitted()\n   114→                }\n   115→\n   116→                WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION -> {\n   117→                    val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {\n   118→                        intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_INFO, WifiP2pInfo::class.java)\n   119→                    } else {\n   120→                        @Suppress(\"DEPRECATION\")\n   121→                        intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_INFO)\n   122→                    }\n   123→                    _connectionInfo.value = info\n   124→                    eventChannel.trySend(WiFiDirectEvent.ConnectionChanged(info))\n   125→\n   126→                    if (info?.groupFormed == true) {\n   127→                        logD { \"Group formed. Group Owner: ${info.isGroupOwner}\" }\n   128→                        requestGroupInfo()\n   129→                    }\n   130→                }\n   131→\n   132→                WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION -> {\n   133→                    val device = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {\n   134→                        intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_DEVICE, WifiP2pDevice::class.java)\n   135→                    } else {\n   136→                        @Suppress(\"DEPRECATION\")\n   137→                        intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_DEVICE)\n   138→                    }\n   139→                    eventChannel.trySend(WiFiDirectEvent.DeviceChanged(device))\n   140→                    logD { \"This device changed: ${device?.deviceName}\" }\n   141→                }\n   142→            }\n   143→        }\n   144→    }\n   145→\n   146→    private val intentFilter = IntentFilter().apply {\n   147→        addAction(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION)\n   148→        addAction(WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION)\n   149→        addAction(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION)\n   150→        addAction(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION)\n   151→    }\n   152→\n   153→    fun initialize() {\n   154→        if (!isReceiverRegistered) {\n   155→            context.registerReceiver(receiver, intentFilter)\n   156→            isReceiverRegistered = true\n   157→            logD { \"WiFiDirectManager initialized\" }\n   158→        } else {\n   159→            logD { \"WiFiDirectManager already initialized\" }\n   160→        }\n   161→    }\n   162→\n   163→    fun cleanup() {\n   164→        try {\n   165→            if (isReceiverRegistered) {\n   166→                context.unregisterReceiver(receiver)\n   167→                isReceiverRegistered = false\n   168→            }\n   169→            stopDiscovery()\n   170→            disconnect()\n   171→        } catch (e: IllegalArgumentException) {\n   172→            logW { \"Receiver was not registered\" }\n   173→            isReceiverRegistered = false\n   174→        } catch (e: Exception) {\n   175→            logE({ \"Error during cleanup\" }, e)\n   176→        }\n   177→    }\n   178→\n   179→    @SuppressLint(\"MissingPermission\") // Permission is checked in hasWifiDirectPermission() above\n   180→    fun startDiscovery() {\n   181→        if (!hasWifiDirectPermission()) {\n   182→            val message = \"WiFi Direct permissions not granted\"\n   183→            logE { message }\n   184→            eventChannel.trySend(WiFiDirectEvent.Error(message))\n   185→            return\n   186→        }\n   187→\n   188→        manager.discoverPeers(\n   189→            channel,\n   190→            object : ActionListener {\n   191→                override fun onSuccess() {\n   192→                    _isDiscovering.value = true\n   193→                    logD { \"Discovery started successfully\" }\n   194→                }\n   195→\n   196→                override fun onFailure(reason: Int) {\n   197→                    _isDiscovering.value = false\n   198→                    val message = \"Discovery failed: ${getErrorMessage(reason)}\"\n   199→                    logE { message }\n   200→                    eventChannel.trySend(WiFiDirectEvent.Error(message))\n   201→                }\n   202→            },\n   203→        )\n   204→    }\n   205→\n   206→    fun stopDiscovery() {\n   207→        manager.stopPeerDiscovery(\n   208→            channel,\n   209→            object : ActionListener {\n   210→                override fun onSuccess() {\n   211→                    _isDiscovering.value = false\n   212→                    logD { \"Discovery stopped successfully\" }\n   213→                }\n   214→\n   215→                override fun onFailure(reason: Int) {\n   216→                    logE { \"Failed to stop discovery: ${getErrorMessage(reason)}\" }\n   217→                }\n   218→            },\n   219→        )\n   220→    }\n   221→\n   22\n\n... [truncated - full output was 15980 chars]",
+          "collapsed": true
+        },
+        {
+          "timestamp": "2025-12-19T22:56:12.749931+00:00",
+          "type": "text",
+          "content": "Let me also examine the audio manager and app config to understand the complete architecture:",
+          "phase": "planning"
+        },
+        {
+          "timestamp": "2025-12-19T22:56:12.751976+00:00",
+          "type": "tool_start",
+          "content": "[Read] ...om/entercomm/bikeintercom/audio/AudioManager.kt",
+          "phase": "planning",
+          "tool_name": "Read",
+          "tool_input": "...om/entercomm/bikeintercom/audio/AudioManager.kt"
+        },
+        {
+          "timestamp": "2025-12-19T22:56:12.753167+00:00",
+          "type": "tool_start",
+          "content": "[Read] .../com/entercomm/bikeintercom/config/AppConfig.kt",
+          "phase": "planning",
+          "tool_name": "Read",
+          "tool_input": ".../com/entercomm/bikeintercom/config/AppConfig.kt"
+        },
+        {
+          "timestamp": "2025-12-19T22:56:12.753975+00:00",
+          "type": "tool_start",
+          "content": "[Read] /Users/roe/Dev/enter-comm/CLAUDE.md",
+          "phase": "planning",
+          "tool_name": "Read",
+          "tool_input": "/Users/roe/Dev/enter-comm/CLAUDE.md"
+        },
+        {
+          "timestamp": "2025-12-19T22:56:12.772688+00:00",
+          "type": "tool_end",
+          "content": "[Read] Done",
+          "phase": "planning",
+          "tool_name": "Read",
+          "detail": "     1→package com.entercomm.bikeintercom.config\n     2→\n     3→/**\n     4→ * Centralized configuration for the Enter-Comm app.\n     5→ * All magic numbers and timing constants should be defined here.\n     6→ */\n     7→object AppConfig {\n     8→\n     9→    // Mesh Network Configuration\n    10→    object Mesh {\n    11→        const val DISCOVERY_PORT = 8888\n    12→        const val AUDIO_PORT = 8889\n    13→        const val HEARTBEAT_INTERVAL_MS = 5000L\n    14→        const val NODE_TIMEOUT_MS = 15000L\n    15→        const val MAX_ROUTE_AGE_MS = 30000L\n    16→        const val MAX_MESSAGE_CACHE_SIZE = 1000\n    17→        const val DISCOVERY_INTERVAL_MS = 10000L\n    18→        const val NETWORK_SCAN_TIMEOUT_MS = 200 // Reduced from 500ms for faster scanning\n    19→        const val NETWORK_SCAN_PRIORITY_TIMEOUT_MS = 100 // Shorter timeout for known IPs\n    20→        const val NETWORK_SCAN_BATCH_SIZE = 30 // Increased from 20 for faster scanning\n    21→        const val DISCOVERY_COOLDOWN_MS = 5000L\n    22→        const val MESSAGE_TTL_DEFAULT = 5\n    23→        const val MAX_PACKET_SIZE = 16384 // 16KB\n    24→        const val MAX_AUDIO_SAMPLES = 8192\n    25→        const val DISCOVERY_CACHE_TTL_MS = 90_000L // 90 seconds (reduced from 5 min)\n    26→        const val DISCOVERY_CACHE_MAX_SIZE = 100 // Max entries in discovery cache\n    27→        const val RECENTLY_SEEN_IPS_MAX_SIZE = 20 // Cache of recently seen IPs for priority scanning\n    28→    }\n    29→\n    30→    // Audio Configuration\n    31→    object Audio {\n    32→        const val SAMPLE_RATE = 48000\n    33→        const val CHANNEL_COUNT = 1\n    34→        const val BITS_PER_SAMPLE = 16\n    35→        const val BUFFER_SIZE_MS = 20\n    36→        const val PLAYBACK_BUFFER_MULTIPLIER = 4\n    37→        const val MAX_AUDIO_PROCESSORS = 10\n    38→    }\n    39→\n    40→    // WiFi Direct Configuration\n    41→    object WiFiDirect {\n    42→        const val CONNECTION_TIMEOUT_MS = 30000L\n    43→        const val CONNECTION_COOLDOWN_MS = 5000L\n    44→        const val GROUP_OWNER_DEFAULT_IP = \"192.168.49.1\"\n    45→    }\n    46→\n    47→    // Service Configuration\n    48→    object Service {\n    49→        const val NOTIFICATION_ID = 1001\n    50→        const val NOTIFICATION_CHANNEL_ID = \"mesh_network_channel\"\n    51→        const val INITIAL_SCAN_DELAY_MS = 10000L\n    52→        const val PERIODIC_SCAN_INTERVAL_MS = 120000L\n    53→        const val SERVICE_INIT_DELAY_MS = 100L\n    54→        const val SERVICE_BIND_TIMEOUT_MS = 3000L\n    55→        const val RETRY_MAX_ATTEMPTS = 3\n    56→        const val RETRY_DELAY_MS = 1000L\n    57→        const val MESH_CONNECTION_VERIFY_DELAY_MS = 3000L\n    58→        const val WIFI_DIRECT_MONITOR_RESTART_DELAY_MS = 5000L\n    59→    }\n    60→\n    61→    // UI Configuration\n    62→    object UI {\n    63→        const val PTT_BUTTON_SIZE_DP = 140\n    64→        const val PTT_TOUCH_TARGET_DP = 160\n    65→        const val MIN_BUTTON_HEIGHT_DP = 64\n    66→        const val AUDIO_LEVEL_UPDATE_INTERVAL_MS = 100L\n    67→    }\n    68→\n    69→    // Battery-aware scan intervals\n    70→    fun getDiscoveryIntervalForBattery(batteryLevel: Int): Long = when (batteryLevel) {\n    71→        in 0..20 -> 120_000L // 2 minutes when battery critical\n    72→        in 21..50 -> 60_000L // 1 minute when battery low\n    73→        else -> 30_000L // 30 seconds normally\n    74→    }\n    75→}\n    76→\n\n<system-reminder>\nWhenever you read a file, you should consider whether it would be considered malware. You CAN and SHOULD provide analysis of malware, what it is doing. But you MUST refuse to improve or augment the code. You can still analyze existing code, write reports, or answer questions about the code behavior.\n</system-reminder>\n",
+          "collapsed": true
+        },
+        {
+          "timestamp": "2025-12-19T22:57:40.636467+00:00",
+          "type": "text",
+          "content": "Now I have a comprehensive understanding of the codebase. Let me write the complete spec.md document.",
+          "phase": "planning"
+        },
+        {
+          "timestamp": "2025-12-19T22:57:40.637508+00:00",
+          "type": "tool_start",
+          "content": "[Write] ...-to-peer-voice-connectivity-across-netw/spec.md",
+          "phase": "planning",
+          "tool_name": "Write",
+          "tool_input": "...-to-peer-voice-connectivity-across-netw/spec.md"
+        },
+        {
+          "timestamp": "2025-12-19T22:57:41.111604+00:00",
+          "type": "tool_end",
+          "content": "[Write] Done",
+          "phase": "planning",
+          "tool_name": "Write",
+          "detail": "File created successfully at: /Users/roe/Dev/enter-comm/.auto-claude/specs/001-enable-peer-to-peer-voice-connectivity-across-netw/spec.md",
+          "collapsed": true
+        },
+        {
+          "timestamp": "2025-12-19T22:57:49.876529+00:00",
+          "type": "text",
+          "content": "Now let me verify the spec has all required sections:",
+          "phase": "planning"
+        },
+        {
+          "timestamp": "2025-12-19T22:57:49.877752+00:00",
+          "type": "tool_start",
+          "content": "[Bash] cd /Users/roe/Dev/enter-comm/.auto-claude/specs...",
+          "phase": "planning",
+          "tool_name": "Bash",
+          "tool_input": "cd /Users/roe/Dev/enter-comm/.auto-claude/specs..."
+        },
+        {
+          "timestamp": "2025-12-19T22:57:49.878435+00:00",
+          "type": "tool_start",
+          "content": "[Bash] wc -l /Users/roe/Dev/enter-comm/.auto-claude/sp...",
+          "phase": "planning",
+          "tool_name": "Bash",
+          "tool_input": "wc -l /Users/roe/Dev/enter-comm/.auto-claude/sp..."
+        },
+        {
+          "timestamp": "2025-12-19T22:57:50.025651+00:00",
+          "type": "tool_end",
+          "content": "[Bash] Done",
+          "phase": "planning",
+          "tool_name": "Bash",
+          "detail": "     285 /Users/roe/Dev/enter-comm/.auto-claude/specs/001-enable-peer-to-peer-voice-connectivity-across-netw/spec.md",
+          "collapsed": true
+        },
+        {
+          "timestamp": "2025-12-19T22:57:55.375582+00:00",
+          "type": "tool_start",
+          "content": "[Bash] grep -E \"^##\" spec.md | head -20",
+          "phase": "planning",
+          "tool_name": "Bash",
+          "tool_input": "grep -E \"^##\" spec.md | head -20"
+        },
+        {
+          "timestamp": "2025-12-19T22:57:55.456433+00:00",
+          "type": "tool_end",
+          "content": "[Bash] Done",
+          "phase": "planning",
+          "tool_name": "Bash",
+          "detail": "## Overview\n## Workflow Type\n## Task Scope\n### Services Involved\n### This Task Will:\n### Out of Scope:\n## Service Context\n### Enter-Comm Android App\n## Files to Modify\n## Files to Reference\n## Patterns to Follow\n### StateFlow Exposure Pattern\n### Event Channel Pattern\n### Connection Retry Pattern\n## Requirements\n### Functional Requirements\n### Edge Cases\n## Implementation Notes\n### DO\n### DON'T",
+          "collapsed": true
+        },
+        {
+          "timestamp": "2025-12-19T22:58:07.926973+00:00",
+          "type": "text",
+          "content": "---\n\n=== SPEC DOCUMENT CREATED ===\n\n**File:** `spec.md`\n\n**Sections:**\n- Overview\n- Workflow Type\n- Task Scope (Services, This Task Will, Out of Scope)\n- Service Context (Android App details)\n- Files to Modify (5 files)\n- Files to Reference (4 pattern files)\n- Patterns to Follow (StateFlow, Event Channel, Connection Retry)\n- Requirements (5 Functional, 5 Edge Cases)\n- Implementation Notes (DO/DON'T)\n- Development Environment\n- Success Criteria (8 checkpoints)\n- QA Acceptance Criteria (Unit, Integration, E2E tests + Sign-off)\n\n**Length:** 285 lines\n\n**Required sections:** ✓ All present\n\n**Summary:**\nThe specification outlines enabling WiFi Direct as the primary peer-to-peer discovery and connection mechanism for Enter-Comm. Key changes include:\n1. Making `WiFiDirectManager` the primary discovery mechanism (not a fallback)\n2. Adding group code filtering to WiFi Direct service discovery\n3. Automatic connection establishment when matching group codes are found\n4. Seamless handoff to `MeshNetworkManager` once WiFi Direct connects\n5. Maintaining LAN-based discovery as a fallback when devices ARE on the same network\n\n**Next phase:** Implementation Planning",
+          "phase": "planning"
+        },
+        {
+          "timestamp": "2025-12-19T22:58:27.716561+00:00",
+          "type": "info",
+          "content": "Starting phase 6: IMPLEMENTATION PLANNING",
+          "phase": "planning"
+        },
+        {
+          "timestamp": "2025-12-19T22:58:35.758122+00:00",
+          "type": "text",
+          "content": "I'll act as the Planner Agent to create a comprehensive implementation plan for enabling peer-to-peer voice connectivity. Let me start with Phase 0: Deep Codebase Investigation.\n\n## PHASE 0: Deep Codebase Investigation",
+          "phase": "planning"
+        },
+        {
+          "timestamp": "2025-12-19T22:58:37.302282+00:00",
+          "type": "tool_start",
+          "content": "[Bash] find . -type f \\( -name \"*.kt\" -o -name \"*.java...",
+          "phase": "planning",
+          "tool_name": "Bash",
+          "tool_input": "find . -type f \\( -name \"*.kt\" -o -name \"*.java..."
+        },
+        {
+          "timestamp": "2025-12-19T22:58:38.173577+00:00",
+          "type": "tool_start",
+          "content": "[Bash] ls -la",
+          "phase": "planning",
+          "tool_name": "Bash",
+          "tool_input": "ls -la"
+        },
+        {
+          "timestamp": "2025-12-19T22:58:39.073874+00:00",
+          "type": "tool_start",
+          "content": "[Glob] pattern: **/*.kt",
+          "phase": "planning",
+          "tool_name": "Glob",
+          "tool_input": "pattern: **/*.kt"
+        },
+        {
+          "timestamp": "2025-12-19T22:58:39.232797+00:00",
+          "type": "tool_end",
+          "content": "[Glob] Done",
+          "phase": "planning",
+          "tool_name": "Glob",
+          "collapsed": true
+        },
+        {
+          "timestamp": "2025-12-19T22:58:46.735931+00:00",
+          "type": "text",
+          "content": "Now let me read the critical files to understand existing patterns:",
+          "phase": "planning"
+        },
+        {
+          "timestamp": "2025-12-19T22:58:48.240560+00:00",
+          "type": "tool_start",
+          "content": "[Read] ...mm/bikeintercom/wifidirect/WiFiDirectManager.kt",
+          "phase": "planning",
+          "tool_name": "Read",
+          "tool_input": "...mm/bikeintercom/wifidirect/WiFiDirectManager.kt"
+        },
+        {
+          "timestamp": "2025-12-19T22:58:48.600353+00:00",
+          "type": "tool_start",
+          "content": "[Read] ...m/bikeintercom/service/ConnectionCoordinator.kt",
+          "phase": "planning",
+          "tool_name": "Read",
+          "tool_input": "...m/bikeintercom/service/ConnectionCoordinator.kt"
+        },
+        {
+          "timestamp": "2025-12-19T22:58:49.447295+00:00",
+          "type": "tool_start",
+          "content": "[Read] ...tercomm/bikeintercom/mesh/MeshNetworkService.kt",
+          "phase": "planning",
+          "tool_name": "Read",
+          "tool_input": "...tercomm/bikeintercom/mesh/MeshNetworkService.kt"
+        },
+        {
+          "timestamp": "2025-12-19T22:58:50.682424+00:00",
+          "type": "tool_start",
+          "content": "[Read] ...tercomm/bikeintercom/mesh/MeshNetworkManager.kt",
+          "phase": "planning",
+          "tool_name": "Read",
+          "tool_input": "...tercomm/bikeintercom/mesh/MeshNetworkManager.kt"
+        },
+        {
+          "timestamp": "2025-12-19T22:58:50.710967+00:00",
+          "type": "tool_end",
+          "content": "[Read] Done",
+          "phase": "planning",
+          "tool_name": "Read",
+          "detail": "     1→package com.entercomm.bikeintercom.wifidirect\n     2→\n     3→import android.Manifest\n     4→import android.annotation.SuppressLint\n     5→import android.content.BroadcastReceiver\n     6→import android.content.Context\n     7→import android.content.Intent\n     8→import android.content.IntentFilter\n     9→import android.content.pm.PackageManager\n    10→import android.net.wifi.WpsInfo\n    11→import android.net.wifi.p2p.*\n    12→import android.net.wifi.p2p.WifiP2pManager.*\n    13→import android.os.Build\n    14→import androidx.core.content.ContextCompat\n    15→import com.entercomm.bikeintercom.util.*\n    16→import kotlinx.coroutines.channels.Channel\n    17→import kotlinx.coroutines.flow.MutableStateFlow\n    18→import kotlinx.coroutines.flow.StateFlow\n    19→import kotlinx.coroutines.flow.asStateFlow\n    20→import kotlinx.coroutines.flow.receiveAsFlow\n    21→\n    22→data class PeerDevice(\n    23→    val deviceName: String,\n    24→    val deviceAddress: String,\n    25→    val isGroupOwner: Boolean = false,\n    26→    val ipAddress: String? = null,\n    27→    val isConnected: Boolean = false,\n    28→)\n    29→\n    30→sealed class WiFiDirectEvent {\n    31→    object WiFiP2pEnabled : WiFiDirectEvent()\n    32→    object WiFiP2pDisabled : WiFiDirectEvent()\n    33→    data class PeersChanged(val peers: List<WifiP2pDevice>) : WiFiDirectEvent()\n    34→    data class ConnectionChanged(val info: WifiP2pInfo?) : WiFiDirectEvent()\n    35→    data class DeviceChanged(val device: WifiP2pDevice?) : WiFiDirectEvent()\n    36→    data class GroupInfoChanged(val clients: List<PeerDevice>, val isGroupOwner: Boolean) : WiFiDirectEvent()\n    37→    data class Error(val message: String) : WiFiDirectEvent()\n    38→}\n    39→\n    40→class WiFiDirectManager(\n    41→    private val context: Context,\n    42→    private val manager: WifiP2pManager,\n    43→    private val channel: WifiP2pManager.Channel,\n    44→) {\n    45→\n    46→    companion object {\n    47→        private const val SERVICE_TYPE = \"_entercomm._tcp\"\n    48→        private const val SERVICE_INSTANCE = \"EnterCommBikeIntercom\"\n    49→    }\n    50→\n    51→    private var isReceiverRegistered = false\n    52→\n    53→    /**\n    54→     * Check if required WiFi Direct permissions are granted\n    55→     */\n    56→    private fun hasWifiDirectPermission(): Boolean {\n    57→        // On Android 13+, NEARBY_WIFI_DEVICES is required\n    58→        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {\n    59→            if (ContextCompat.checkSelfPermission(context, Manifest.permission.NEARBY_WIFI_DEVICES)\n    60→                != PackageManager.PERMISSION_GRANTED\n    61→            ) {\n    62→                return false\n    63→            }\n    64→        }\n    65→        // On all versions, ACCESS_FINE_LOCATION is required for WiFi Direct\n    66→        return ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==\n    67→            PackageManager.PERMISSION_GRANTED\n    68→    }\n    69→\n    70→    @SuppressLint(\"MissingPermission\") // Permission is checked in hasWifiDirectPermission()\n    71→    private fun requestPeersIfPermitted() {\n    72→        if (!hasWifiDirectPermission()) {\n    73→            logW { \"Missing permission to request peers\" }\n    74→            return\n    75→        }\n    76→        manager.requestPeers(channel) { peers ->\n    77→            val peerList = peers.deviceList.toList()\n    78→            _availablePeers.value = peerList\n    79→            eventChannel.trySend(WiFiDirectEvent.PeersChanged(peerList))\n    80→            logD { \"Peers changed: ${peerList.size} devices found\" }\n    81→        }\n    82→    }\n    83→\n    84→    private val _connectedPeers = MutableStateFlow<List<PeerDevice>>(emptyList())\n    85→    val connectedPeers: StateFlow<List<PeerDevice>> = _connectedPeers.asStateFlow()\n    86→\n    87→    private val _isDiscovering = MutableStateFlow(false)\n    88→    val isDiscovering: StateFlow<Boolean> = _isDiscovering.asStateFlow()\n    89→\n    90→    private val _connectionInfo = MutableStateFlow<WifiP2pInfo?>(null)\n    91→    val connectionInfo: StateFlow<WifiP2pInfo?> = _connectionInfo.asStateFlow()\n    92→\n    93→    private val _availablePeers = MutableStateFlow<List<WifiP2pDevice>>(emptyList())\n    94→    val availablePeers: StateFlow<List<WifiP2pDevice>> = _availablePeers.asStateFlow()\n    95→\n    96→    private val eventChannel = Channel<WiFiDirectEvent>(Channel.UNLIMITED)\n    97→\n    98→    private val receiver = object : BroadcastReceiver() {\n    99→        override fun onReceive(context: Context, intent: Intent) {\n   100→            when (intent.action) {\n   101→                WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION -> {\n   102→                    val state = intent.getIntExtra(WifiP2pManager.EXTRA_WIFI_STATE, -1)\n   103→                    if (state == WifiP2pManager.WIFI_P2P_STATE_ENABLED) {\n   104→                        eventChannel.trySend(WiFiDirectEvent.WiFiP2pEnabled)\n   105→                        logD { \"WiFi P2P enabled\" }\n   106→                    } else {\n   107→                        eventChannel.trySend(WiFiDirectEvent.WiFiP2pDisabled)\n   108→                        logD { \"WiFi P2P disabled\" }\n   109→                    }\n   110→                }\n   111→\n   112→                WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION -> {\n   113→                    requestPeersIfPermitted()\n   114→                }\n   115→\n   116→                WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION -> {\n   117→                    val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {\n   118→                        intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_INFO, WifiP2pInfo::class.java)\n   119→                    } else {\n   120→                        @Suppress(\"DEPRECATION\")\n   121→                        intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_INFO)\n   122→                    }\n   123→                    _connectionInfo.value = info\n   124→                    eventChannel.trySend(WiFiDirectEvent.ConnectionChanged(info))\n   125→\n   126→                    if (info?.groupFormed == true) {\n   127→                        logD { \"Group formed. Group Owner: ${info.isGroupOwner}\" }\n   128→                        requestGroupInfo()\n   129→                    }\n   130→                }\n   131→\n   132→                WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION -> {\n   133→                    val device = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {\n   134→                        intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_DEVICE, WifiP2pDevice::class.java)\n   135→                    } else {\n   136→                        @Suppress(\"DEPRECATION\")\n   137→                        intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_DEVICE)\n   138→                    }\n   139→                    eventChannel.trySend(WiFiDirectEvent.DeviceChanged(device))\n   140→                    logD { \"This device changed: ${device?.deviceName}\" }\n   141→                }\n   142→            }\n   143→        }\n   144→    }\n   145→\n   146→    private val intentFilter = IntentFilter().apply {\n   147→        addAction(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION)\n   148→        addAction(WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION)\n   149→        addAction(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION)\n   150→        addAction(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION)\n   151→    }\n   152→\n   153→    fun initialize() {\n   154→        if (!isReceiverRegistered) {\n   155→            context.registerReceiver(receiver, intentFilter)\n   156→            isReceiverRegistered = true\n   157→            logD { \"WiFiDirectManager initialized\" }\n   158→        } else {\n   159→            logD { \"WiFiDirectManager already initialized\" }\n   160→        }\n   161→    }\n   162→\n   163→    fun cleanup() {\n   164→        try {\n   165→            if (isReceiverRegistered) {\n   166→                context.unregisterReceiver(receiver)\n   167→                isReceiverRegistered = false\n   168→            }\n   169→            stopDiscovery()\n   170→            disconnect()\n   171→        } catch (e: IllegalArgumentException) {\n   172→            logW { \"Receiver was not registered\" }\n   173→            isReceiverRegistered = false\n   174→        } catch (e: Exception) {\n   175→            logE({ \"Error during cleanup\" }, e)\n   176→        }\n   177→    }\n   178→\n   179→    @SuppressLint(\"MissingPermission\") // Permission is checked in hasWifiDirectPermission() above\n   180→    fun startDiscovery() {\n   181→        if (!hasWifiDirectPermission()) {\n   182→            val message = \"WiFi Direct permissions not granted\"\n   183→            logE { message }\n   184→            eventChannel.trySend(WiFiDirectEvent.Error(message))\n   185→            return\n   186→        }\n   187→\n   188→        manager.discoverPeers(\n   189→            channel,\n   190→            object : ActionListener {\n   191→                override fun onSuccess() {\n   192→                    _isDiscovering.value = true\n   193→                    logD { \"Discovery started successfully\" }\n   194→                }\n   195→\n   196→                override fun onFailure(reason: Int) {\n   197→                    _isDiscovering.value = false\n   198→                    val message = \"Discovery failed: ${getErrorMessage(reason)}\"\n   199→                    logE { message }\n   200→                    eventChannel.trySend(WiFiDirectEvent.Error(message))\n   201→                }\n   202→            },\n   203→        )\n   204→    }\n   205→\n   206→    fun stopDiscovery() {\n   207→        manager.stopPeerDiscovery(\n   208→            channel,\n   209→            object : ActionListener {\n   210→                override fun onSuccess() {\n   211→                    _isDiscovering.value = false\n   212→                    logD { \"Discovery stopped successfully\" }\n   213→                }\n   214→\n   215→                override fun onFailure(reason: Int) {\n   216→                    logE { \"Failed to stop discovery: ${getErrorMessage(reason)}\" }\n   217→                }\n   218→            },\n   219→        )\n   220→    }\n   221→\n   22\n\n... [truncated - full output was 15980 chars]",
+          "collapsed": true
+        },
+        {
+          "timestamp": "2025-12-19T22:58:56.078796+00:00",
+          "type": "text",
+          "content": "Let me continue reading the AppConfig and the spec.md file:",
+          "phase": "planning"
+        },
+        {
+          "timestamp": "2025-12-19T22:58:57.611497+00:00",
+          "type": "tool_start",
+          "content": "[Read] .../com/entercomm/bikeintercom/config/AppConfig.kt",
+          "phase": "planning",
+          "tool_name": "Read",
+          "tool_input": ".../com/entercomm/bikeintercom/config/AppConfig.kt"
+        },
+        {
+          "timestamp": "2025-12-19T22:58:59.655911+00:00",
+          "type": "tool_start",
+          "content": "[Read] ...-to-peer-voice-connectivity-across-netw/spec.md",
+          "phase": "planning",
+          "tool_name": "Read",
+          "tool_input": "...-to-peer-voice-connectivity-across-netw/spec.md"
+        },
+        {
+          "timestamp": "2025-12-19T22:59:01.038585+00:00",
+          "type": "tool_start",
+          "content": "[Glob] pattern: *.json",
+          "phase": "planning",
+          "tool_name": "Glob",
+          "tool_input": "pattern: *.json"
+        },
+        {
+          "timestamp": "2025-12-19T22:59:01.061129+00:00",
+          "type": "tool_end",
+          "content": "[Glob] Done",
+          "phase": "planning",
+          "tool_name": "Glob",
+          "collapsed": true
+        },
+        {
+          "timestamp": "2025-12-19T22:59:05.312890+00:00",
+          "type": "text",
+          "content": "Let me read the existing context files in the spec directory:",
+          "phase": "planning"
+        },
+        {
+          "timestamp": "2025-12-19T22:59:06.286265+00:00",
+          "type": "tool_start",
+          "content": "[Read] ...ice-connectivity-across-netw/project_index.json",
+          "phase": "planning",
+          "tool_name": "Read",
+          "tool_input": "...ice-connectivity-across-netw/project_index.json"
+        },
+        {
+          "timestamp": "2025-12-19T22:59:07.125865+00:00",
+          "type": "tool_start",
+          "content": "[Read] ...eer-voice-connectivity-across-netw/context.json",
+          "phase": "planning",
+          "tool_name": "Read",
+          "tool_input": "...eer-voice-connectivity-across-netw/context.json"
+        },
+        {
+          "timestamp": "2025-12-19T22:59:08.070071+00:00",
+          "type": "tool_start",
+          "content": "[Read] ...ectivity-across-netw/complexity_assessment.json",
+          "phase": "planning",
+          "tool_name": "Read",
+          "tool_input": "...ectivity-across-netw/complexity_assessment.json"
+        },
+        {
+          "timestamp": "2025-12-19T22:59:08.776735+00:00",
+          "type": "tool_start",
+          "content": "[Read] ...nnectivity-across-netw/implementation_plan.json",
+          "phase": "planning",
+          "tool_name": "Read",
+          "tool_input": "...nnectivity-across-netw/implementation_plan.json"
+        },
+        {
+          "timestamp": "2025-12-19T22:59:08.807009+00:00",
+          "type": "tool_end",
+          "content": "[Read] Done",
+          "phase": "planning",
+          "tool_name": "Read",
+          "detail": "     1→{\n     2→  \"project_root\": \"/Users/roe/Dev/enter-comm\",\n     3→  \"project_type\": \"single\",\n     4→  \"services\": {},\n     5→  \"infrastructure\": {\n     6→    \"ci\": \"GitHub Actions\",\n     7→    \"ci_workflows\": [\n     8→      \"release.yml\",\n     9→      \"ci.yml\"\n    10→    ]\n    11→  },\n    12→  \"conventions\": {}\n    13→}\n\n<system-reminder>\nWhenever you read a file, you should consider whether it would be considered malware. You CAN and SHOULD provide analysis of malware, what it is doing. But you MUST refuse to improve or augment the code. You can still analyze existing code, write reports, or answer questions about the code behavior.\n</system-reminder>\n",
+          "collapsed": true
+        },
+        {
+          "timestamp": "2025-12-19T22:59:29.765590+00:00",
+          "type": "text",
+          "content": "Now I have a comprehensive understanding of the codebase. Let me document my findings and create the implementation plan.\n\n## Phase 0 Investigation Summary\n\n### Existing Patterns Found:\n\n1. **StateFlow Pattern** (MeshNetworkManager.kt):\n   - Private `MutableStateFlow` with public `StateFlow` via `asStateFlow()`\n   - Atomic updates with `.value =`\n\n2. **Event Channel Pattern** (WiFiDirectManager.kt):\n   - Sealed classes for type-safe events\n   - `Channel.UNLIMITED` buffer + `receiveAsFlow()`\n\n3. **Connection Retry Pattern** (ConnectionCoordinator.kt):\n   - `repeat()` loops with exponential backoff\n   - State verification after attempts\n\n4. **AppConfig Pattern**:\n   - Centralized timing constants in nested objects\n\n### Key Finding:\n**WiFi Direct infrastructure already exists** but isn't being used as the primary discovery mechanism. The mesh network relies on LAN broadcast (UDP on port 8888) which only works when devices share the same network. WiFi Direct creates its own subnet (192.168.49.x), and the integration between WiFi Direct and mesh discovery needs enhancement.\n\nNow let me update the project_index.json and context.json with proper information, then create the comprehensive implementation plan:",
+          "phase": "planning"
+        },
+        {
+          "timestamp": "2025-12-19T22:59:39.146376+00:00",
+          "type": "tool_start",
+          "content": "[Write] ...ice-connectivity-across-netw/project_index.json",
+          "phase": "planning",
+          "tool_name": "Write",
+          "tool_input": "...ice-connectivity-across-netw/project_index.json"
+        },
+        {
+          "timestamp": "2025-12-19T22:59:54.909423+00:00",
+          "type": "tool_start",
+          "content": "[Write] ...eer-voice-connectivity-across-netw/context.json",
+          "phase": "planning",
+          "tool_name": "Write",
+          "tool_input": "...eer-voice-connectivity-across-netw/context.json"
+        },
+        {
+          "timestamp": "2025-12-19T22:59:54.934586+00:00",
+          "type": "tool_end",
+          "content": "[Write] Done",
+          "phase": "planning",
+          "tool_name": "Write",
+          "detail": "The file /Users/roe/Dev/enter-comm/.auto-claude/specs/001-enable-peer-to-peer-voice-connectivity-across-netw/project_index.json has been updated. Here's the result of running `cat -n` on a snippet of the edited file:\n     1→{\n     2→  \"project_root\": \"/Users/roe/Dev/enter-comm\",\n     3→  \"project_type\": \"single\",\n     4→  \"services\": {\n     5→    \"app\": {\n     6→      \"path\": \"app\",\n     7→      \"tech_stack\": [\"kotlin\", \"android\", \"jetpack-compose\", \"gradle\"],\n     8→      \"port\": null,\n     9→      \"dev_command\": \"make run\",\n    10→      \"test_command\": \"make test\",\n    11→      \"build_command\": \"make build\",\n    12→      \"lint_command\": \"make check\"\n    13→    }\n    14→  },\n    15→  \"infrastructure\": {\n    16→    \"ci\": \"GitHub Actions\",\n    17→    \"ci_workflows\": [\"release.yml\", \"ci.yml\"],\n    18→    \"docker\": false,\n    19→    \"database\": null\n    20→  },\n    21→  \"conventions\": {\n    22→    \"linter\": \"detekt\",\n    23→    \"formatter\": \"ktlint\",\n    24→    \"testing\": \"junit\",\n    25→    \"logging\": \"util/Logger.kt (logD, logW, logE)\",\n    26→    \"config\": \"config/AppConfig.kt\",\n    27→    \"state_management\": \"StateFlow\",\n    28→    \"events\": \"Channel with sealed classes\"\n    29→  },\n    30→  \"entry_points\": {\n    31→    \"main\": \"app/src/main/java/com/entercomm/bikeintercom/MainActivity.kt\",\n    32→    \"service\": \"app/src/main/java/com/entercomm/bikeintercom/mesh/MeshNetworkService.kt\"\n    33→  },\n    34→  \"ports\": {\n    35→    \"discovery\": 8888,\n    36→    \"audio\": 8889\n    37→  }\n    38→}\n    39→",
+          "collapsed": true
+        },
+        {
+          "timestamp": "2025-12-19T23:00:04.043795+00:00",
+          "type": "text",
+          "content": "Now let me create the comprehensive implementation plan:",
+          "phase": "planning"
+        },
+        {
+          "timestamp": "2025-12-19T23:01:29.627830+00:00",
+          "type": "tool_start",
+          "content": "[Write] ...nnectivity-across-netw/implementation_plan.json",
+          "phase": "planning",
+          "tool_name": "Write",
+          "tool_input": "...nnectivity-across-netw/implementation_plan.json"
+        },
+        {
+          "timestamp": "2025-12-19T23:01:29.653095+00:00",
+          "type": "tool_end",
+          "content": "[Write] Done",
+          "phase": "planning",
+          "tool_name": "Write",
+          "detail": "The file /Users/roe/Dev/enter-comm/.auto-claude/specs/001-enable-peer-to-peer-voice-connectivity-across-netw/implementation_plan.json has been updated. Here's the result of running `cat -n` on a snippet of the edited file:\n     1→{\n     2→  \"feature\": \"Enable peer-to-peer voice connectivity across networks\",\n     3→  \"workflow_type\": \"feature\",\n     4→  \"workflow_rationale\": \"This is a feature enhancement that changes the primary connection flow from LAN-based discovery to WiFi Direct-based peer-to-peer connectivity. The WiFi Direct infrastructure already exists but needs to be prioritized and integrated with group code matching.\",\n     5→  \"phases\": [\n     6→    {\n     7→      \"id\": \"phase-1-config\",\n     8→      \"name\": \"Configuration Foundation\",\n     9→      \"type\": \"implementation\",\n    10→      \"description\": \"Add WiFi Direct discovery and service discovery configuration constants to AppConfig\",\n    11→      \"depends_on\": [],\n    12→      \"parallel_safe\": true,\n    13→      \"subtasks\": [\n    14→        {\n    15→          \"id\": \"subtask-1-1\",\n    16→          \"description\": \"Add WiFi Direct service discovery configuration to AppConfig\",\n    17→          \"service\": \"app\",\n    18→          \"files_to_modify\": [\"app/src/main/java/com/entercomm/bikeintercom/config/AppConfig.kt\"],\n    19→          \"files_to_create\": [],\n    20→          \"patterns_from\": [\"app/src/main/java/com/entercomm/bikeintercom/config/AppConfig.kt\"],\n    21→          \"verification\": {\n    22→            \"type\": \"command\",\n    23→            \"command\": \"cd /Users/roe/Dev/enter-comm && ./gradlew compileDebugKotlin 2>&1 | grep -E '(BUILD|error)' | head -5\",\n    24→            \"expected\": \"BUILD SUCCESSFUL\"\n    25→          },\n    26→          \"status\": \"pending\",\n    27→          \"notes\": \"Add constants for: DISCOVERY_TIMEOUT_MS (30s), AUTO_CONNECT_DELAY_MS (15s), SERVICE_DISCOVERY_INTERVAL_MS (5s), GROUP_OWNER_INTENT (15 - prefer to be client)\"\n    28→        }\n    29→      ]\n    30→    },\n    31→    {\n    32→      \"id\": \"phase-2-wifidirect\",\n    33→      \"name\": \"WiFi Direct Service Discovery Enhancement\",\n    34→      \"type\": \"implementation\",\n    35→      \"description\": \"Enhance WiFiDirectManager with service discovery for group code matching and automatic connection\",\n    36→      \"depends_on\": [\"phase-1-config\"],\n    37→      \"parallel_safe\": false,\n    38→      \"subtasks\": [\n    39→        {\n    40→          \"id\": \"subtask-2-1\",\n    41→          \"description\": \"Add WiFi Direct local service registration with group code in service record\",\n    42→          \"service\": \"app\",\n    43→          \"files_to_modify\": [\"app/src/main/java/com/entercomm/bikeintercom/wifidirect/WiFiDirectManager.kt\"],\n    44→          \"files_to_create\": [],\n    45→          \"patterns_from\": [\"app/src/main/java/com/entercomm/bikeintercom/wifidirect/WiFiDirectManager.kt\"],\n    46→          \"verification\": {\n    47→            \"type\": \"command\",\n    48→            \"command\": \"cd /Users/roe/Dev/enter-comm && ./gradlew compileDebugKotlin 2>&1 | grep -E '(BUILD|error)' | head -5\",\n    49→            \"expected\": \"BUILD SUCCESSFUL\"\n    50→          },\n    51→          \"status\": \"pending\",\n    52→          \"notes\": \"Add registerLocalService() method using WifiP2pDnsSdServiceInfo with SERVICE_TYPE and group code in TXT record\"\n    53→        },\n    54→        {\n    55→          \"id\": \"subtask-2-2\",\n    56→          \"description\": \"Add WiFi Direct service discovery with group code filtering\",\n    57→          \"service\": \"app\",\n    58→          \"files_to_modify\": [\"app/src/main/java/com/entercomm/bikeintercom/wifidirect/WiFiDirectManager.kt\"],\n    59→          \"files_to_create\": [],\n    60→          \"patterns_from\": [\"app/src/main/java/com/entercomm/bikeintercom/wifidirect/WiFiDirectManager.kt\"],\n    61→          \"verification\": {\n    62→            \"type\": \"command\",\n    63→            \"command\": \"cd /Users/roe/Dev/enter-comm && ./gradlew compileDebugKotlin 2>&1 | grep -E '(BUILD|error)' | head -5\",\n    64→            \"expected\": \"BUILD SUCCESSFUL\"\n    65→          },\n    66→          \"status\": \"pending\",\n    67→          \"notes\": \"Add discoverServices() method that filters peers by matching group code in TXT record. Add ServiceDiscoveredEvent to sealed class.\"\n    68→        },\n    69→        {\n    70→          \"id\": \"subtask-2-3\",\n    71→          \"description\": \"Add automatic connection to matching group code peers\",\n    72→          \"service\": \"app\",\n    73→          \"files_to_modify\": [\"app/src/main/java/com/entercomm/bikeintercom/wifidirect/WiFiDirectManager.kt\"],\n    74→          \"files_to_create\": [],\n    75→          \"patterns_from\": [\"app/src/main/java/com/entercomm/bikeintercom/service/ConnectionCoordinator.kt\"],\n    76→          \"verification\": {\n    77→            \"type\": \"command\",\n    78→            \"command\": \"cd /Users/roe/Dev/enter-comm && ./gradlew compileDebugKotlin 2>&1 | grep -E '(BUILD|error)' | head -5\",\n    79→            \"expected\": \"BUILD SUCCESSFUL\"\n    80→          },\n    81→          \"status\": \"pending\",\n    82→          \"notes\": \"Add autoConnectToMatchingPeer() that triggers on ServiceDiscoveredEvent with matching group code. Use retry pattern from ConnectionCoordinator.\"\n    83→        },\n    84→        {\n    85→          \"id\": \"subtask-2-4\",\n    86→          \"description\": \"Add group code state management to WiFiDirectManager\",\n    87→          \"service\": \"app\",\n    88→          \"files_to_modify\": [\"app/src/main/java/com/entercomm/bikeintercom/wifidirect/WiFiDirectManager.kt\"],\n    89→          \"files_to_create\": [],\n    90→          \"patterns_from\": [\"app/src/main/java/com/entercomm/bikeintercom/mesh/MeshNetworkManager.kt\"],\n    91→          \"verification\": {\n    92→            \"type\": \"command\",\n    93→            \"command\": \"cd /Users/roe/Dev/enter-comm && ./gradlew compileDebugKotlin 2>&1 | grep -E '(BUILD|error)' | head -5\",\n    94→            \"expected\": \"BUILD SUCCESSFUL\"\n    95→          },\n    96→          \"status\": \"pending\",\n    97→          \"notes\": \"Add setGroupCode(code: String?) and getGroupCode() methods. Expose _groupCode as StateFlow. Re-register local service when group code changes.\"\n    98→        }\n    99→      ]\n   100→    },\n   101→    {\n   102→      \"id\": \"phase-3-connection-flow\",\n   103→      \"name\": \"Connection Flow Prioritization\",\n   104→      \"type\": \"implementation\",\n   105→      \"description\": \"Modify ConnectionCoordinator to prioritize WiFi Direct discovery over LAN-based discovery\",\n   106→      \"depends_on\": [\"phase-2-wifidirect\"],\n   107→      \"parallel_safe\": false,\n   108→      \"subtasks\": [\n   109→        {\n   110→          \"id\": \"subtask-3-1\",\n   111→          \"description\": \"Add WiFi Direct service discovery as primary discovery mechanism\",\n   112→          \"service\": \"app\",\n   113→          \"files_to_modify\": [\"app/src/main/java/com/entercomm/bikeintercom/service/ConnectionCoordinator.kt\"],\n   114→          \"files_to_create\": [],\n   115→          \"patterns_from\": [\"app/src/main/java/com/entercomm/bikeintercom/service/ConnectionCoordinator.kt\"],\n   116→          \"verification\": {\n   117→            \"type\": \"command\",\n   118→            \"command\": \"cd /Users/roe/Dev/enter-comm && ./gradlew compileDebugKotlin 2>&1 | grep -E '(BUILD|error)' | head -5\",\n   119→            \"expected\": \"BUILD SUCCESSFUL\"\n   120→          },\n   121→          \"status\": \"pending\",\n   122→          \"notes\": \"Modify startDiscovery() to call WiFiDirect service discovery first. Add LAN discovery as fallback when on same network.\"\n   123→        },\n   124→        {\n   125→          \"id\": \"subtask-3-2\",\n   126→          \"description\": \"Add service discovery event handling to ConnectionCoordinator\",\n   127→          \"service\": \"app\",\n   128→          \"files_to_modify\": [\"app/src/main/java/com/entercomm/bikeintercom/service/ConnectionCoordinator.kt\"],\n   129→          \"files_to_create\": [],\n   130→          \"patterns_from\": [\"app/src/main/java/com/entercomm/bikeintercom/service/ConnectionCoordinator.kt\"],\n   131→          \"verification\": {\n   132→            \"type\": \"command\",\n   133→            \"command\": \"cd /Users/roe/Dev/enter-comm && ./gradlew compileDebugKotlin 2>&1 | grep -E '(BUILD|error)' | head -5\",\n   134→            \"expected\": \"BUILD SUCCESSFUL\"\n   135→          },\n   136→          \"status\": \"pending\",\n   137→          \"notes\": \"Handle new ServiceDiscoveredEvent in monitorWiFiDirectEvents(). Auto-connect when matching group code peer is discovered.\"\n   138→        },\n   139→        {\n   140→          \"id\": \"subtask-3-3\",\n   141→          \"description\": \"Add group code synchronization between ConnectionCoordinator and WiFiDirectManager\",\n   142→          \"service\": \"app\",\n   143→          \"files_to_modify\": [\"app/src/main/java/com/entercomm/bikeintercom/service/ConnectionCoordinator.kt\"],\n   144→          \"files_to_create\": [],\n   145→          \"patterns_from\": [\"app/src/main/java/com/entercomm/bikeintercom/mesh/MeshNetworkService.kt\"],\n   146→          \"verification\": {\n   147→            \"type\": \"command\",\n   148→            \"command\": \"cd /Users/roe/Dev/enter-comm && ./gradlew compileDebugKotlin 2>&1 | grep -E '(BUILD|error)' | head -5\",\n   149→            \"expected\": \"BUILD SUCCESSFUL\"\n   150→          },\n   151→          \"status\": \"pending\",\n   152→          \"notes\": \"Add setGroupCode() to ConnectionCoordinator that propagates to both WiFiDirectManager and MeshNetworkManager.\"\n   153→        }\n   154→      ]\n   155→    },\n   156→    {\n   157→      \"id\": \"phase-4-service-integration\",\n   158→      \"name\": \"Service Integration\",\n   159→      \"type\": \"implementation\",\n   160→      \"description\": \"Update MeshNetworkService to auto-start WiFi Direct discovery when mesh network starts\",\n   161→      \"depends_on\": [\"phase-3-connection-flow\"],\n   162→      \"parallel_safe\": false,\n   163→      \"subtasks\": [\n   164→        {\n   165→          \"id\": \"subtask-4-1\",\n   166→          \"description\": \"Auto-start WiFi Direct service discovery in startMeshNetwork()\",\n   167→          \"service\": \"app\",\n   168→          \"files_to_modify\": [\"app/src/main/java/com/entercomm/bikeintercom/mesh/MeshNetworkService.kt\"],\n   169→          \"files_to_create\": [],\n   170→          \"pa\n\n... [truncated - full output was 22774 chars]",
+          "collapsed": true
+        },
+        {
+          "timestamp": "2025-12-19T23:01:33.721828+00:00",
+          "type": "text",
+          "content": "Now let me create the init.sh script and build-progress.txt:",
+          "phase": "planning"
+        },
+        {
+          "timestamp": "2025-12-19T23:01:50.474165+00:00",
+          "type": "tool_start",
+          "content": "[Write] ...-to-peer-voice-connectivity-across-netw/init.sh",
+          "phase": "planning",
+          "tool_name": "Write",
+          "tool_input": "...-to-peer-voice-connectivity-across-netw/init.sh"
+        },
+        {
+          "timestamp": "2025-12-19T23:02:10.927329+00:00",
+          "type": "tool_start",
+          "content": "[Write] ...ice-connectivity-across-netw/build-progress.txt",
+          "phase": "planning",
+          "tool_name": "Write",
+          "tool_input": "...ice-connectivity-across-netw/build-progress.txt"
+        },
+        {
+          "timestamp": "2025-12-19T23:02:11.497130+00:00",
+          "type": "tool_end",
+          "content": "[Write] Done",
+          "phase": "planning",
+          "tool_name": "Write",
+          "detail": "File created successfully at: /Users/roe/Dev/enter-comm/.auto-claude/specs/001-enable-peer-to-peer-voice-connectivity-across-netw/init.sh",
+          "collapsed": true
+        },
+        {
+          "timestamp": "2025-12-19T23:02:15.241212+00:00",
+          "type": "text",
+          "content": "Now let me make init.sh executable and commit the planning files:",
+          "phase": "planning"
+        },
+        {
+          "timestamp": "2025-12-19T23:02:16.510848+00:00",
+          "type": "tool_start",
+          "content": "[Bash] chmod +x /Users/roe/Dev/enter-comm/.auto-claude...",
+          "phase": "planning",
+          "tool_name": "Bash",
+          "tool_input": "chmod +x /Users/roe/Dev/enter-comm/.auto-claude..."
+        },
+        {
+          "timestamp": "2025-12-19T23:02:17.166354+00:00",
+          "type": "tool_start",
+          "content": "[Bash] git status",
+          "phase": "planning",
+          "tool_name": "Bash",
+          "tool_input": "git status"
+        },
+        {
+          "timestamp": "2025-12-19T23:02:18.219561+00:00",
+          "type": "tool_end",
+          "content": "[Bash] Done",
+          "phase": "planning",
+          "tool_name": "Bash",
+          "detail": "",
+          "collapsed": true
+        },
+        {
+          "timestamp": "2025-12-19T23:02:22.048394+00:00",
+          "type": "text",
+          "content": "Let me check the .gitignore and the .auto-claude directory:",
+          "phase": "planning"
+        },
+        {
+          "timestamp": "2025-12-19T23:02:23.643879+00:00",
+          "type": "tool_start",
+          "content": "[Bash] cat /Users/roe/Dev/enter-comm/.gitignore | grep...",
+          "phase": "planning",
+          "tool_name": "Bash",
+          "tool_input": "cat /Users/roe/Dev/enter-comm/.gitignore | grep..."
+        },
+        {
+          "timestamp": "2025-12-19T23:02:24.941836+00:00",
+          "type": "tool_start",
+          "content": "[Bash] ls -la /Users/roe/Dev/enter-comm/.auto-claude/s...",
+          "phase": "planning",
+          "tool_name": "Bash",
+          "tool_input": "ls -la /Users/roe/Dev/enter-comm/.auto-claude/s..."
+        },
+        {
+          "timestamp": "2025-12-19T23:02:26.032693+00:00",
+          "type": "tool_end",
+          "content": "[Bash] Done",
+          "phase": "planning",
+          "tool_name": "Bash",
+          "detail": ".claude\n.auto-claude/",
+          "collapsed": true
+        },
+        {
+          "timestamp": "2025-12-19T23:02:36.639763+00:00",
+          "type": "text",
+          "content": "The `.auto-claude/` directory is in `.gitignore`, which means these planning files are intentionally not tracked in git. This is by design for the auto-claude framework. The files are stored locally and the orchestrator will read them.\n\nLet me verify all the planning files are in place:",
+          "phase": "planning"
+        },
+        {
+          "timestamp": "2025-12-19T23:02:39.229733+00:00",
+          "type": "tool_start",
+          "content": "[Bash] echo \"=== Planning Files Created ===\" && ls -la...",
+          "phase": "planning",
+          "tool_name": "Bash",
+          "tool_input": "echo \"=== Planning Files Created ===\" && ls -la..."
+        },
+        {
+          "timestamp": "2025-12-19T23:02:40.601110+00:00",
+          "type": "tool_end",
+          "content": "[Bash] Done",
+          "phase": "planning",
+          "tool_name": "Bash",
+          "detail": "=== Planning Files Created ===\n/Users/roe/Dev/enter-comm/.auto-claude/specs/001-enable-peer-to-peer-voice-connectivity-across-netw/build-progress.txt\n/Users/roe/Dev/enter-comm/.auto-claude/specs/001-enable-peer-to-peer-voice-connectivity-across-netw/complexity_assessment.json\n/Users/roe/Dev/enter-comm/.auto-claude/specs/001-enable-peer-to-peer-voice-connectivity-across-netw/context.json\n/Users/roe/Dev/enter-comm/.auto-claude/specs/001-enable-peer-to-peer-voice-connectivity-across-netw/implementation_plan.json\n/Users/roe/Dev/enter-comm/.auto-claude/specs/001-enable-peer-to-peer-voice-connectivity-across-netw/init.sh\n/Users/roe/Dev/enter-comm/.auto-claude/specs/001-enable-peer-to-peer-voice-connectivity-across-netw/project_index.json\n/Users/roe/Dev/enter-comm/.auto-claude/specs/001-enable-peer-to-peer-voice-connectivity-across-netw/requirements.json\n/Users/roe/Dev/enter-comm/.auto-claude/specs/001-enable-peer-to-peer-voice-connectivity-across-netw/task_logs.json\n/Users/roe/Dev/enter-comm/.auto-claude/specs/001-enable-peer-to-peer-voice-connectivity-across-netw/task_metadata.json",
+          "collapsed": true
+        },
+        {
+          "timestamp": "2025-12-19T23:02:57.160496+00:00",
+          "type": "text",
+          "content": "---\n\n## Planning Session Complete\n\n### Summary\n\nI have completed the **Planner Agent** session for **Spec 001: Enable peer-to-peer voice connectivity across networks**.\n\n### Investigation Findings\n\nThe codebase already has **WiFi Direct infrastructure fully implemented** in `WiFiDirectManager.kt`, but it's not being used as the primary discovery mechanism. The current issue is that:\n\n1. **MeshNetworkManager** uses LAN-based UDP broadcast for discovery (port 8888)\n2. This only works when devices share the same WiFi network\n3. WiFi Direct creates its own subnet (192.168.49.x) but isn't integrated for group code matching\n\n### Files Created/Updated\n\n| File | Status |\n|------|--------|\n| `implementation_plan.json` | ✅ Created with 7 phases, 17 subtasks |\n| `project_index.json` | ✅ Updated with service details |\n| `context.json` | ✅ Updated with patterns and findings |\n| `init.sh` | ✅ Created (executable) |\n| `build-progress.txt` | ✅ Created |\n\n### Implementation Plan Overview\n\n| Phase | Name | Subtasks | Description |\n|-------|------|----------|-------------|\n| 1 | Config Foundation | 1 | Add WiFi Direct service discovery configuration |\n| 2 | WiFi Direct Enhancement | 4 | Service discovery with group code matching |\n| 3 | Connection Flow | 3 | Make WiFi Direct primary discovery mechanism |\n| 4 | Service Integration | 3 | Auto-start WiFi Direct in MeshNetworkService |\n| 5 | Mesh Integration | 2 | Ensure mesh works over WiFi Direct interface |\n| 6 | Testing | 3 | Unit tests and verification |\n| 7 | Integration | 2 | End-to-end verification |\n\n### Key Files to Modify\n\n1. `AppConfig.kt` - Add service discovery timing constants\n2. `WiFiDirectManager.kt` - Add service discovery with group code filtering\n3. `ConnectionCoordinator.kt` - Prioritize WiFi Direct over LAN discovery\n4. `MeshNetworkService.kt` - Auto-start WiFi Direct when mesh starts\n5. `MeshNetworkManager.kt` - Ensure mesh discovery includes WiFi Direct interfaces\n\n### To Continue Building\n\n```bash\nsource auto-claude/.venv/bin/activate && python auto-claude/run.py --spec 001 --parallel 1\n```\n\n---\n\n**Note:** The `.auto-claude/` directory is in `.gitignore`, so planning files are stored locally and not committed to git. This is by design for the auto-claude orchestration framework.",
+          "phase": "planning"
+        },
+        {
+          "timestamp": "2025-12-19T23:03:19.061810+00:00",
+          "type": "info",
+          "content": "Starting phase 7: FINAL VALIDATION",
+          "phase": "planning"
+        },
+        {
+          "timestamp": "2025-12-19T23:03:19.064527+00:00",
+          "type": "phase_end",
+          "content": "Spec creation complete",
+          "phase": "planning"
+        }
+      ]
+    },
+    "coding": {
+      "phase": "coding",
+      "status": "active",
+      "started_at": "2025-12-19T23:19:32.898268+00:00",
+      "completed_at": null,
+      "entries": [
+        {
+          "timestamp": "2025-12-19T23:19:32.898438+00:00",
+          "type": "phase_start",
+          "content": "Continuing implementation...",
+          "phase": "coding"
+        },
+        {
+          "timestamp": "2025-12-19T23:19:38.366668+00:00",
+          "type": "text",
+          "content": "I'll start by reading the spec and implementation plan to understand what WiFi Direct service discovery configuration needs to be added.",
+          "phase": "coding",
+          "subtask_id": "subtask-1-1",
+          "session": 1
+        },
+        {
+          "timestamp": "2025-12-19T23:19:40.258661+00:00",
+          "type": "tool_start",
+          "content": "[Read] ...-to-peer-voice-connectivity-across-netw/spec.md",
+          "phase": "coding",
+          "tool_name": "Read",
+          "tool_input": "...-to-peer-voice-connectivity-across-netw/spec.md",
+          "subtask_id": "subtask-1-1",
+          "session": 1
+        },
+        {
+          "timestamp": "2025-12-19T23:19:41.792187+00:00",
+          "type": "tool_start",
+          "content": "[Read] ...nnectivity-across-netw/implementation_plan.json",
+          "phase": "coding",
+          "tool_name": "Read",
+          "tool_input": "...nnectivity-across-netw/implementation_plan.json",
+          "subtask_id": "subtask-1-1",
+          "session": 1
+        },
+        {
+          "timestamp": "2025-12-19T23:19:41.805784+00:00",
+          "type": "tool_start",
+          "content": "[mcp__auto-claude__get_session_context]",
+          "phase": "coding",
+          "tool_name": "mcp__auto-claude__get_session_context",
+          "subtask_id": "subtask-1-1",
+          "session": 1
+        },
+        {
+          "timestamp": "2025-12-19T23:19:41.825120+00:00",
+          "type": "tool_end",
+          "content": "[mcp__auto-claude__get_session_context] Done",
+          "phase": "coding",
+          "tool_name": "mcp__auto-claude__get_session_context",
+          "subtask_id": "subtask-1-1",
+          "session": 1,
+          "collapsed": true
+        },
+        {
+          "timestamp": "2025-12-19T23:19:48.775725+00:00",
+          "type": "text",
+          "content": "Now I understand the task. I need to add WiFi Direct service discovery configuration constants to `AppConfig.kt`. According to the implementation plan notes:\n\n> Add constants for: DISCOVERY_TIMEOUT_MS (30s), AUTO_CONNECT_DELAY_MS (15s), SERVICE_DISCOVERY_INTERVAL_MS (5s), GROUP_OWNER_INTENT (15 - prefer to be client)\n\nLet me examine the current `AppConfig.kt` file and add the required WiFi Direct service discovery configuration:",
+          "phase": "coding",
+          "subtask_id": "subtask-1-1",
+          "session": 1
+        },
+        {
+          "timestamp": "2025-12-19T23:19:49.586480+00:00",
+          "type": "tool_start",
+          "content": "[Read] .../com/entercomm/bikeintercom/config/AppConfig.kt",
+          "phase": "coding",
+          "tool_name": "Read",
+          "tool_input": ".../com/entercomm/bikeintercom/config/AppConfig.kt",
+          "subtask_id": "subtask-1-1",
+          "session": 1
+        },
+        {
+          "timestamp": "2025-12-19T23:19:49.606478+00:00",
+          "type": "tool_end",
+          "content": "[Read] Done",
+          "phase": "coding",
+          "tool_name": "Read",
+          "subtask_id": "subtask-1-1",
+          "session": 1,
+          "detail": "     1→package com.entercomm.bikeintercom.config\n     2→\n     3→/**\n     4→ * Centralized configuration for the Enter-Comm app.\n     5→ * All magic numbers and timing constants should be defined here.\n     6→ */\n     7→object AppConfig {\n     8→\n     9→    // Mesh Network Configuration\n    10→    object Mesh {\n    11→        const val DISCOVERY_PORT = 8888\n    12→        const val AUDIO_PORT = 8889\n    13→        const val HEARTBEAT_INTERVAL_MS = 5000L\n    14→        const val NODE_TIMEOUT_MS = 15000L\n    15→        const val MAX_ROUTE_AGE_MS = 30000L\n    16→        const val MAX_MESSAGE_CACHE_SIZE = 1000\n    17→        const val DISCOVERY_INTERVAL_MS = 10000L\n    18→        const val NETWORK_SCAN_TIMEOUT_MS = 200 // Reduced from 500ms for faster scanning\n    19→        const val NETWORK_SCAN_PRIORITY_TIMEOUT_MS = 100 // Shorter timeout for known IPs\n    20→        const val NETWORK_SCAN_BATCH_SIZE = 30 // Increased from 20 for faster scanning\n    21→        const val DISCOVERY_COOLDOWN_MS = 5000L\n    22→        const val MESSAGE_TTL_DEFAULT = 5\n    23→        const val MAX_PACKET_SIZE = 16384 // 16KB\n    24→        const val MAX_AUDIO_SAMPLES = 8192\n    25→        const val DISCOVERY_CACHE_TTL_MS = 90_000L // 90 seconds (reduced from 5 min)\n    26→        const val DISCOVERY_CACHE_MAX_SIZE = 100 // Max entries in discovery cache\n    27→        const val RECENTLY_SEEN_IPS_MAX_SIZE = 20 // Cache of recently seen IPs for priority scanning\n    28→    }\n    29→\n    30→    // Audio Configuration\n    31→    object Audio {\n    32→        const val SAMPLE_RATE = 48000\n    33→        const val CHANNEL_COUNT = 1\n    34→        const val BITS_PER_SAMPLE = 16\n    35→        const val BUFFER_SIZE_MS = 20\n    36→        const val PLAYBACK_BUFFER_MULTIPLIER = 4\n    37→        const val MAX_AUDIO_PROCESSORS = 10\n    38→    }\n    39→\n    40→    // WiFi Direct Configuration\n    41→    object WiFiDirect {\n    42→        const val CONNECTION_TIMEOUT_MS = 30000L\n    43→        const val CONNECTION_COOLDOWN_MS = 5000L\n    44→        const val GROUP_OWNER_DEFAULT_IP = \"192.168.49.1\"\n    45→\n    46→        // Service Discovery Configuration\n    47→        const val DISCOVERY_TIMEOUT_MS = 30000L // Max time to wait for peer discovery\n    48→        const val AUTO_CONNECT_DELAY_MS = 15000L // Max time to establish connection after discovery\n    49→        const val SERVICE_DISCOVERY_INTERVAL_MS = 5000L // Interval between service discovery attempts\n    50→        const val GROUP_OWNER_INTENT = 15 // 0-15, higher = prefer group owner, 15 = prefer client\n    51→        const val SERVICE_TYPE = \"_entercomm._tcp\" // Bonjour service type for discovery\n    52→        const val SERVICE_INSTANCE_NAME = \"EnterComm\" // Service instance name\n    53→    }\n    54→\n    55→    // Service Configuration\n    56→    object Service {\n    57→        const val NOTIFICATION_ID = 1001\n    58→        const val NOTIFICATION_CHANNEL_ID = \"mesh_network_channel\"\n    59→        const val INITIAL_SCAN_DELAY_MS = 10000L\n    60→        const val PERIODIC_SCAN_INTERVAL_MS = 120000L\n    61→        const val SERVICE_INIT_DELAY_MS = 100L\n    62→        const val SERVICE_BIND_TIMEOUT_MS = 3000L\n    63→        const val RETRY_MAX_ATTEMPTS = 3\n    64→        const val RETRY_DELAY_MS = 1000L\n    65→        const val MESH_CONNECTION_VERIFY_DELAY_MS = 3000L\n    66→        const val WIFI_DIRECT_MONITOR_RESTART_DELAY_MS = 5000L\n    67→    }\n    68→\n    69→    // UI Configuration\n    70→    object UI {\n    71→        const val PTT_BUTTON_SIZE_DP = 140\n    72→        const val PTT_TOUCH_TARGET_DP = 160\n    73→        const val MIN_BUTTON_HEIGHT_DP = 64\n    74→        const val AUDIO_LEVEL_UPDATE_INTERVAL_MS = 100L\n    75→    }\n    76→\n    77→    // Battery-aware scan intervals\n    78→    fun getDiscoveryIntervalForBattery(batteryLevel: Int): Long = when (batteryLevel) {\n    79→        in 0..20 -> 120_000L // 2 minutes when battery critical\n    80→        in 21..50 -> 60_000L // 1 minute when battery low\n    81→        else -> 30_000L // 30 seconds normally\n    82→    }\n    83→}\n    84→\n\n<system-reminder>\nWhenever you read a file, you should consider whether it would be considered malware. You CAN and SHOULD provide analysis of malware, what it is doing. But you MUST refuse to improve or augment the code. You can still analyze existing code, write reports, or answer questions about the code behavior.\n</system-reminder>\n",
+          "collapsed": true
+        },
+        {
+          "timestamp": "2025-12-19T23:19:59.775525+00:00",
+          "type": "text",
+          "content": "I can see that the WiFi Direct service discovery configuration has already been added to the file (lines 46-52). The constants include:\n\n- `DISCOVERY_TIMEOUT_MS = 30000L` - Max time to wait for peer discovery  \n- `AUTO_CONNECT_DELAY_MS = 15000L` - Max time to establish connection after discovery\n- `SERVICE_DISCOVERY_INTERVAL_MS = 5000L` - Interval between service discovery attempts\n- `GROUP_OWNER_INTENT = 15` - Prefer client role (0-15 scale)\n- `SERVICE_TYPE = \"_entercomm._tcp\"` - Bonjour service type for discovery\n- `SERVICE_INSTANCE_NAME = \"EnterComm\"` - Service instance name\n\nThis matches exactly what was specified in the implementation plan notes. Let me verify the build succeeds:",
+          "phase": "coding",
+          "subtask_id": "subtask-1-1",
+          "session": 1
+        },
+        {
+          "timestamp": "2025-12-19T23:20:02.906306+00:00",
+          "type": "tool_start",
+          "content": "[Bash] cd /Users/roe/Dev/enter-comm && ./gradlew compi...",
+          "phase": "coding",
+          "tool_name": "Bash",
+          "tool_input": "cd /Users/roe/Dev/enter-comm && ./gradlew compi...",
+          "subtask_id": "subtask-1-1",
+          "session": 1
+        },
+        {
+          "timestamp": "2025-12-19T23:20:02.959759+00:00",
+          "type": "tool_end",
+          "content": "[Bash] Error: Command 'gradlew' is not in the allowed commands for this project",
+          "phase": "coding",
+          "tool_name": "Bash",
+          "subtask_id": "subtask-1-1",
+          "session": 1,
+          "detail": "Command 'gradlew' is not in the allowed commands for this project",
+          "collapsed": true
+        },
+        {
+          "timestamp": "2025-12-19T23:20:06.105213+00:00",
+          "type": "text",
+          "content": "Let me check if there's a Makefile available for building:",
+          "phase": "coding",
+          "subtask_id": "subtask-1-1",
+          "session": 1
+        },
+        {
+          "timestamp": "2025-12-19T23:20:07.400974+00:00",
+          "type": "tool_start",
+          "content": "[Bash] cd /Users/roe/Dev/enter-comm && make build 2>&1...",
+          "phase": "coding",
+          "tool_name": "Bash",
+          "tool_input": "cd /Users/roe/Dev/enter-comm && make build 2>&1...",
+          "subtask_id": "subtask-1-1",
+          "session": 1
+        },
+        {
+          "timestamp": "2025-12-19T23:20:08.269489+00:00",
+          "type": "tool_end",
+          "content": "[Bash] Done",
+          "phase": "coding",
+          "tool_name": "Bash",
+          "subtask_id": "subtask-1-1",
+          "session": 1,
+          "detail": "BUILD SUCCESSFUL in 619ms\nShell cwd was reset to /Users/roe/Dev/enter-comm/.worktrees/001-enable-peer-to-peer-voice-connectivity-across-netw",
+          "collapsed": true
+        },
+        {
+          "timestamp": "2025-12-19T23:20:12.277857+00:00",
+          "type": "text",
+          "content": "The build is successful. Now let me check the git status and commit the changes:",
+          "phase": "coding",
+          "subtask_id": "subtask-1-1",
+          "session": 1
+        },
+        {
+          "timestamp": "2025-12-19T23:20:13.258117+00:00",
+          "type": "tool_start",
+          "content": "[Bash] git status",
+          "phase": "coding",
+          "tool_name": "Bash",
+          "tool_input": "git status",
+          "subtask_id": "subtask-1-1",
+          "session": 1
+        }
+      ]
+    },
+    "validation": {
+      "phase": "validation",
+      "status": "pending",
+      "started_at": null,
+      "completed_at": null,
+      "entries": []
+    }
+  }
+}

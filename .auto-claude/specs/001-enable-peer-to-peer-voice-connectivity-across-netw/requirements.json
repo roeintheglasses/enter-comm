@@ -1,0 +1,4 @@
+{
+  "task_description": "Currently the app only works if all devices which want to connect to each other on the intercom have to be on the same wifi network. If they are not on any wifi networks it doesn't work. \n\nThe intended purpose of this app is to allow devices to connect and talk to each other over voice without being connected to same wifi network or even having a cellular netowork. \n\nThe implementation needs to be updated such that devices can connect to each other without even being on the same network.",
+  "workflow_type": "feature"
+}

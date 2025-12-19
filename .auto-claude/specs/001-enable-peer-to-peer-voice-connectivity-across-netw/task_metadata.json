@@ -1,0 +1,10 @@
+{
+  "sourceType": "manual",
+  "category": "feature",
+  "priority": "high",
+  "complexity": "large",
+  "impact": "critical",
+  "model": "opus",
+  "thinkingLevel": "ultrathink",
+  "requireReviewBeforeCoding": true
+}

@@ -1,0 +1,519 @@
+{
+  "feature": "Enable peer-to-peer voice connectivity across networks",
+  "workflow_type": "feature",
+  "workflow_rationale": "This is a feature enhancement that changes the primary connection flow from LAN-based discovery to WiFi Direct-based peer-to-peer connectivity. The WiFi Direct infrastructure already exists but needs to be prioritized and integrated with group code matching.",
+  "phases": [
+    {
+      "id": "phase-1-config",
+      "name": "Configuration Foundation",
+      "type": "implementation",
+      "description": "Add WiFi Direct discovery and service discovery configuration constants to AppConfig",
+      "depends_on": [],
+      "parallel_safe": true,
+      "subtasks": [
+        {
+          "id": "subtask-1-1",
+          "description": "Add WiFi Direct service discovery configuration to AppConfig",
+          "service": "app",
+          "files_to_modify": [
+            "app/src/main/java/com/entercomm/bikeintercom/config/AppConfig.kt"
+          ],
+          "files_to_create": [],
+          "patterns_from": [
+            "app/src/main/java/com/entercomm/bikeintercom/config/AppConfig.kt"
+          ],
+          "verification": {
+            "type": "command",
+            "command": "cd /Users/roe/Dev/enter-comm && ./gradlew compileDebugKotlin 2>&1 | grep -E '(BUILD|error)' | head -5",
+            "expected": "BUILD SUCCESSFUL"
+          },
+          "status": "pending",
+          "notes": "Add constants for: DISCOVERY_TIMEOUT_MS (30s), AUTO_CONNECT_DELAY_MS (15s), SERVICE_DISCOVERY_INTERVAL_MS (5s), GROUP_OWNER_INTENT (15 - prefer to be client)"
+        }
+      ]
+    },
+    {
+      "id": "phase-2-wifidirect",
+      "name": "WiFi Direct Service Discovery Enhancement",
+      "type": "implementation",
+      "description": "Enhance WiFiDirectManager with service discovery for group code matching and automatic connection",
+      "depends_on": [
+        "phase-1-config"
+      ],
+      "parallel_safe": false,
+      "subtasks": [
+        {
+          "id": "subtask-2-1",
+          "description": "Add WiFi Direct local service registration with group code in service record",
+          "service": "app",
+          "files_to_modify": [
+            "app/src/main/java/com/entercomm/bikeintercom/wifidirect/WiFiDirectManager.kt"
+          ],
+          "files_to_create": [],
+          "patterns_from": [
+            "app/src/main/java/com/entercomm/bikeintercom/wifidirect/WiFiDirectManager.kt"
+          ],
+          "verification": {
+            "type": "command",
+            "command": "cd /Users/roe/Dev/enter-comm && ./gradlew compileDebugKotlin 2>&1 | grep -E '(BUILD|error)' | head -5",
+            "expected": "BUILD SUCCESSFUL"
+          },
+          "status": "pending",
+          "notes": "Add registerLocalService() method using WifiP2pDnsSdServiceInfo with SERVICE_TYPE and group code in TXT record"
+        },
+        {
+          "id": "subtask-2-2",
+          "description": "Add WiFi Direct service discovery with group code filtering",
+          "service": "app",
+          "files_to_modify": [
+            "app/src/main/java/com/entercomm/bikeintercom/wifidirect/WiFiDirectManager.kt"
+          ],
+          "files_to_create": [],
+          "patterns_from": [
+            "app/src/main/java/com/entercomm/bikeintercom/wifidirect/WiFiDirectManager.kt"
+          ],
+          "verification": {
+            "type": "command",
+            "command": "cd /Users/roe/Dev/enter-comm && ./gradlew compileDebugKotlin 2>&1 | grep -E '(BUILD|error)' | head -5",
+            "expected": "BUILD SUCCESSFUL"
+          },
+          "status": "pending",
+          "notes": "Add discoverServices() method that filters peers by matching group code in TXT record. Add ServiceDiscoveredEvent to sealed class."
+        },
+        {
+          "id": "subtask-2-3",
+          "description": "Add automatic connection to matching group code peers",
+          "service": "app",
+          "files_to_modify": [
+            "app/src/main/java/com/entercomm/bikeintercom/wifidirect/WiFiDirectManager.kt"
+          ],
+          "files_to_create": [],
+          "patterns_from": [
+            "app/src/main/java/com/entercomm/bikeintercom/service/ConnectionCoordinator.kt"
+          ],
+          "verification": {
+            "type": "command",
+            "command": "cd /Users/roe/Dev/enter-comm && ./gradlew compileDebugKotlin 2>&1 | grep -E '(BUILD|error)' | head -5",
+            "expected": "BUILD SUCCESSFUL"
+          },
+          "status": "pending",
+          "notes": "Add autoConnectToMatchingPeer() that triggers on ServiceDiscoveredEvent with matching group code. Use retry pattern from ConnectionCoordinator."
+        },
+        {
+          "id": "subtask-2-4",
+          "description": "Add group code state management to WiFiDirectManager",
+          "service": "app",
+          "files_to_modify": [
+            "app/src/main/java/com/entercomm/bikeintercom/wifidirect/WiFiDirectManager.kt"
+          ],
+          "files_to_create": [],
+          "patterns_from": [
+            "app/src/main/java/com/entercomm/bikeintercom/mesh/MeshNetworkManager.kt"
+          ],
+          "verification": {
+            "type": "command",
+            "command": "cd /Users/roe/Dev/enter-comm && ./gradlew compileDebugKotlin 2>&1 | grep -E '(BUILD|error)' | head -5",
+            "expected": "BUILD SUCCESSFUL"
+          },
+          "status": "pending",
+          "notes": "Add setGroupCode(code: String?) and getGroupCode() methods. Expose _groupCode as StateFlow. Re-register local service when group code changes."
+        }
+      ]
+    },
+    {
+      "id": "phase-3-connection-flow",
+      "name": "Connection Flow Prioritization",
+      "type": "implementation",
+      "description": "Modify ConnectionCoordinator to prioritize WiFi Direct discovery over LAN-based discovery",
+      "depends_on": [
+        "phase-2-wifidirect"
+      ],
+      "parallel_safe": false,
+      "subtasks": [
+        {
+          "id": "subtask-3-1",
+          "description": "Add WiFi Direct service discovery as primary discovery mechanism",
+          "service": "app",
+          "files_to_modify": [
+            "app/src/main/java/com/entercomm/bikeintercom/service/ConnectionCoordinator.kt"
+          ],
+          "files_to_create": [],
+          "patterns_from": [
+            "app/src/main/java/com/entercomm/bikeintercom/service/ConnectionCoordinator.kt"
+          ],
+          "verification": {
+            "type": "command",
+            "command": "cd /Users/roe/Dev/enter-comm && ./gradlew compileDebugKotlin 2>&1 | grep -E '(BUILD|error)' | head -5",
+            "expected": "BUILD SUCCESSFUL"
+          },
+          "status": "pending",
+          "notes": "Modify startDiscovery() to call WiFiDirect service discovery first. Add LAN discovery as fallback when on same network."
+        },
+        {
+          "id": "subtask-3-2",
+          "description": "Add service discovery event handling to ConnectionCoordinator",
+          "service": "app",
+          "files_to_modify": [
+            "app/src/main/java/com/entercomm/bikeintercom/service/ConnectionCoordinator.kt"
+          ],
+          "files_to_create": [],
+          "patterns_from": [
+            "app/src/main/java/com/entercomm/bikeintercom/service/ConnectionCoordinator.kt"
+          ],
+          "verification": {
+            "type": "command",
+            "command": "cd /Users/roe/Dev/enter-comm && ./gradlew compileDebugKotlin 2>&1 | grep -E '(BUILD|error)' | head -5",
+            "expected": "BUILD SUCCESSFUL"
+          },
+          "status": "pending",
+          "notes": "Handle new ServiceDiscoveredEvent in monitorWiFiDirectEvents(). Auto-connect when matching group code peer is discovered."
+        },
+        {
+          "id": "subtask-3-3",
+          "description": "Add group code synchronization between ConnectionCoordinator and WiFiDirectManager",
+          "service": "app",
+          "files_to_modify": [
+            "app/src/main/java/com/entercomm/bikeintercom/service/ConnectionCoordinator.kt"
+          ],
+          "files_to_create": [],
+          "patterns_from": [
+            "app/src/main/java/com/entercomm/bikeintercom/mesh/MeshNetworkService.kt"
+          ],
+          "verification": {
+            "type": "command",
+            "command": "cd /Users/roe/Dev/enter-comm && ./gradlew compileDebugKotlin 2>&1 | grep -E '(BUILD|error)' | head -5",
+            "expected": "BUILD SUCCESSFUL"
+          },
+          "status": "pending",
+          "notes": "Add setGroupCode() to ConnectionCoordinator that propagates to both WiFiDirectManager and MeshNetworkManager."
+        }
+      ]
+    },
+    {
+      "id": "phase-4-service-integration",
+      "name": "Service Integration",
+      "type": "implementation",
+      "description": "Update MeshNetworkService to auto-start WiFi Direct discovery when mesh network starts",
+      "depends_on": [
+        "phase-3-connection-flow"
+      ],
+      "parallel_safe": false,
+      "subtasks": [
+        {
+          "id": "subtask-4-1",
+          "description": "Auto-start WiFi Direct service discovery in startMeshNetwork()",
+          "service": "app",
+          "files_to_modify": [
+            "app/src/main/java/com/entercomm/bikeintercom/mesh/MeshNetworkService.kt"
+          ],
+          "files_to_create": [],
+          "patterns_from": [
+            "app/src/main/java/com/entercomm/bikeintercom/mesh/MeshNetworkService.kt"
+          ],
+          "verification": {
+            "type": "command",
+            "command": "cd /Users/roe/Dev/enter-comm && ./gradlew compileDebugKotlin 2>&1 | grep -E '(BUILD|error)' | head -5",
+            "expected": "BUILD SUCCESSFUL"
+          },
+          "status": "pending",
+          "notes": "Call wifiDirectManager.registerLocalService() and startServiceDiscovery() after wifiDirectManager.initialize() in startMeshNetwork()."
+        },
+        {
+          "id": "subtask-4-2",
+          "description": "Propagate group code to WiFiDirectManager when set via MeshNetworkService",
+          "service": "app",
+          "files_to_modify": [
+            "app/src/main/java/com/entercomm/bikeintercom/mesh/MeshNetworkService.kt"
+          ],
+          "files_to_create": [],
+          "patterns_from": [
+            "app/src/main/java/com/entercomm/bikeintercom/mesh/MeshNetworkService.kt"
+          ],
+          "verification": {
+            "type": "command",
+            "command": "cd /Users/roe/Dev/enter-comm && ./gradlew compileDebugKotlin 2>&1 | grep -E '(BUILD|error)' | head -5",
+            "expected": "BUILD SUCCESSFUL"
+          },
+          "status": "pending",
+          "notes": "Update setGroupCode() to also call wifiDirectManager.setGroupCode(code) for service discovery filtering."
+        },
+        {
+          "id": "subtask-4-3",
+          "description": "Add WiFi Direct service cleanup in stopMeshNetwork()",
+          "service": "app",
+          "files_to_modify": [
+            "app/src/main/java/com/entercomm/bikeintercom/mesh/MeshNetworkService.kt"
+          ],
+          "files_to_create": [],
+          "patterns_from": [
+            "app/src/main/java/com/entercomm/bikeintercom/mesh/MeshNetworkService.kt"
+          ],
+          "verification": {
+            "type": "command",
+            "command": "cd /Users/roe/Dev/enter-comm && ./gradlew compileDebugKotlin 2>&1 | grep -E '(BUILD|error)' | head -5",
+            "expected": "BUILD SUCCESSFUL"
+          },
+          "status": "pending",
+          "notes": "Call wifiDirectManager.unregisterLocalService() and stopServiceDiscovery() during cleanup."
+        }
+      ]
+    },
+    {
+      "id": "phase-5-mesh-integration",
+      "name": "Mesh Network WiFi Direct Integration",
+      "type": "implementation",
+      "description": "Ensure mesh networking properly works over WiFi Direct interface",
+      "depends_on": [
+        "phase-4-service-integration"
+      ],
+      "parallel_safe": false,
+      "subtasks": [
+        {
+          "id": "subtask-5-1",
+          "description": "Ensure mesh discovery includes WiFi Direct interface broadcast addresses",
+          "service": "app",
+          "files_to_modify": [
+            "app/src/main/java/com/entercomm/bikeintercom/mesh/MeshNetworkManager.kt"
+          ],
+          "files_to_create": [],
+          "patterns_from": [
+            "app/src/main/java/com/entercomm/bikeintercom/mesh/MeshNetworkManager.kt"
+          ],
+          "verification": {
+            "type": "command",
+            "command": "cd /Users/roe/Dev/enter-comm && ./gradlew compileDebugKotlin 2>&1 | grep -E '(BUILD|error)' | head -5",
+            "expected": "BUILD SUCCESSFUL"
+          },
+          "status": "pending",
+          "notes": "Verify getNetworkBroadcastAddresses() properly detects p2p interfaces. Add 192.168.49.255 as fallback WiFi Direct broadcast."
+        },
+        {
+          "id": "subtask-5-2",
+          "description": "Add WiFi Direct interface detection to getLocalIPAddresses()",
+          "service": "app",
+          "files_to_modify": [
+            "app/src/main/java/com/entercomm/bikeintercom/mesh/MeshNetworkManager.kt"
+          ],
+          "files_to_create": [],
+          "patterns_from": [
+            "app/src/main/java/com/entercomm/bikeintercom/mesh/MeshNetworkManager.kt"
+          ],
+          "verification": {
+            "type": "command",
+            "command": "cd /Users/roe/Dev/enter-comm && ./gradlew compileDebugKotlin 2>&1 | grep -E '(BUILD|error)' | head -5",
+            "expected": "BUILD SUCCESSFUL"
+          },
+          "status": "pending",
+          "notes": "Log when p2p interface is detected. Ensure WiFi Direct addresses are prioritized for connection."
+        }
+      ]
+    },
+    {
+      "id": "phase-6-testing",
+      "name": "Testing & Verification",
+      "type": "implementation",
+      "description": "Add unit tests and verify end-to-end functionality",
+      "depends_on": [
+        "phase-5-mesh-integration"
+      ],
+      "parallel_safe": false,
+      "subtasks": [
+        {
+          "id": "subtask-6-1",
+          "description": "Add WiFiDirectManager service discovery unit tests",
+          "service": "app",
+          "files_to_modify": [],
+          "files_to_create": [
+            "app/src/test/java/com/entercomm/bikeintercom/wifidirect/WiFiDirectManagerTest.kt"
+          ],
+          "patterns_from": [
+            "app/src/test/java/com/entercomm/bikeintercom/mesh/MeshNetworkValidationTest.kt"
+          ],
+          "verification": {
+            "type": "command",
+            "command": "cd /Users/roe/Dev/enter-comm && ./gradlew test 2>&1 | grep -E '(BUILD|PASSED|FAILED)' | head -10",
+            "expected": "BUILD SUCCESSFUL"
+          },
+          "status": "pending",
+          "notes": "Test group code setting, service registration, filtering by group code."
+        },
+        {
+          "id": "subtask-6-2",
+          "description": "Add ConnectionCoordinator WiFi Direct priority tests",
+          "service": "app",
+          "files_to_modify": [],
+          "files_to_create": [
+            "app/src/test/java/com/entercomm/bikeintercom/service/ConnectionCoordinatorTest.kt"
+          ],
+          "patterns_from": [
+            "app/src/test/java/com/entercomm/bikeintercom/mesh/MeshNetworkValidationTest.kt"
+          ],
+          "verification": {
+            "type": "command",
+            "command": "cd /Users/roe/Dev/enter-comm && ./gradlew test 2>&1 | grep -E '(BUILD|PASSED|FAILED)' | head -10",
+            "expected": "BUILD SUCCESSFUL"
+          },
+          "status": "pending",
+          "notes": "Test WiFi Direct primary flow, group code sync, event handling."
+        },
+        {
+          "id": "subtask-6-3",
+          "description": "Run full test suite and verify no regressions",
+          "service": "app",
+          "files_to_modify": [],
+          "files_to_create": [],
+          "patterns_from": [],
+          "verification": {
+            "type": "command",
+            "command": "cd /Users/roe/Dev/enter-comm && make test 2>&1 | tail -20",
+            "expected": "BUILD SUCCESSFUL"
+          },
+          "status": "pending",
+          "notes": "Run make test and verify all existing tests pass. Document any failures."
+        }
+      ]
+    },
+    {
+      "id": "phase-7-integration",
+      "name": "End-to-End Integration Verification",
+      "type": "integration",
+      "description": "Wire all services together and verify end-to-end peer-to-peer connectivity",
+      "depends_on": [
+        "phase-6-testing"
+      ],
+      "parallel_safe": false,
+      "subtasks": [
+        {
+          "id": "subtask-7-1",
+          "description": "Build and verify no compilation errors",
+          "all_services": true,
+          "files_to_modify": [],
+          "files_to_create": [],
+          "patterns_from": [],
+          "verification": {
+            "type": "command",
+            "command": "cd /Users/roe/Dev/enter-comm && make build 2>&1 | tail -20",
+            "expected": "BUILD SUCCESSFUL"
+          },
+          "status": "pending",
+          "notes": "Run make build and verify the APK builds successfully."
+        },
+        {
+          "id": "subtask-7-2",
+          "description": "Run lint and code quality checks",
+          "all_services": true,
+          "files_to_modify": [],
+          "files_to_create": [],
+          "patterns_from": [],
+          "verification": {
+            "type": "command",
+            "command": "cd /Users/roe/Dev/enter-comm && make check 2>&1 | tail -30",
+            "expected": "BUILD SUCCESSFUL"
+          },
+          "status": "pending",
+          "notes": "Run make check for format, detekt, lint, and test."
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "total_phases": 7,
+    "total_subtasks": 17,
+    "services_involved": [
+      "app"
+    ],
+    "parallelism": {
+      "max_parallel_phases": 1,
+      "parallel_groups": [],
+      "recommended_workers": 1,
+      "speedup_estimate": "Sequential execution - single service modification"
+    },
+    "startup_command": "source auto-claude/.venv/bin/activate && python auto-claude/run.py --spec 001 --parallel 1"
+  },
+  "verification_strategy": {
+    "risk_level": "medium",
+    "skip_validation": false,
+    "test_creation_phase": "phase-6-testing",
+    "test_types_required": [
+      "unit",
+      "integration"
+    ],
+    "security_scanning_required": false,
+    "staging_deployment_required": false,
+    "acceptance_criteria": [
+      "All existing tests pass (make test)",
+      "New unit tests for WiFi Direct service discovery pass",
+      "Build completes successfully (make build)",
+      "Lint and code quality checks pass (make check)",
+      "WiFi Direct discovery works without WiFi network",
+      "Group code filtering works in service discovery"
+    ],
+    "verification_steps": [
+      {
+        "name": "Unit Tests",
+        "command": "make test",
+        "expected_outcome": "All tests pass",
+        "type": "test",
+        "required": true,
+        "blocking": true
+      },
+      {
+        "name": "Build Verification",
+        "command": "make build",
+        "expected_outcome": "APK builds successfully",
+        "type": "build",
+        "required": true,
+        "blocking": true
+      },
+      {
+        "name": "Code Quality",
+        "command": "make check",
+        "expected_outcome": "All checks pass",
+        "type": "lint",
+        "required": true,
+        "blocking": false
+      }
+    ],
+    "reasoning": "Medium risk change affecting core connectivity logic. Unit tests verify state transitions and group code handling. Integration tests verify WiFi Direct to mesh handoff."
+  },
+  "qa_acceptance": {
+    "unit_tests": {
+      "required": true,
+      "commands": [
+        "make test"
+      ],
+      "minimum_coverage": null
+    },
+    "integration_tests": {
+      "required": true,
+      "commands": [
+        "make test"
+      ],
+      "services_to_test": [
+        "app"
+      ]
+    },
+    "e2e_tests": {
+      "required": true,
+      "commands": [],
+      "flows": [
+        "offline-connection: Two devices connect via WiFi Direct without any network",
+        "group-code-filtering: Devices with different codes do NOT connect",
+        "multi-device: 3+ devices with same code connect and voice works"
+      ]
+    },
+    "browser_verification": {
+      "required": false,
+      "pages": []
+    },
+    "database_verification": {
+      "required": false,
+      "checks": []
+    }
+  },
+  "qa_signoff": null,
+  "status": "in_progress",
+  "planStatus": "in_progress",
+  "updated_at": "2025-12-19T23:19:32.426Z",
+  "recoveryNote": "Task recovered from stuck state at 2025-12-19T23:19:32.426Z"
+}

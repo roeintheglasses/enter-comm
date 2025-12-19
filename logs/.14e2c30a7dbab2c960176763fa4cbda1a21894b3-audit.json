@@ -1,0 +1,15 @@
+{
+    "keep": {
+        "days": true,
+        "amount": 14
+    },
+    "auditLog": "/Users/roe/Dev/enter-comm/.worktrees/001-enable-peer-to-peer-voice-connectivity-across-netw/logs/.14e2c30a7dbab2c960176763fa4cbda1a21894b3-audit.json",
+    "files": [
+        {
+            "date": 1766186359166,
+            "name": "/Users/roe/Dev/enter-comm/.worktrees/001-enable-peer-to-peer-voice-connectivity-across-netw/logs/mcp-puppeteer-2025-12-20.log",
+            "hash": "f10470f8561866a2c7939ec8c3b061c3c382f2cfddd041573158668d7a847944"
+        }
+    ],
+    "hashType": "sha256"
+}

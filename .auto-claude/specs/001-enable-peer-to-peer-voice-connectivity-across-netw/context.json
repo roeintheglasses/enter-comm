@@ -1,0 +1,43 @@
+{
+  "task_description": "Enable peer-to-peer voice connectivity across networks by making WiFi Direct the primary discovery mechanism instead of relying on LAN-based UDP broadcast.",
+  "scoped_services": ["app"],
+  "files_to_modify": {
+    "app": [
+      "app/src/main/java/com/entercomm/bikeintercom/service/ConnectionCoordinator.kt",
+      "app/src/main/java/com/entercomm/bikeintercom/mesh/MeshNetworkService.kt",
+      "app/src/main/java/com/entercomm/bikeintercom/wifidirect/WiFiDirectManager.kt",
+      "app/src/main/java/com/entercomm/bikeintercom/mesh/MeshNetworkManager.kt",
+      "app/src/main/java/com/entercomm/bikeintercom/config/AppConfig.kt"
+    ]
+  },
+  "files_to_reference": [
+    "app/src/main/java/com/entercomm/bikeintercom/mesh/MeshNetworkManager.kt",
+    "app/src/main/java/com/entercomm/bikeintercom/service/ConnectionCoordinator.kt",
+    "app/src/main/java/com/entercomm/bikeintercom/wifidirect/WiFiDirectManager.kt",
+    "app/src/main/java/com/entercomm/bikeintercom/config/AppConfig.kt",
+    "app/src/main/java/com/entercomm/bikeintercom/util/Logger.kt"
+  ],
+  "patterns": {
+    "state_flow": "Private MutableStateFlow + public StateFlow via asStateFlow()",
+    "events": "Sealed classes + Channel.UNLIMITED + receiveAsFlow()",
+    "retry": "repeat() with exponential backoff, state verification",
+    "logging": "logD{}, logW{}, logE({}, exception) from util/Logger.kt",
+    "config": "All timing constants in AppConfig nested objects"
+  },
+  "existing_implementations": {
+    "description": "WiFi Direct infrastructure already fully implemented in WiFiDirectManager with peer discovery, group creation, connection management. MeshNetworkManager uses LAN UDP broadcast for discovery which fails without shared network. The integration point is in ConnectionCoordinator which currently handles WiFi Direct events but doesn't prioritize it.",
+    "relevant_files": [
+      "app/src/main/java/com/entercomm/bikeintercom/wifidirect/WiFiDirectManager.kt",
+      "app/src/main/java/com/entercomm/bikeintercom/service/ConnectionCoordinator.kt",
+      "app/src/main/java/com/entercomm/bikeintercom/mesh/MeshNetworkService.kt"
+    ]
+  },
+  "key_findings": {
+    "wifi_direct_status": "Fully implemented but not used as primary discovery",
+    "mesh_discovery": "Uses LAN broadcast which only works on same network",
+    "wifi_direct_subnet": "Creates own subnet (typically 192.168.49.x)",
+    "group_code_integration": "Needs to be added to WiFi Direct service discovery"
+  },
+  "created_at": "2025-12-20T04:25:22.131627",
+  "updated_at": "2025-12-20T04:35:00.000000"
+}
