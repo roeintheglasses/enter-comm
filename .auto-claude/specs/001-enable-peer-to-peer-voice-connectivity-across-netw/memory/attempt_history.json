@@ -75,11 +75,49 @@
         }
       ],
       "status": "completed"
+    },
+    "subtask-2-4": {
+      "attempts": [
+        {
+          "session": 5,
+          "timestamp": "2025-12-20T05:06:29.634910",
+          "approach": "Implemented: Add group code state management to WiFiDirectManager",
+          "success": true,
+          "error": null
+        },
+        {
+          "session": 5,
+          "timestamp": "2025-12-20T05:06:54.341278",
+          "approach": "Implemented: Add group code state management to WiFiDirectManager",
+          "success": true,
+          "error": null
+        }
+      ],
+      "status": "completed"
+    },
+    "subtask-3-1": {
+      "attempts": [
+        {
+          "session": 6,
+          "timestamp": "2025-12-20T05:11:18.777456",
+          "approach": "Implemented: Add WiFi Direct service discovery as primary discovery mechanism",
+          "success": true,
+          "error": null
+        },
+        {
+          "session": 6,
+          "timestamp": "2025-12-20T05:11:45.829692",
+          "approach": "Implemented: Add WiFi Direct service discovery as primary discovery mechanism",
+          "success": true,
+          "error": null
+        }
+      ],
+      "status": "completed"
     }
   },
   "stuck_subtasks": [],
   "metadata": {
     "created_at": "2025-12-20T04:49:32.896838",
-    "last_updated": "2025-12-20T05:02:44.911823"
+    "last_updated": "2025-12-20T05:11:45.829698"
   }
 }

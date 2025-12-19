@@ -383,17 +383,56 @@ class ConnectionCoordinator(
         logD { "Received WiFi Direct event: ${event::class.simpleName}" }
 
         when (event) {
+            // WiFi P2P state events
+            is WiFiDirectEvent.WiFiP2pEnabled -> handleWiFiP2pEnabled()
+            is WiFiDirectEvent.WiFiP2pDisabled -> handleWiFiP2pDisabled()
+            is WiFiDirectEvent.DeviceChanged -> handleDeviceChanged(event)
+
+            // Peer discovery events (fallback mechanism)
             is WiFiDirectEvent.PeersChanged -> handlePeersChanged(event)
+
+            // Service discovery events (primary mechanism)
+            is WiFiDirectEvent.LocalServiceRegistered -> handleLocalServiceRegistered()
+            is WiFiDirectEvent.LocalServiceUnregistered -> handleLocalServiceUnregistered()
             is WiFiDirectEvent.ServiceDiscovered -> handleServiceDiscovered(event)
             is WiFiDirectEvent.MatchingServiceDiscovered -> handleMatchingServiceDiscovered(event)
             is WiFiDirectEvent.ServiceDiscoveryStarted -> handleServiceDiscoveryStarted()
             is WiFiDirectEvent.ServiceDiscoveryStopped -> handleServiceDiscoveryStopped()
+
+            // Group and connection events
+            is WiFiDirectEvent.GroupCodeChanged -> handleGroupCodeChanged(event)
+            is WiFiDirectEvent.GroupModeChanged -> handleGroupModeChanged(event)
             is WiFiDirectEvent.ConnectionChanged -> handleConnectionChanged(event)
             is WiFiDirectEvent.GroupInfoChanged -> handleGroupInfoChanged(event)
+
+            // Auto-connection events
             is WiFiDirectEvent.AutoConnectionStarted -> handleAutoConnectionStarted(event)
             is WiFiDirectEvent.AutoConnectionFailed -> handleAutoConnectionFailed(event)
+
+            // Error events
             is WiFiDirectEvent.Error -> handleError(event)
-            else -> logD { "Unhandled event: ${event::class.simpleName}" }
+        }
+    }
+
+    private fun handleWiFiP2pEnabled() {
+        logD { "WiFi P2P enabled - service discovery available" }
+    }
+
+    private fun handleWiFiP2pDisabled() {
+        logW { "WiFi P2P disabled - stopping service discovery" }
+        // WiFi P2P being disabled means we can't continue service discovery
+        _isServiceDiscovering.value = false
+        serviceDiscoveryJob?.cancel()
+        serviceDiscoveryJob = null
+
+        if (_connectionState.value == ConnectionState.DISCOVERING) {
+            _connectionState.value = ConnectionState.DISCONNECTED
+        }
+    }
+
+    private fun handleDeviceChanged(event: WiFiDirectEvent.DeviceChanged) {
+        event.device?.let { device ->
+            logD { "Local device changed: ${device.deviceName} (${device.deviceAddress})" }
         }
     }
 
@@ -402,6 +441,14 @@ class ConnectionCoordinator(
             logD { "Discovered peer: ${peer.deviceName} (${peer.deviceAddress})" }
             _events.emit(ConnectionEvent.DeviceDiscovered(peer.deviceName, peer.deviceAddress))
         }
+    }
+
+    private fun handleLocalServiceRegistered() {
+        logD { "Local service registered - now discoverable by other devices" }
+    }
+
+    private fun handleLocalServiceUnregistered() {
+        logD { "Local service unregistered - no longer discoverable" }
     }
 
     private suspend fun handleServiceDiscovered(event: WiFiDirectEvent.ServiceDiscovered) {
@@ -422,6 +469,26 @@ class ConnectionCoordinator(
         // Cancel the fallback to peer discovery since we found a matching service
         serviceDiscoveryJob?.cancel()
         serviceDiscoveryJob = null
+
+        // Auto-connect if enabled and not already connecting/connected
+        if (shouldAutoConnect()) {
+            logD { "Auto-connecting to matching service: ${event.service.instanceName}" }
+            val connected = wifiDirectManager.autoConnectToMatchingPeer(event.service)
+            if (connected) {
+                isConnecting = true
+                _connectionState.value = ConnectionState.CONNECTING
+            }
+        }
+    }
+
+    /**
+     * Check if auto-connect should be attempted.
+     * Returns true if auto-connect is enabled and we're not already connecting or connected.
+     */
+    private fun shouldAutoConnect(): Boolean {
+        return wifiDirectManager.isAutoConnectEnabled() &&
+            !isConnecting &&
+            _connectionState.value != ConnectionState.CONNECTED
     }
 
     private fun handleServiceDiscoveryStarted() {
@@ -473,6 +540,21 @@ class ConnectionCoordinator(
 
     private fun handleGroupInfoChanged(event: WiFiDirectEvent.GroupInfoChanged) {
         logD { "Group info: ${event.clients.size} clients, isGroupOwner: ${event.isGroupOwner}" }
+    }
+
+    private fun handleGroupCodeChanged(event: WiFiDirectEvent.GroupCodeChanged) {
+        logD { "Group code changed: ${event.previousCode} -> ${event.newCode}" }
+        // If we're currently discovering, we may need to re-register our service
+        // with the new group code so other devices can find us
+        if (_isServiceDiscovering.value && event.newCode != null) {
+            logD { "Re-registering local service with new group code: ${event.newCode}" }
+            wifiDirectManager.unregisterLocalService()
+            wifiDirectManager.registerLocalService(event.newCode)
+        }
+    }
+
+    private fun handleGroupModeChanged(event: WiFiDirectEvent.GroupModeChanged) {
+        logD { "Group mode changed: ${if (event.enabled) "enabled" else "disabled"}" }
     }
 
     private fun handleAutoConnectionStarted(event: WiFiDirectEvent.AutoConnectionStarted) {

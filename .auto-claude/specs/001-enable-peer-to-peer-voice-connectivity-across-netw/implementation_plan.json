@@ -119,8 +119,9 @@
             "command": "cd /Users/roe/Dev/enter-comm && ./gradlew compileDebugKotlin 2>&1 | grep -E '(BUILD|error)' | head -5",
             "expected": "BUILD SUCCESSFUL"
           },
-          "status": "pending",
-          "notes": "Add setGroupCode(code: String?) and getGroupCode() methods. Expose _groupCode as StateFlow. Re-register local service when group code changes."
+          "status": "completed",
+          "notes": "Added group code state management to WiFiDirectManager:\n- Added GroupCodeChanged and GroupModeChanged events to WiFiDirectEvent sealed class\n- Added GROUP_CODE_PATTERN regex for validating 4-8 alphanumeric characters\n- Added static validation/normalization methods: isValidGroupCode(), normalizeGroupCode()\n- Added group mode state management with _groupModeEnabled StateFlow, setGroupModeEnabled(), isGroupModeEnabled()\n- Enhanced setGroupCode() with validation, normalization, event emission, and skip-if-unchanged optimization (now returns Boolean)\n- Added helper methods: isMatchingService(), clearGroupCode()\n- Build, Spotless, Detekt, and Lint checks all pass",
+          "updated_at": "2025-12-19T23:36:42.912986+00:00"
         }
       ]
     },
@@ -150,8 +151,9 @@
             "command": "cd /Users/roe/Dev/enter-comm && ./gradlew compileDebugKotlin 2>&1 | grep -E '(BUILD|error)' | head -5",
             "expected": "BUILD SUCCESSFUL"
           },
-          "status": "pending",
-          "notes": "Modify startDiscovery() to call WiFiDirect service discovery first. Add LAN discovery as fallback when on same network."
+          "status": "completed",
+          "notes": "Added WiFi Direct service discovery as primary discovery mechanism:\n- Modified startDiscovery(groupCode?) to use service discovery first with peer discovery as fallback\n- Added startServiceDiscoveryPrimary() that registers local service, starts service discovery, and schedules fallback timeout\n- Added connectToService(service) for connecting via discovered services\n- Added ServiceDiscovered and MatchingServiceDiscovered events to ConnectionEvent sealed class\n- Added helper methods: setAutoConnectEnabled(), getMatchingServices(), getDiscoveredServices()\n- Updated stopDiscovery() and disconnect() to clean up service discovery resources\n- Exposed isServiceDiscovering StateFlow for UI integration\n- Handled all new WiFiDirectEvent types in event handlers\n- Fixed MeshNetworkService when expression to handle new ConnectionEvent types\n- Refactored handleWiFiDirectEvent() into smaller handler methods to reduce cyclomatic complexity\n- All checks pass: build, detekt, lint, tests",
+          "updated_at": "2025-12-19T23:41:36.640848+00:00"
         },
         {
           "id": "subtask-3-2",
@@ -520,5 +522,5 @@
   "planStatus": "in_progress",
   "updated_at": "2025-12-19T23:19:32.426Z",
   "recoveryNote": "Task recovered from stuck state at 2025-12-19T23:19:32.426Z",
-  "last_updated": "2025-12-19T23:32:24.089726+00:00"
+  "last_updated": "2025-12-19T23:41:36.640857+00:00"
 }
