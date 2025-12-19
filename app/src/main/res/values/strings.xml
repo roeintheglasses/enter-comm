@@ -1,4 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Enter Comm</string>
+
+    <!-- Group Code Copy/Share -->
+    <string name="group_code_clipboard_label">Group Code</string>
+    <string name="group_code_share_subject">%1$s Group Code</string>
+    <string name="group_code_share_message">Join my %1$s group! Enter code: %2$s</string>
+    <string name="group_code_share_chooser_title">Share group code</string>
+    <string name="group_code_share_prompt">Share code %1$s to let others join</string>
+
+    <!-- Copy/Share Accessibility -->
+    <string name="content_description_copied">Copied</string>
+    <string name="content_description_tap_to_copy">Tap to copy</string>
+    <string name="content_description_copy_code">Copy code</string>
+    <string name="content_description_share_code">Share code</string>
 </resources>

@@ -2,6 +2,7 @@ package com.entercomm.bikeintercom.util
 
 import android.content.Context
 import android.content.Intent
+import com.entercomm.bikeintercom.R
 
 /**
  * Share utility for sharing text via Android share sheet.
@@ -37,32 +38,22 @@ object ShareUtils {
 
     /**
      * Share a group code with a pre-formatted message for riders.
+     * Uses localized string resources for share subject, message, and chooser title.
      *
      * @param context Android context for starting the share activity
      * @param groupCode The group code to share
-     * @param appName The app name to include in the message
      * @return true if share intent was launched successfully, false otherwise
      */
-    fun shareGroupCode(context: Context, groupCode: String, appName: String = "EnterComm"): Boolean {
-        val shareMessage = buildGroupCodeShareMessage(groupCode, appName)
-        val subject = "$appName Group Code"
+    fun shareGroupCode(context: Context, groupCode: String): Boolean {
+        val appName = context.getString(R.string.app_name)
+        val shareMessage = context.getString(R.string.group_code_share_message, appName, groupCode)
+        val subject = context.getString(R.string.group_code_share_subject, appName)
+        val chooserTitle = context.getString(R.string.group_code_share_chooser_title)
         return shareText(
             context = context,
             text = shareMessage,
             subject = subject,
-            chooserTitle = "Share group code",
+            chooserTitle = chooserTitle,
         )
-    }
-
-    /**
-     * Build the share message for a group code.
-     * Exposed for customization and testing.
-     *
-     * @param groupCode The group code
-     * @param appName The app name
-     * @return The formatted share message
-     */
-    fun buildGroupCodeShareMessage(groupCode: String, appName: String = "EnterComm"): String {
-        return "Join my $appName group! Enter code: $groupCode"
     }
 }

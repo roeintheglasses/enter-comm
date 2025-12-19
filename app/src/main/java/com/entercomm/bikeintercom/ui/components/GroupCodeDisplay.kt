@@ -40,9 +40,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.entercomm.bikeintercom.R
 import com.entercomm.bikeintercom.ui.theme.DarkSurfaceVariant
 import com.entercomm.bikeintercom.ui.theme.TechCyan
 import com.entercomm.bikeintercom.ui.theme.TechGreen
@@ -52,11 +54,6 @@ import com.entercomm.bikeintercom.util.ClipboardUtils
 import com.entercomm.bikeintercom.util.ShareUtils
 import com.entercomm.bikeintercom.util.rememberHapticFeedback
 import kotlinx.coroutines.delay
-
-/**
- * Clipboard label for group code copy operations.
- */
-private const val CLIPBOARD_LABEL = "Group Code"
 
 /**
  * Duration to show the checkmark feedback after copying.
@@ -85,6 +82,11 @@ fun GroupCodeDisplay(groupCode: String, modifier: Modifier = Modifier, onCopied:
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
 
+    // String resources
+    val clipboardLabel = stringResource(R.string.group_code_clipboard_label)
+    val copiedDescription = stringResource(R.string.content_description_copied)
+    val tapToCopyDescription = stringResource(R.string.content_description_tap_to_copy)
+
     // Reset the copy success state after a delay
     LaunchedEffect(showCopySuccess) {
         if (showCopySuccess) {
@@ -111,7 +113,7 @@ fun GroupCodeDisplay(groupCode: String, modifier: Modifier = Modifier, onCopied:
                 val success = ClipboardUtils.copyToClipboard(
                     context = context,
                     text = groupCode,
-                    label = CLIPBOARD_LABEL,
+                    label = clipboardLabel,
                 )
                 if (success) {
                     haptic.click()
@@ -151,7 +153,7 @@ fun GroupCodeDisplay(groupCode: String, modifier: Modifier = Modifier, onCopied:
             ) { isCopied ->
                 Icon(
                     imageVector = if (isCopied) Icons.Default.Check else Icons.Default.ContentCopy,
-                    contentDescription = if (isCopied) "Copied" else "Tap to copy",
+                    contentDescription = if (isCopied) copiedDescription else tapToCopyDescription,
                     modifier = Modifier.size(14.dp),
                     tint = if (isCopied) TechGreen else TextPrimary.copy(alpha = 0.6f),
                 )
@@ -183,6 +185,13 @@ fun GroupCodeShareRow(groupCode: String, modifier: Modifier = Modifier, onCopied
     val haptic = rememberHapticFeedback()
     var showCopySuccess by remember { mutableStateOf(false) }
 
+    // String resources
+    val clipboardLabel = stringResource(R.string.group_code_clipboard_label)
+    val sharePrompt = stringResource(R.string.group_code_share_prompt, groupCode)
+    val copiedDescription = stringResource(R.string.content_description_copied)
+    val copyCodeDescription = stringResource(R.string.content_description_copy_code)
+    val shareCodeDescription = stringResource(R.string.content_description_share_code)
+
     // Reset the copy success state after a delay
     LaunchedEffect(showCopySuccess) {
         if (showCopySuccess) {
@@ -209,18 +218,7 @@ fun GroupCodeShareRow(groupCode: String, modifier: Modifier = Modifier, onCopied
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = "Share code ",
-                style = MaterialTheme.typography.bodySmall,
-                color = TextSecondary,
-            )
-            Text(
-                text = groupCode,
-                style = MaterialTheme.typography.bodySmall,
-                fontWeight = FontWeight.Bold,
-                color = TechCyan,
-            )
-            Text(
-                text = " to let others join",
+                text = sharePrompt,
                 style = MaterialTheme.typography.bodySmall,
                 color = TextSecondary,
             )
@@ -237,7 +235,7 @@ fun GroupCodeShareRow(groupCode: String, modifier: Modifier = Modifier, onCopied
                     val success = ClipboardUtils.copyToClipboard(
                         context = context,
                         text = groupCode,
-                        label = CLIPBOARD_LABEL,
+                        label = clipboardLabel,
                     )
                     if (success) {
                         haptic.click()
@@ -260,7 +258,7 @@ fun GroupCodeShareRow(groupCode: String, modifier: Modifier = Modifier, onCopied
                 ) { isCopied ->
                     Icon(
                         imageVector = if (isCopied) Icons.Default.Check else Icons.Default.ContentCopy,
-                        contentDescription = if (isCopied) "Copied" else "Copy code",
+                        contentDescription = if (isCopied) copiedDescription else copyCodeDescription,
                         modifier = Modifier.size(16.dp),
                         tint = if (isCopied) TechGreen else TextPrimary,
                     )
@@ -286,7 +284,7 @@ fun GroupCodeShareRow(groupCode: String, modifier: Modifier = Modifier, onCopied
             ) {
                 Icon(
                     imageVector = Icons.Default.Share,
-                    contentDescription = "Share code",
+                    contentDescription = shareCodeDescription,
                     modifier = Modifier.size(16.dp),
                     tint = TextPrimary,
                 )
