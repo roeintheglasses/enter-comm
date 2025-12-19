@@ -11,6 +11,7 @@ import android.net.wifi.WpsInfo
 import android.net.wifi.p2p.*
 import android.net.wifi.p2p.WifiP2pManager.*
 import android.net.wifi.p2p.nsd.WifiP2pDnsSdServiceInfo
+import android.net.wifi.p2p.nsd.WifiP2pDnsSdServiceRequest
 import android.os.Build
 import androidx.core.content.ContextCompat
 import com.entercomm.bikeintercom.config.AppConfig
@@ -29,6 +30,17 @@ data class PeerDevice(
     val isConnected: Boolean = false,
 )
 
+/**
+ * Represents a discovered WiFi Direct service with group code information.
+ */
+data class DiscoveredService(
+    val deviceAddress: String,
+    val instanceName: String,
+    val serviceType: String,
+    val groupCode: String?,
+    val device: WifiP2pDevice? = null,
+)
+
 sealed class WiFiDirectEvent {
     object WiFiP2pEnabled : WiFiDirectEvent()
     object WiFiP2pDisabled : WiFiDirectEvent()
@@ -38,6 +50,10 @@ sealed class WiFiDirectEvent {
     data class GroupInfoChanged(val clients: List<PeerDevice>, val isGroupOwner: Boolean) : WiFiDirectEvent()
     object LocalServiceRegistered : WiFiDirectEvent()
     object LocalServiceUnregistered : WiFiDirectEvent()
+    data class ServiceDiscovered(val service: DiscoveredService) : WiFiDirectEvent()
+    data class MatchingServiceDiscovered(val service: DiscoveredService) : WiFiDirectEvent()
+    object ServiceDiscoveryStarted : WiFiDirectEvent()
+    object ServiceDiscoveryStopped : WiFiDirectEvent()
     data class Error(val message: String) : WiFiDirectEvent()
 }
 
@@ -55,9 +71,17 @@ class WiFiDirectManager(
     private var isReceiverRegistered = false
     private var isLocalServiceRegistered = false
     private var currentServiceInfo: WifiP2pDnsSdServiceInfo? = null
+    private var isServiceDiscoveryActive = false
+    private var currentServiceRequest: WifiP2pDnsSdServiceRequest? = null
 
     private val _groupCode = MutableStateFlow<String?>(null)
     val groupCode: StateFlow<String?> = _groupCode.asStateFlow()
+
+    private val _discoveredServices = MutableStateFlow<List<DiscoveredService>>(emptyList())
+    val discoveredServices: StateFlow<List<DiscoveredService>> = _discoveredServices.asStateFlow()
+
+    private val _isServiceDiscovering = MutableStateFlow(false)
+    val isServiceDiscovering: StateFlow<Boolean> = _isServiceDiscovering.asStateFlow()
 
     /**
      * Check if required WiFi Direct permissions are granted
@@ -175,6 +199,7 @@ class WiFiDirectManager(
                 context.unregisterReceiver(receiver)
                 isReceiverRegistered = false
             }
+            clearServiceRequests()
             clearLocalServices()
             stopDiscovery()
             disconnect()
@@ -485,6 +510,207 @@ class WiFiDirectManager(
      * Check if a local service is currently registered.
      */
     fun isLocalServiceRegistered(): Boolean = isLocalServiceRegistered
+
+    /**
+     * Set up DNS-SD service discovery listeners.
+     * These listeners receive callbacks when services with TXT records are discovered.
+     */
+    @SuppressLint("MissingPermission") // Permission is checked in hasWifiDirectPermission()
+    private fun setupServiceDiscoveryListeners() {
+        // Listener for TXT records - provides the group code from service record
+        val txtListener = DnsSdTxtRecordListener { fullDomainName, txtRecordMap, srcDevice ->
+            val groupCode = txtRecordMap[TXT_RECORD_GROUP_CODE_KEY]
+            logD { "TXT record received: domain=$fullDomainName, groupCode=$groupCode, device=${srcDevice.deviceName}" }
+
+            val service = DiscoveredService(
+                deviceAddress = srcDevice.deviceAddress,
+                instanceName = fullDomainName.substringBefore('.'),
+                serviceType = fullDomainName.substringAfter('.'),
+                groupCode = groupCode,
+                device = srcDevice,
+            )
+
+            // Add to discovered services if not already present
+            val currentServices = _discoveredServices.value.toMutableList()
+            val existingIndex = currentServices.indexOfFirst { it.deviceAddress == service.deviceAddress }
+            if (existingIndex >= 0) {
+                currentServices[existingIndex] = service
+            } else {
+                currentServices.add(service)
+            }
+            _discoveredServices.value = currentServices
+
+            // Emit general service discovered event
+            eventChannel.trySend(WiFiDirectEvent.ServiceDiscovered(service))
+
+            // Check if group code matches our current group code
+            val ourGroupCode = _groupCode.value
+            if (ourGroupCode != null && groupCode == ourGroupCode) {
+                logD { "Found matching service! Group code: $groupCode, device: ${srcDevice.deviceName}" }
+                eventChannel.trySend(WiFiDirectEvent.MatchingServiceDiscovered(service))
+            }
+        }
+
+        // Listener for service records - provides device info
+        val serviceListener = DnsSdServiceResponseListener { instanceName, serviceType, srcDevice ->
+            logD { "Service discovered: $instanceName ($serviceType) from ${srcDevice.deviceName}" }
+            // Request TXT record by triggering service discovery again if needed
+            // The TXT listener will be called with the full record
+        }
+
+        manager.setDnsSdResponseListeners(channel, serviceListener, txtListener)
+        logD { "Service discovery listeners configured" }
+    }
+
+    /**
+     * Start discovering WiFi Direct services.
+     * This discovers services advertised by other devices and filters by group code.
+     */
+    @SuppressLint("MissingPermission") // Permission is checked in hasWifiDirectPermission()
+    fun startServiceDiscovery() {
+        if (!hasWifiDirectPermission()) {
+            val message = "WiFi Direct permissions not granted for service discovery"
+            logE { message }
+            eventChannel.trySend(WiFiDirectEvent.Error(message))
+            return
+        }
+
+        if (isServiceDiscoveryActive) {
+            logD { "Service discovery already active" }
+            return
+        }
+
+        // Clear any previously discovered services
+        _discoveredServices.value = emptyList()
+
+        // Set up the listeners first
+        setupServiceDiscoveryListeners()
+
+        // Create a service request for DNS-SD services
+        val serviceRequest = WifiP2pDnsSdServiceRequest.newInstance()
+        currentServiceRequest = serviceRequest
+
+        // Add the service request
+        manager.addServiceRequest(
+            channel,
+            serviceRequest,
+            object : ActionListener {
+                override fun onSuccess() {
+                    logD { "Service request added successfully" }
+                    // Now start the actual discovery
+                    discoverServices()
+                }
+
+                override fun onFailure(reason: Int) {
+                    val message = "Failed to add service request: ${getErrorMessage(reason)}"
+                    logE { message }
+                    eventChannel.trySend(WiFiDirectEvent.Error(message))
+                }
+            },
+        )
+    }
+
+    /**
+     * Initiate service discovery after service request is added.
+     */
+    @SuppressLint("MissingPermission") // Permission is checked in caller
+    private fun discoverServices() {
+        manager.discoverServices(
+            channel,
+            object : ActionListener {
+                override fun onSuccess() {
+                    isServiceDiscoveryActive = true
+                    _isServiceDiscovering.value = true
+                    logD { "Service discovery started successfully" }
+                    eventChannel.trySend(WiFiDirectEvent.ServiceDiscoveryStarted)
+                }
+
+                override fun onFailure(reason: Int) {
+                    isServiceDiscoveryActive = false
+                    _isServiceDiscovering.value = false
+                    val message = "Service discovery failed: ${getErrorMessage(reason)}"
+                    logE { message }
+                    eventChannel.trySend(WiFiDirectEvent.Error(message))
+                }
+            },
+        )
+    }
+
+    /**
+     * Stop service discovery.
+     */
+    fun stopServiceDiscovery() {
+        if (!isServiceDiscoveryActive) {
+            logD { "Service discovery not active" }
+            return
+        }
+
+        val serviceRequest = currentServiceRequest
+        if (serviceRequest != null) {
+            manager.removeServiceRequest(
+                channel,
+                serviceRequest,
+                object : ActionListener {
+                    override fun onSuccess() {
+                        isServiceDiscoveryActive = false
+                        _isServiceDiscovering.value = false
+                        currentServiceRequest = null
+                        logD { "Service discovery stopped" }
+                        eventChannel.trySend(WiFiDirectEvent.ServiceDiscoveryStopped)
+                    }
+
+                    override fun onFailure(reason: Int) {
+                        // Still mark as inactive to avoid stuck state
+                        isServiceDiscoveryActive = false
+                        _isServiceDiscovering.value = false
+                        currentServiceRequest = null
+                        logE { "Failed to stop service discovery: ${getErrorMessage(reason)}" }
+                    }
+                },
+            )
+        } else {
+            isServiceDiscoveryActive = false
+            _isServiceDiscovering.value = false
+        }
+    }
+
+    /**
+     * Clear all service requests.
+     */
+    fun clearServiceRequests() {
+        manager.clearServiceRequests(
+            channel,
+            object : ActionListener {
+                override fun onSuccess() {
+                    isServiceDiscoveryActive = false
+                    _isServiceDiscovering.value = false
+                    currentServiceRequest = null
+                    _discoveredServices.value = emptyList()
+                    logD { "All service requests cleared" }
+                }
+
+                override fun onFailure(reason: Int) {
+                    isServiceDiscoveryActive = false
+                    _isServiceDiscovering.value = false
+                    currentServiceRequest = null
+                    logE { "Failed to clear service requests: ${getErrorMessage(reason)}" }
+                }
+            },
+        )
+    }
+
+    /**
+     * Check if service discovery is currently active.
+     */
+    fun isServiceDiscoveryActive(): Boolean = isServiceDiscoveryActive
+
+    /**
+     * Get discovered services that match the current group code.
+     */
+    fun getMatchingServices(): List<DiscoveredService> {
+        val ourGroupCode = _groupCode.value ?: return emptyList()
+        return _discoveredServices.value.filter { it.groupCode == ourGroupCode }
+    }
 
     private fun getErrorMessage(reason: Int): String {
         return when (reason) {
