@@ -50,6 +50,7 @@ sealed class ConnectionEvent {
  * Coordinates WiFi Direct and Mesh Network connections.
  * Extracted from MeshNetworkService to handle connection lifecycle.
  */
+@Suppress("TooManyFunctions") // Coordinator requires many methods for connection lifecycle management
 class ConnectionCoordinator(
     private val wifiDirectManager: WiFiDirectManager,
     private val meshNetworkManager: MeshNetworkManager,
@@ -69,6 +70,10 @@ class ConnectionCoordinator(
     // Service discovery is the primary mechanism; peer discovery is fallback
     private val _isServiceDiscovering = MutableStateFlow(false)
     val isServiceDiscovering: StateFlow<Boolean> = _isServiceDiscovering.asStateFlow()
+
+    // Expose group code state from WiFiDirectManager for UI observation
+    val groupCode: StateFlow<String?> = wifiDirectManager.groupCode
+    val groupModeEnabled: StateFlow<Boolean> = wifiDirectManager.groupModeEnabled
 
     /**
      * Start monitoring WiFi Direct events
@@ -99,9 +104,9 @@ class ConnectionCoordinator(
             wifiDirectManager.initialize()
             _connectionState.value = ConnectionState.DISCOVERING
 
-            // Set group code if provided
+            // Set group code if provided - propagates to both WiFiDirectManager and MeshNetworkManager
             groupCode?.let { code ->
-                if (!wifiDirectManager.setGroupCode(code)) {
+                if (!setGroupCode(code)) {
                     logW { "Invalid group code format: $code" }
                 }
             }
@@ -333,6 +338,63 @@ class ConnectionCoordinator(
     fun isAutoConnectEnabled(): Boolean = wifiDirectManager.isAutoConnectEnabled()
 
     /**
+     * Set the group code for WiFi Direct service discovery and mesh networking.
+     * This propagates the group code to both WiFiDirectManager (for service discovery filtering)
+     * and MeshNetworkManager (for mesh network group filtering).
+     *
+     * @param code The group code to set (4-8 alphanumeric characters, or null for open mode)
+     * @return true if the group code was set successfully on both managers, false if validation failed
+     */
+    fun setGroupCode(code: String?): Boolean {
+        // Set on WiFiDirectManager first - it performs validation
+        val wifiDirectSuccess = wifiDirectManager.setGroupCode(code)
+        if (!wifiDirectSuccess) {
+            logW { "Failed to set group code on WiFiDirectManager: $code" }
+            return false
+        }
+
+        // Propagate to MeshNetworkManager for mesh-level filtering
+        meshNetworkManager.setGroupCode(code)
+
+        logD { "Group code synchronized: $code" }
+        return true
+    }
+
+    /**
+     * Get the current group code.
+     *
+     * @return The current group code, or null if in open mode
+     */
+    fun getGroupCode(): String? = wifiDirectManager.getGroupCode()
+
+    /**
+     * Enable or disable group mode filtering.
+     * When enabled, only devices with matching group codes will be considered for connection.
+     *
+     * @param enabled true to enable group code filtering, false for open mode
+     */
+    fun setGroupModeEnabled(enabled: Boolean) {
+        wifiDirectManager.setGroupModeEnabled(enabled)
+        logD { "Group mode ${if (enabled) "enabled" else "disabled"}" }
+    }
+
+    /**
+     * Check if group mode filtering is enabled.
+     *
+     * @return true if group code filtering is active
+     */
+    fun isGroupModeEnabled(): Boolean = wifiDirectManager.isGroupModeEnabled()
+
+    /**
+     * Clear the group code and switch to open mode.
+     */
+    fun clearGroupCode() {
+        wifiDirectManager.clearGroupCode()
+        meshNetworkManager.setGroupCode(null)
+        logD { "Group code cleared - open mode" }
+    }
+
+    /**
      * Get matching services that have been discovered.
      * These are services with group codes that match the current group code.
      *
@@ -544,6 +606,11 @@ class ConnectionCoordinator(
 
     private fun handleGroupCodeChanged(event: WiFiDirectEvent.GroupCodeChanged) {
         logD { "Group code changed: ${event.previousCode} -> ${event.newCode}" }
+
+        // Synchronize group code to MeshNetworkManager for mesh-level filtering
+        meshNetworkManager.setGroupCode(event.newCode)
+        logD { "Synchronized group code to MeshNetworkManager: ${event.newCode}" }
+
         // If we're currently discovering, we may need to re-register our service
         // with the new group code so other devices can find us
         if (_isServiceDiscovering.value && event.newCode != null) {
