@@ -268,6 +268,16 @@ class MeshNetworkService : Service() {
                     is ConnectionEvent.DeviceDiscovered -> {
                         onDeviceDiscovered?.invoke(event.deviceName, event.deviceAddress)
                     }
+                    is ConnectionEvent.ServiceDiscovered -> {
+                        // Service discovered (may or may not match our group code)
+                        logD { "Service discovered: ${event.service.deviceAddress}" }
+                    }
+                    is ConnectionEvent.MatchingServiceDiscovered -> {
+                        // Matching service found - notify as device discovered
+                        val service = event.service
+                        val deviceName = service.device?.deviceName ?: service.instanceName
+                        onDeviceDiscovered?.invoke(deviceName, service.deviceAddress)
+                    }
                     is ConnectionEvent.ConnectionEstablished -> {
                         onConnectionEstablished?.invoke(event.address)
                     }
