@@ -1,0 +1,13 @@
+{
+  "sourceType": "ideation",
+  "ideationType": "ui_ux_improvements",
+  "ideaId": "uiux-003",
+  "rationale": "The core workflow involves sharing group codes with other riders. Currently users must verbally communicate the code or manually type it elsewhere. A tap-to-copy with visual feedback and a share button would significantly improve this critical user flow.",
+  "category": "ui_ux",
+  "uiuxCategory": "usability",
+  "affectedFiles": [
+    "app/src/main/java/com/entercomm/bikeintercom/ui/components/GroupComponents.kt",
+    "app/src/main/java/com/entercomm/bikeintercom/ui/screens/MainScreen.kt"
+  ],
+  "problemSolved": "In GroupInfoCard, the group code is displayed in a Surface badge with primaryContainer color. There's a 'Share code XXXX-XX to let others join' text hint with share icon, but clicking does nothing. No clipboard or Android Share sheet integration."
+}

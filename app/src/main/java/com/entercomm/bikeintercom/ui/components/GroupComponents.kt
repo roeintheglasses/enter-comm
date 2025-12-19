@@ -67,20 +67,9 @@ fun GroupInfoCard(
                         fontWeight = FontWeight.Bold,
                     )
                 }
-                // Show group code badge if available
+                // Show tappable group code badge if available
                 if (groupCode != null) {
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                    ) {
-                        Text(
-                            text = groupCode,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        )
-                    }
+                    GroupCodeDisplay(groupCode = groupCode)
                 }
             }
 

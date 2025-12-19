@@ -1,0 +1,15 @@
+{
+    "keep": {
+        "days": true,
+        "amount": 14
+    },
+    "auditLog": "/Users/roe/Dev/enter-comm/.worktrees/002-add-copy-to-clipboard-and-share-functionality-for-/logs/.876596ab9e2178a33d07d6c4add33074a72100d3-audit.json",
+    "files": [
+        {
+            "date": 1766186428664,
+            "name": "/Users/roe/Dev/enter-comm/.worktrees/002-add-copy-to-clipboard-and-share-functionality-for-/logs/mcp-puppeteer-2025-12-20.log",
+            "hash": "949274927e8f48ddf80133823d6fea84f16e3e7a852c4ab3c55d062db83e534a"
+        }
+    ],
+    "hashType": "sha256"
+}

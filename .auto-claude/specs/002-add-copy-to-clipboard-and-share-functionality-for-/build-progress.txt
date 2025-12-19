@@ -1,0 +1,48 @@
+# Build Progress: Copy-to-Clipboard and Share for Group Codes
+
+## Overview
+Adding tap-to-copy with visual feedback and share functionality for group codes in the Group tab.
+
+## Current Status: Planning Complete
+
+## Implementation Plan Summary
+
+### Phase 1: Core Copy/Share Utilities
+- [x] 1.1: Create ClipboardUtils helper (copyToClipboard function)
+- [x] 1.2: Create ShareUtils helper (shareText function with share sheet)
+
+### Phase 2: UI Components for Group Code Interaction
+- [x] 2.1: Create GroupCodeDisplay composable (tap-to-copy badge with visual feedback)
+- [ ] 2.2: Create GroupCodeShareRow composable (copy + share buttons row)
+
+### Phase 3: Integration into GroupInfoCard
+- [ ] 3.1: Update group code badge to be tappable
+- [ ] 3.2: Replace static share info rows with interactive copy/share buttons
+
+### Phase 4: Feedback and Polish
+- [ ] 4.1: Add haptic feedback for copy/share actions
+- [ ] 4.2: Add string resources for copy/share messages
+
+### Phase 5: Testing and Verification
+- [ ] 5.1: Write unit tests for utilities
+- [ ] 5.2: Build verification and manual test plan
+
+## Key Files to Modify
+- app/src/main/java/com/entercomm/bikeintercom/ui/components/GroupComponents.kt (main integration)
+- app/src/main/java/com/entercomm/bikeintercom/util/ClipboardUtils.kt (new)
+- app/src/main/java/com/entercomm/bikeintercom/util/ShareUtils.kt (new)
+- app/src/main/java/com/entercomm/bikeintercom/ui/components/GroupCodeDisplay.kt (new)
+- app/src/main/res/values/strings.xml (add strings)
+
+## Architecture Notes
+- Project is a Jetpack Compose Android app
+- Uses Material 3 design with custom dark theme (TechCyan, TechGreen colors)
+- Group codes format: XXXX-XX (e.g., "RIDE-4K")
+- Existing HapticFeedback utility available via rememberHapticFeedback()
+- GroupInfoCard displays codes in two places: badge (top-right) and share info row (bottom)
+
+## Progress Log
+- 2025-12-20: Implementation plan created with 5 phases and 10 subtasks
+- 2025-12-20: Completed 1.1 - ClipboardUtils.kt created
+- 2025-12-20: Completed 1.2 - ShareUtils.kt created
+- 2025-12-20: Completed 2.1 - GroupCodeDisplay.kt composable created with tap-to-copy functionality, animated checkmark feedback, copy icon indicator, and theme colors

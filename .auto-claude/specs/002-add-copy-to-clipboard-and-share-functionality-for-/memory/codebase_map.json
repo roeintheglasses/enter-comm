@@ -1,0 +1,10 @@
+{
+  "discovered_files": {
+    "config/detekt/baseline.xml": {
+      "description": "The project uses a Detekt baseline.xml file to suppress known linting issues like TooGenericExceptionCaught. When adding new code with catch(e: Exception), add entries to this baseline following the pattern: TooGenericExceptionCaught:FileName.kt$ClassName$e: Exception",
+      "category": "linting",
+      "discovered_at": "2025-12-19T23:24:55.789445+00:00"
+    }
+  },
+  "last_updated": "2025-12-19T23:24:55.789457+00:00"
+}

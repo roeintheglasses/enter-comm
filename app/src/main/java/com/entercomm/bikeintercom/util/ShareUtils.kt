@@ -18,12 +18,7 @@ object ShareUtils {
      * @param chooserTitle Optional title for the share chooser dialog
      * @return true if share intent was launched successfully, false otherwise
      */
-    fun shareText(
-        context: Context,
-        text: String,
-        subject: String? = null,
-        chooserTitle: String? = null
-    ): Boolean {
+    fun shareText(context: Context, text: String, subject: String? = null, chooserTitle: String? = null): Boolean {
         return try {
             val sendIntent = Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"
@@ -48,18 +43,14 @@ object ShareUtils {
      * @param appName The app name to include in the message
      * @return true if share intent was launched successfully, false otherwise
      */
-    fun shareGroupCode(
-        context: Context,
-        groupCode: String,
-        appName: String = "EnterComm"
-    ): Boolean {
+    fun shareGroupCode(context: Context, groupCode: String, appName: String = "EnterComm"): Boolean {
         val shareMessage = buildGroupCodeShareMessage(groupCode, appName)
         val subject = "$appName Group Code"
         return shareText(
             context = context,
             text = shareMessage,
             subject = subject,
-            chooserTitle = "Share group code"
+            chooserTitle = "Share group code",
         )
     }
 
