@@ -1,0 +1,15 @@
+{
+    "keep": {
+        "days": true,
+        "amount": 14
+    },
+    "auditLog": "/Users/roe/Dev/enter-comm/.worktrees/006-expose-accessibility-settings-in-android-settings-/logs/.4cc0995ecb0dbd21a31863e95971dfa6274b49c2-audit.json",
+    "files": [
+        {
+            "date": 1766186440079,
+            "name": "/Users/roe/Dev/enter-comm/.worktrees/006-expose-accessibility-settings-in-android-settings-/logs/mcp-puppeteer-2025-12-20.log",
+            "hash": "dfdec35814433022182adfa1dba988aceeb288afe54df4f42782e4d06c23f466"
+        }
+    ],
+    "hashType": "sha256"
+}

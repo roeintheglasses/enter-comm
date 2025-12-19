@@ -1,0 +1,20 @@
+{
+  "discovered_files": {
+    "app/src/main/java/com/entercomm/bikeintercom/mesh/MeshNetworkService.kt": {
+      "description": "MeshNetworkService is the central service that holds all core managers (WiFiDirectManager, MeshNetworkManager, AudioManager, GroupManager, LocationManager, and now AccessibilityManager). Managers are declared as lateinit vars and expose nullable getters like getGroupManager(), getLocationManager(), etc. that check isInitialized before returning. Initialization happens in onCreate() and cleanup in cleanupManagers() which is called from onDestroy().",
+      "category": "architecture",
+      "discovered_at": "2025-12-19T23:24:07.103837+00:00"
+    },
+    "app/src/main/java/com/entercomm/bikeintercom/ui/screens/MainScreen.kt": {
+      "description": "HapticFeedbackCard added following the VoiceFeedbackCard pattern: takes AccessibilitySettings and AccessibilityManager, uses Card with DarkSurface color, has header row with icon/title, and uses SettingsToggle/SettingsSlider components for controls. Settings cards should be conditionally rendered when accessibilitySettings != null && accessibilityManager != null.",
+      "category": "ui-patterns",
+      "discovered_at": "2025-12-19T23:38:37.218283+00:00"
+    },
+    "app/src/main/java/com/entercomm/bikeintercom/ui/components/AccessibilityComponents.kt": {
+      "description": "Created reusable accessibility UI components: SettingsToggle, SettingsSlider, and SettingsDropdown. These follow the pattern from GroupComponents.kt and use wildcard imports for foundation.layout.*, material3.*, runtime.*, etc. Detekt enforces max 60 lines per function (LongMethod rule), so larger composables need to be broken into smaller private helper composables.",
+      "category": "ui_components",
+      "discovered_at": "2025-12-19T23:32:28.587914+00:00"
+    }
+  },
+  "last_updated": "2025-12-19T23:38:37.218292+00:00"
+}

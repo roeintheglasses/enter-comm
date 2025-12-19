@@ -805,6 +805,11 @@ private fun SettingsContent(meshTopology: MeshTopology?, onboardingManager: Onbo
             HapticFeedbackCard(accessibilitySettings!!, accessibilityManager)
         }
 
+        // Display Accessibility section
+        if (accessibilitySettings != null && accessibilityManager != null) {
+            DisplayAccessibilityCard(accessibilitySettings!!, accessibilityManager)
+        }
+
         // Network topology section
         NetworkTopologyCard(meshTopology)
 
@@ -1021,6 +1026,57 @@ private fun HapticFeedbackCard(settings: AccessibilitySettings, accessibilityMan
                     accessibilityManager.updateSetting { it.copy(hapticIntensity = intensity) }
                 },
                 valueRange = 0f..1f,
+            )
+        }
+    }
+}
+
+/**
+ * Display Accessibility settings card with large text mode and high contrast mode toggles.
+ */
+@Composable
+private fun DisplayAccessibilityCard(settings: AccessibilitySettings, accessibilityManager: AccessibilityManager) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = DarkSurface),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Visibility,
+                    contentDescription = null,
+                    tint = TechCyan,
+                    modifier = Modifier.size(24.dp),
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Display",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = TextPrimary,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Large text mode toggle
+            SettingsToggle(
+                label = "Large Text Mode",
+                description = "Increase text size for better readability",
+                checked = settings.largeTextMode,
+                onCheckedChange = { enabled ->
+                    accessibilityManager.updateSetting { it.copy(largeTextMode = enabled) }
+                },
+            )
+
+            // High contrast mode toggle
+            SettingsToggle(
+                label = "High Contrast Mode",
+                description = "Enhanced contrast for visibility in bright conditions",
+                checked = settings.highContrastMode,
+                onCheckedChange = { enabled ->
+                    accessibilityManager.updateSetting { it.copy(highContrastMode = enabled) }
+                },
             )
         }
     }

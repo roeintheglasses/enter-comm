@@ -1,0 +1,130 @@
+{
+  "feature": "Expose Accessibility Settings in Android Settings Screen",
+  "description": "The app has comprehensive AccessibilityManager features (voice feedback, enhanced haptics, large text mode, high contrast mode, volume button PTT) but the Settings screen only shows Profile info and Network Topology - none of the accessibility options are exposed to users.",
+  "created_at": "2025-12-19T23:18:53.208Z",
+  "updated_at": "2025-12-20T00:00:00.000Z",
+  "status": "in_progress",
+  "planStatus": "approved",
+  "phases": [
+    {
+      "phase": 1,
+      "name": "Wire AccessibilityManager into App Lifecycle",
+      "description": "Create and provide AccessibilityManager instance to the UI layer so settings can be read and modified.",
+      "subtasks": [
+        {
+          "id": "1.1",
+          "title": "Add AccessibilityManager to MeshNetworkService",
+          "description": "Instantiate AccessibilityManager in MeshNetworkService and expose it via a getter method. Initialize it in onCreate() and shutdown in onDestroy().",
+          "file_path": "app/src/main/java/com/entercomm/bikeintercom/mesh/MeshNetworkService.kt",
+          "status": "completed",
+          "notes": "Successfully added AccessibilityManager to MeshNetworkService: imported class, declared lateinit property, initialized in onCreate() with initialize() call, added getAccessibilityManager() getter method, and added shutdown() call in cleanupManagers(). Commit: 0acb29c",
+          "updated_at": "2025-12-19T23:23:58.935068+00:00"
+        },
+        {
+          "id": "1.2",
+          "title": "Pass AccessibilityManager to SettingsContent composable",
+          "description": "Update IntercomMainScreen to get AccessibilityManager from meshService and pass it to SettingsContent. Update SettingsContent signature to accept accessibilityManager parameter.",
+          "file_path": "app/src/main/java/com/entercomm/bikeintercom/ui/screens/MainScreen.kt",
+          "status": "completed",
+          "notes": "Successfully wired AccessibilityManager into SettingsContent: imported AccessibilityManager class, got instance from meshService?.getAccessibilityManager() in IntercomMainScreen (following pattern of groupManager and locationManager), passed to SettingsContent, updated function signature to accept accessibilityManager parameter. Added @Suppress for LongMethod (pre-existing issue) and UnusedParameter (will be used in subtasks 3.1-3.4). Commit: 0c3f31d",
+          "updated_at": "2025-12-19T23:28:00.625842+00:00"
+        }
+      ]
+    },
+    {
+      "phase": 2,
+      "name": "Create Accessibility UI Components",
+      "description": "Build reusable UI components for accessibility settings (toggles, sliders, dropdowns).",
+      "subtasks": [
+        {
+          "id": "2.1",
+          "title": "Create AccessibilityComponents.kt with setting UI elements",
+          "description": "Create a new file with reusable composables: SettingsToggle (for boolean settings), SettingsSlider (for float values like volume/intensity), SettingsDropdown (for BoneConductionMode enum). Follow existing component patterns from GroupComponents.kt.",
+          "file_path": "app/src/main/java/com/entercomm/bikeintercom/ui/components/AccessibilityComponents.kt",
+          "status": "completed",
+          "notes": "Created AccessibilityComponents.kt with three reusable UI composables: SettingsToggle (for boolean settings), SettingsSlider (for float values like volume/intensity), SettingsDropdown (for BoneConductionMode enum). All components follow existing patterns from GroupComponents.kt and use the app's established theme colors. Also added BoneConductionMode.displayName() extension function for display formatting. Refactored SettingsDropdown into smaller helper composables to pass Detekt's LongMethod check. Commit: c998651",
+          "updated_at": "2025-12-19T23:32:20.932271+00:00"
+        }
+      ]
+    },
+    {
+      "phase": 3,
+      "name": "Implement Accessibility Settings UI in Settings Screen",
+      "description": "Add accessibility settings cards to the SettingsContent composable using the AccessibilityManager.",
+      "subtasks": [
+        {
+          "id": "3.1",
+          "title": "Add Voice Feedback section to Settings",
+          "description": "Add a card for Voice Feedback settings: enable/disable toggle, volume slider, speech rate slider. Observe settings from AccessibilityManager and call updateSetting() on changes.",
+          "file_path": "app/src/main/java/com/entercomm/bikeintercom/ui/screens/MainScreen.kt",
+          "status": "completed",
+          "notes": "Added VoiceFeedbackCard composable with enable/disable toggle, volume slider (0-100%), and speech rate slider (0.5x-2.0x). Refactored SettingsContent to use extracted card composables (ProfileSettingsCard, VoiceFeedbackCard, NetworkTopologyCard, AboutCard) to keep function lengths manageable. Settings observe AccessibilityManager.settings StateFlow and call updateSetting() on changes. Commit: 1c21760",
+          "updated_at": "2025-12-19T23:35:52.007572+00:00"
+        },
+        {
+          "id": "3.2",
+          "title": "Add Haptic Feedback section to Settings",
+          "description": "Add a card for Haptic settings: enhanced haptics toggle, haptic intensity slider.",
+          "file_path": "app/src/main/java/com/entercomm/bikeintercom/ui/screens/MainScreen.kt",
+          "status": "completed",
+          "notes": "Added HapticFeedbackCard composable with enhanced haptics toggle (with description) and haptic intensity slider (0-100%). Integrated into SettingsContent between Voice Feedback and Network Topology sections. Uses Icons.Filled.Vibration for the card header icon. Follows the same pattern as VoiceFeedbackCard using SettingsToggle and SettingsSlider components from AccessibilityComponents.kt. Commit: d772ea3",
+          "updated_at": "2025-12-19T23:38:31.209876+00:00"
+        },
+        {
+          "id": "3.3",
+          "title": "Add Display/Accessibility section to Settings",
+          "description": "Add a card for Display accessibility: large text mode toggle, high contrast mode toggle.",
+          "file_path": "app/src/main/java/com/entercomm/bikeintercom/ui/screens/MainScreen.kt",
+          "status": "pending",
+          "notes": ""
+        },
+        {
+          "id": "3.4",
+          "title": "Add Riding Mode section to Settings",
+          "description": "Add a card for Riding/Motorcycle-specific features: bone conduction mode dropdown (Auto/Enabled/Disabled with detected status), volume button PTT toggle, swipe gestures toggle, one-handed mode toggle.",
+          "file_path": "app/src/main/java/com/entercomm/bikeintercom/ui/screens/MainScreen.kt",
+          "status": "pending",
+          "notes": ""
+        }
+      ]
+    },
+    {
+      "phase": 4,
+      "name": "Testing and Polish",
+      "description": "Test the accessibility settings functionality and ensure proper persistence.",
+      "subtasks": [
+        {
+          "id": "4.1",
+          "title": "Build and verify compilation",
+          "description": "Run ./gradlew assembleDebug to verify the changes compile successfully.",
+          "file_path": "",
+          "status": "pending",
+          "notes": ""
+        },
+        {
+          "id": "4.2",
+          "title": "Verify settings persistence",
+          "description": "Test that settings are properly persisted across app restarts by checking SharedPreferences storage in AccessibilityManager.",
+          "file_path": "",
+          "status": "pending",
+          "notes": ""
+        }
+      ]
+    }
+  ],
+  "workflow_type": "development",
+  "services_involved": [
+    "app/src/main/java/com/entercomm/bikeintercom/util/AccessibilityManager.kt",
+    "app/src/main/java/com/entercomm/bikeintercom/mesh/MeshNetworkService.kt",
+    "app/src/main/java/com/entercomm/bikeintercom/ui/screens/MainScreen.kt"
+  ],
+  "final_acceptance": [
+    "All accessibility settings from AccessibilitySettings data class are visible in Settings screen",
+    "Settings changes are persisted to SharedPreferences",
+    "Settings changes trigger immediate updates via AccessibilityManager.updateSetting()",
+    "Bone conduction detection status is displayed when in AUTO mode",
+    "App compiles successfully with no errors"
+  ],
+  "spec_file": "spec.md",
+  "last_updated": "2025-12-19T23:38:31.209884+00:00"
+}

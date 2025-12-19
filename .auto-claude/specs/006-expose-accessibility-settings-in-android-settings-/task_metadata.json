@@ -1,0 +1,13 @@
+{
+  "sourceType": "ideation",
+  "ideationType": "ui_ux_improvements",
+  "ideaId": "uiux-002",
+  "rationale": "Accessibility features are implemented in code (AccessibilityManager.kt) but users have no way to enable them. This is especially important for riders who may need hands-free operation (volumeButtonPtt), voice feedback while riding, or bone conduction headset optimization.",
+  "category": "ui_ux",
+  "uiuxCategory": "accessibility",
+  "affectedFiles": [
+    "app/src/main/java/com/entercomm/bikeintercom/ui/screens/MainScreen.kt",
+    "app/src/main/java/com/entercomm/bikeintercom/util/AccessibilityManager.kt"
+  ],
+  "problemSolved": "SettingsContent composable in MainScreen.kt shows: 1) Profile section (nickname, group code, connection mode - all read-only), 2) Network Topology visualization, 3) About section. The AccessibilityManager has voiceFeedbackEnabled, enhancedHaptics, largeTextMode, highContrastMode, oneHandedMode, volumeButtonPtt, and swipeGesturesEnabled - none exposed in UI."
+}
