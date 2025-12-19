@@ -10,8 +10,10 @@ import android.content.pm.PackageManager
 import android.net.wifi.WpsInfo
 import android.net.wifi.p2p.*
 import android.net.wifi.p2p.WifiP2pManager.*
+import android.net.wifi.p2p.nsd.WifiP2pDnsSdServiceInfo
 import android.os.Build
 import androidx.core.content.ContextCompat
+import com.entercomm.bikeintercom.config.AppConfig
 import com.entercomm.bikeintercom.util.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,9 +36,12 @@ sealed class WiFiDirectEvent {
     data class ConnectionChanged(val info: WifiP2pInfo?) : WiFiDirectEvent()
     data class DeviceChanged(val device: WifiP2pDevice?) : WiFiDirectEvent()
     data class GroupInfoChanged(val clients: List<PeerDevice>, val isGroupOwner: Boolean) : WiFiDirectEvent()
+    object LocalServiceRegistered : WiFiDirectEvent()
+    object LocalServiceUnregistered : WiFiDirectEvent()
     data class Error(val message: String) : WiFiDirectEvent()
 }
 
+@Suppress("TooManyFunctions") // WiFi Direct manager requires many public methods for service lifecycle
 class WiFiDirectManager(
     private val context: Context,
     private val manager: WifiP2pManager,
@@ -44,11 +49,15 @@ class WiFiDirectManager(
 ) {
 
     companion object {
-        private const val SERVICE_TYPE = "_entercomm._tcp"
-        private const val SERVICE_INSTANCE = "EnterCommBikeIntercom"
+        private const val TXT_RECORD_GROUP_CODE_KEY = "group_code"
     }
 
     private var isReceiverRegistered = false
+    private var isLocalServiceRegistered = false
+    private var currentServiceInfo: WifiP2pDnsSdServiceInfo? = null
+
+    private val _groupCode = MutableStateFlow<String?>(null)
+    val groupCode: StateFlow<String?> = _groupCode.asStateFlow()
 
     /**
      * Check if required WiFi Direct permissions are granted
@@ -166,6 +175,7 @@ class WiFiDirectManager(
                 context.unregisterReceiver(receiver)
                 isReceiverRegistered = false
             }
+            clearLocalServices()
             stopDiscovery()
             disconnect()
         } catch (e: IllegalArgumentException) {
@@ -336,6 +346,145 @@ class WiFiDirectManager(
             }
         }
     }
+
+    /**
+     * Set the group code for service discovery filtering.
+     * If a local service is already registered, it will be re-registered with the new group code.
+     */
+    fun setGroupCode(code: String?) {
+        val previousCode = _groupCode.value
+        _groupCode.value = code
+        logD { "Group code set: $code (was: $previousCode)" }
+
+        // Re-register local service if already registered with new group code
+        if (isLocalServiceRegistered && code != previousCode) {
+            unregisterLocalService()
+            if (code != null) {
+                registerLocalService(code)
+            }
+        }
+    }
+
+    /**
+     * Get the current group code.
+     */
+    fun getGroupCode(): String? = _groupCode.value
+
+    /**
+     * Register a local WiFi Direct service with the group code in the TXT record.
+     * This allows other devices to discover this device via service discovery
+     * and filter by group code.
+     */
+    @SuppressLint("MissingPermission") // Permission is checked in hasWifiDirectPermission()
+    fun registerLocalService(groupCode: String) {
+        if (!hasWifiDirectPermission()) {
+            val message = "WiFi Direct permissions not granted for service registration"
+            logE { message }
+            eventChannel.trySend(WiFiDirectEvent.Error(message))
+            return
+        }
+
+        // Unregister existing service first if any
+        if (isLocalServiceRegistered) {
+            unregisterLocalService()
+        }
+
+        // Build TXT record with group code
+        val txtRecord = mapOf(
+            TXT_RECORD_GROUP_CODE_KEY to groupCode,
+        )
+
+        // Create DNS-SD service info
+        val serviceInfo = WifiP2pDnsSdServiceInfo.newInstance(
+            AppConfig.WiFiDirect.SERVICE_INSTANCE_NAME,
+            AppConfig.WiFiDirect.SERVICE_TYPE,
+            txtRecord,
+        )
+
+        manager.addLocalService(
+            channel,
+            serviceInfo,
+            object : ActionListener {
+                override fun onSuccess() {
+                    isLocalServiceRegistered = true
+                    currentServiceInfo = serviceInfo
+                    _groupCode.value = groupCode
+                    logD { "Local service registered with group code: $groupCode" }
+                    eventChannel.trySend(WiFiDirectEvent.LocalServiceRegistered)
+                }
+
+                override fun onFailure(reason: Int) {
+                    val message = "Failed to register local service: ${getErrorMessage(reason)}"
+                    logE { message }
+                    eventChannel.trySend(WiFiDirectEvent.Error(message))
+                }
+            },
+        )
+    }
+
+    /**
+     * Unregister the local WiFi Direct service.
+     */
+    fun unregisterLocalService() {
+        if (!isLocalServiceRegistered) {
+            logD { "No local service to unregister" }
+            return
+        }
+
+        val serviceInfo = currentServiceInfo
+        if (serviceInfo == null) {
+            logW { "Local service marked as registered but serviceInfo is null" }
+            isLocalServiceRegistered = false
+            return
+        }
+
+        manager.removeLocalService(
+            channel,
+            serviceInfo,
+            object : ActionListener {
+                override fun onSuccess() {
+                    isLocalServiceRegistered = false
+                    currentServiceInfo = null
+                    logD { "Local service unregistered" }
+                    eventChannel.trySend(WiFiDirectEvent.LocalServiceUnregistered)
+                }
+
+                override fun onFailure(reason: Int) {
+                    // Still mark as unregistered to avoid stuck state
+                    isLocalServiceRegistered = false
+                    currentServiceInfo = null
+                    logE { "Failed to unregister local service: ${getErrorMessage(reason)}" }
+                }
+            },
+        )
+    }
+
+    /**
+     * Clear all registered local services.
+     */
+    fun clearLocalServices() {
+        manager.clearLocalServices(
+            channel,
+            object : ActionListener {
+                override fun onSuccess() {
+                    isLocalServiceRegistered = false
+                    currentServiceInfo = null
+                    logD { "All local services cleared" }
+                }
+
+                override fun onFailure(reason: Int) {
+                    isLocalServiceRegistered = false
+                    currentServiceInfo = null
+                    logE { "Failed to clear local services: ${getErrorMessage(reason)}" }
+                }
+            },
+        )
+    }
+
+    /**
+     * Check if a local service is currently registered.
+     */
+    fun isLocalServiceRegistered(): Boolean = isLocalServiceRegistered
 
     private fun getErrorMessage(reason: Int): String {
         return when (reason) {
