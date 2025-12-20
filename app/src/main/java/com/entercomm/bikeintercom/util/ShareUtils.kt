@@ -45,15 +45,20 @@ object ShareUtils {
      * @return true if share intent was launched successfully, false otherwise
      */
     fun shareGroupCode(context: Context, groupCode: String): Boolean {
-        val appName = context.getString(R.string.app_name)
-        val shareMessage = context.getString(R.string.group_code_share_message, appName, groupCode)
-        val subject = context.getString(R.string.group_code_share_subject, appName)
-        val chooserTitle = context.getString(R.string.group_code_share_chooser_title)
-        return shareText(
-            context = context,
-            text = shareMessage,
-            subject = subject,
-            chooserTitle = chooserTitle,
-        )
+        return try {
+            val appName = context.getString(R.string.app_name)
+            val shareMessage = context.getString(R.string.group_code_share_message, appName, groupCode)
+            val subject = context.getString(R.string.group_code_share_subject, appName)
+            val chooserTitle = context.getString(R.string.group_code_share_chooser_title)
+            shareText(
+                context = context,
+                text = shareMessage,
+                subject = subject,
+                chooserTitle = chooserTitle,
+            )
+        } catch (e: Exception) {
+            logE { "Failed to share group code: ${e.message}" }
+            false
+        }
     }
 }

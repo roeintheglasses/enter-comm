@@ -6,8 +6,11 @@ import android.content.ClipboardManager
 import android.content.Context
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkStatic
 import io.mockk.slot
+import io.mockk.unmockkAll
 import io.mockk.verify
+import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
@@ -16,13 +19,32 @@ class ClipboardUtilsTest {
 
     private lateinit var mockContext: Context
     private lateinit var mockClipboardManager: ClipboardManager
+    private lateinit var mockClipData: ClipData
+    private lateinit var mockClipItem: ClipData.Item
+    private lateinit var mockClipDescription: ClipDescription
 
     @Before
     fun setUp() {
+        // Enable test mode to avoid Android Log calls
+        Logger.isTestMode = true
+
         mockContext = mockk(relaxed = true)
         mockClipboardManager = mockk(relaxed = true)
+        mockClipData = mockk(relaxed = true)
+        mockClipItem = mockk(relaxed = true)
+        mockClipDescription = mockk(relaxed = true)
 
         every { mockContext.getSystemService(Context.CLIPBOARD_SERVICE) } returns mockClipboardManager
+
+        // Mock the static ClipData.newPlainText method
+        mockkStatic(ClipData::class)
+        every { ClipData.newPlainText(any(), any()) } returns mockClipData
+    }
+
+    @After
+    fun tearDown() {
+        unmockkAll()
+        Logger.isTestMode = false
     }
 
     // === copyToClipboard Tests ===
@@ -31,19 +53,18 @@ class ClipboardUtilsTest {
     fun `copyToClipboard sets primary clip with correct data`() {
         val text = "ABC123"
         val label = "Group Code"
-        val clipDataSlot = slot<ClipData>()
+        val labelSlot = slot<CharSequence>()
+        val textSlot = slot<CharSequence>()
 
-        every { mockClipboardManager.setPrimaryClip(capture(clipDataSlot)) } returns Unit
+        every { ClipData.newPlainText(capture(labelSlot), capture(textSlot)) } returns mockClipData
+        every { mockClipboardManager.setPrimaryClip(mockClipData) } returns Unit
 
         val result = ClipboardUtils.copyToClipboard(mockContext, text, label)
 
         assertTrue("Should return true on success", result)
-        verify { mockClipboardManager.setPrimaryClip(any()) }
-
-        val capturedClipData = clipDataSlot.captured
-        assertEquals("Clip data should have one item", 1, capturedClipData.itemCount)
-        assertEquals("Clip data text should match", text, capturedClipData.getItemAt(0).text)
-        assertEquals("Clip data label should match", label, capturedClipData.description.label)
+        verify { mockClipboardManager.setPrimaryClip(mockClipData) }
+        assertEquals("Label should match", label, labelSlot.captured.toString())
+        assertEquals("Text should match", text, textSlot.captured.toString())
     }
 
     @Test
@@ -66,25 +87,27 @@ class ClipboardUtilsTest {
 
     @Test
     fun `copyToClipboard handles empty text`() {
-        val clipDataSlot = slot<ClipData>()
-        every { mockClipboardManager.setPrimaryClip(capture(clipDataSlot)) } returns Unit
+        val textSlot = slot<CharSequence>()
+        every { ClipData.newPlainText(any(), capture(textSlot)) } returns mockClipData
+        every { mockClipboardManager.setPrimaryClip(mockClipData) } returns Unit
 
         val result = ClipboardUtils.copyToClipboard(mockContext, "", "label")
 
         assertTrue("Should handle empty text", result)
-        assertEquals("", clipDataSlot.captured.getItemAt(0).text)
+        assertEquals("Empty text should be captured", "", textSlot.captured.toString())
     }
 
     @Test
     fun `copyToClipboard handles special characters`() {
-        val specialText = "ABC-123!@#$%^&*()"
-        val clipDataSlot = slot<ClipData>()
-        every { mockClipboardManager.setPrimaryClip(capture(clipDataSlot)) } returns Unit
+        val specialText = "ABC-123!@#\$%^&*()"
+        val textSlot = slot<CharSequence>()
+        every { ClipData.newPlainText(any(), capture(textSlot)) } returns mockClipData
+        every { mockClipboardManager.setPrimaryClip(mockClipData) } returns Unit
 
         val result = ClipboardUtils.copyToClipboard(mockContext, specialText, "label")
 
         assertTrue("Should handle special characters", result)
-        assertEquals(specialText, clipDataSlot.captured.getItemAt(0).text)
+        assertEquals("Special characters should be preserved", specialText, textSlot.captured.toString())
     }
 
     // === hasClipboardText Tests ===

@@ -122,28 +122,35 @@ class AudioEffectsProcessor {
      * Process audio samples with software-based effects.
      * Hardware effects are applied automatically by AudioRecord.
      *
+     * Uses pooled buffers to avoid allocations on hot path.
+     * Note: This method may return a different array than input when wind filter is enabled.
+     *
      * @param samples Input PCM samples
-     * @return Processed PCM samples
+     * @return Processed PCM samples (may be same array or pooled buffer)
      */
     fun process(samples: ShortArray): ShortArray {
         if (samples.isEmpty()) return samples
 
-        var processed = samples
+        var current = samples
 
         // Apply wind noise filter (high-pass filter for cycling)
+        // Requires intermediate buffer since filter has state and can't process in-place
         if (isWindFilterEnabled) {
-            processed = applyWindNoiseFilter(processed)
+            val windOutput = AudioBufferPool.getEffectsBuffer(0)
+            applyWindNoiseFilterInto(current, windOutput, samples.size)
+            current = windOutput
         }
 
         // Apply software AGC if hardware AGC is not available
+        // Can work in-place since it's a simple gain operation
         if (!isAgcEnabled) {
-            processed = applySoftwareAgc(processed)
+            applySoftwareAgcInPlace(current, samples.size)
         }
 
         // Update statistics
-        lastRmsLevel = calculateRms(processed)
+        lastRmsLevel = calculateRms(current, samples.size)
 
-        return processed
+        return current
     }
 
     /**
@@ -228,14 +235,14 @@ class AudioEffectsProcessor {
         logD { "Audio effects cleaned up" }
     }
 
-    // Software AGC implementation
-    private fun applySoftwareAgc(samples: ShortArray): ShortArray {
+    // Software AGC implementation - in-place version to avoid allocations
+    private fun applySoftwareAgcInPlace(samples: ShortArray, length: Int) {
         val targetLevel = 0.3f // Target RMS level
         val attackTime = 0.01f // Fast attack for speech
         val releaseTime = 0.1f // Slower release
 
-        val rms = calculateRms(samples)
-        if (rms < 0.001f) return samples // Silence, don't adjust
+        val rms = calculateRms(samples, length)
+        if (rms < 0.001f) return // Silence, don't adjust
 
         // Calculate desired gain
         val desiredGain = (targetLevel / rms).coerceIn(0.5f, 4.0f)
@@ -244,59 +251,57 @@ class AudioEffectsProcessor {
         val alpha = if (desiredGain > softwareAgcGain) attackTime else releaseTime
         softwareAgcGain = softwareAgcGain + alpha * (desiredGain - softwareAgcGain)
 
-        // Apply gain
-        val output = ShortArray(samples.size)
-        for (i in samples.indices) {
+        // Apply gain in-place
+        for (i in 0 until length) {
             val amplified = (samples[i] * softwareAgcGain).toInt()
-            output[i] = amplified.coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
+            samples[i] = amplified.coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
         }
-
-        return output
     }
 
-    // Wind noise filter (high-pass filter)
-    private fun applyWindNoiseFilter(samples: ShortArray): ShortArray {
-        val filter = windNoiseFilter ?: return samples
+    // Wind noise filter - writes to output buffer to avoid allocations
+    private fun applyWindNoiseFilterInto(input: ShortArray, output: ShortArray, length: Int) {
+        val filter = windNoiseFilter ?: run {
+            // No filter, copy input to output
+            input.copyInto(output, 0, 0, length)
+            return
+        }
 
         // Detect wind noise (characterized by high energy in low frequencies)
-        val lowFreqEnergy = calculateLowFrequencyEnergy(samples)
+        val lowFreqEnergy = calculateLowFrequencyEnergy(input, length)
         windNoiseDetected = lowFreqEnergy > WIND_NOISE_THRESHOLD
 
-        // Always apply filter for cycling use case
-        val output = ShortArray(samples.size)
-        for (i in samples.indices) {
-            val filtered = filter.process(samples[i].toFloat())
+        // Apply filter, writing to output buffer
+        for (i in 0 until length) {
+            val filtered = filter.process(input[i].toFloat())
             output[i] = filtered.toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
         }
-
-        return output
     }
 
-    private fun calculateRms(samples: ShortArray): Float {
-        if (samples.isEmpty()) return 0f
+    private fun calculateRms(samples: ShortArray, length: Int = samples.size): Float {
+        if (length == 0) return 0f
 
         var sum = 0.0
-        for (sample in samples) {
-            sum += (sample.toDouble() / Short.MAX_VALUE).let { it * it }
+        for (i in 0 until length) {
+            sum += (samples[i].toDouble() / Short.MAX_VALUE).let { it * it }
         }
-        return sqrt(sum / samples.size).toFloat()
+        return sqrt(sum / length).toFloat()
     }
 
-    private fun calculateLowFrequencyEnergy(samples: ShortArray): Float {
-        if (samples.size < 4) return 0f
+    private fun calculateLowFrequencyEnergy(samples: ShortArray, length: Int = samples.size): Float {
+        if (length < 4) return 0f
 
         // Simple low-frequency energy estimation using moving average
         var totalEnergy = 0.0
 
         // Downsample by 4 to focus on low frequencies
-        for (i in samples.indices step 4) {
+        for (i in 0 until length step 4) {
             val sample = abs(samples[i].toDouble())
             totalEnergy += sample * sample
         }
 
         // Use difference between consecutive samples (approximates high-freq)
         var highFreqEnergy = 0.0
-        for (i in 1 until samples.size) {
+        for (i in 1 until length) {
             val diff = abs((samples[i] - samples[i - 1]).toDouble())
             highFreqEnergy += diff * diff
         }

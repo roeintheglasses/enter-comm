@@ -55,7 +55,8 @@ data class AudioProcessingSettings(
  */
 class AudioManager(
     private val context: Context,
-    private val meshCallback: (ByteArray) -> Unit,
+    /** Callback to send encoded audio data. Parameters: (buffer, offset, length) */
+    private val meshCallback: (ByteArray, Int, Int) -> Unit,
 ) {
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
@@ -460,16 +461,19 @@ class AudioManager(
                 val entry = getOrCreateProcessor(sourceId)
                 entry.touch()
 
-                // Decode audio
-                val decodedSamples = if (_processingSettings.value.opusEnabled) {
-                    adpcmCodec.decode(audioData)
+                // Decode audio using pooled buffer to avoid per-frame allocation
+                val decodeBuffer = AudioBufferPool.acquireDecodeBuffer()
+                val sampleCount = if (_processingSettings.value.opusEnabled) {
+                    adpcmCodec.decodeInto(audioData, decodeBuffer)
                 } else {
-                    decodePcm(audioData)
+                    decodePcmInto(audioData, decodeBuffer)
                 }
 
-                if (decodedSamples.isNotEmpty()) {
-                    entry.processor.play(decodedSamples)
-                    logD { "Played ${decodedSamples.size} samples from $sourceId" }
+                if (sampleCount > 0) {
+                    // Note: play() will copy samples into jitter buffer,
+                    // so pooled buffer is safe to reuse after this call
+                    entry.processor.play(decodeBuffer, sampleCount)
+                    logD { "Played $sampleCount samples from $sourceId" }
                 }
             } catch (e: OutOfMemoryError) {
                 logE({ "OOM processing audio from $sourceId" }, e)
@@ -660,29 +664,30 @@ class AudioManager(
                     _audioLevel.value = level
 
                     // Apply audio processing (AEC, NS, AGC, wind filter)
-                    val processedSamples = effectsProcessor.process(
-                        buffer.copyOf(samplesRead),
-                    )
+                    // Note: effectsProcessor may return a pooled buffer, which is fine
+                    // since we consume it synchronously before the next frame
+                    val processedSamples = effectsProcessor.process(buffer)
 
-                    // Encode with Opus
-                    val encodedData = if (_processingSettings.value.opusEnabled) {
-                        adpcmCodec.encode(processedSamples)
+                    // Encode with ADPCM using pooled buffer to avoid allocation
+                    val encodeBuffer = AudioBufferPool.getEncodeBuffer()
+                    val encodedSize = if (_processingSettings.value.opusEnabled) {
+                        adpcmCodec.encodeInto(processedSamples, encodeBuffer)
                     } else {
-                        encodePcm(processedSamples)
+                        encodePcmInto(processedSamples, encodeBuffer)
                     }
 
-                    if (encodedData != null && encodedData.isNotEmpty()) {
+                    if (encodedSize > 0) {
                         // Update stats
                         val rawBytes = samplesRead * 2L
                         totalBytesRaw += rawBytes
-                        totalBytesEncoded += encodedData.size
+                        totalBytesEncoded += encodedSize
                         packetsEncoded++
 
                         // Update codec stats flow
                         _codecStats.value = getCodecStats()
 
-                        // Send to mesh network
-                        meshCallback(encodedData)
+                        // Send to mesh network (zero-copy - caller must consume synchronously)
+                        meshCallback(encodeBuffer, 0, encodedSize)
                     }
                 } else if (samplesRead > 0 && _isMuted.value) {
                     // Update level to show we're muted but receiving audio
@@ -714,14 +719,28 @@ class AudioManager(
         return (rms / Short.MAX_VALUE).toFloat()
     }
 
-    // Fallback PCM encoding/decoding (for when Opus is disabled)
-    private fun encodePcm(samples: ShortArray): ByteArray {
-        val buffer = java.nio.ByteBuffer.allocate(samples.size * 2)
-            .order(java.nio.ByteOrder.LITTLE_ENDIAN)
+    // Fallback PCM encoding/decoding (for when ADPCM is disabled)
+    private fun encodePcmInto(samples: ShortArray, output: ByteArray): Int {
+        val requiredSize = samples.size * 2
+        if (output.size < requiredSize) return -1
+
+        val buffer = java.nio.ByteBuffer.wrap(output).order(java.nio.ByteOrder.LITTLE_ENDIAN)
         for (sample in samples) {
             buffer.putShort(sample)
         }
-        return buffer.array()
+        return requiredSize
+    }
+
+    private fun decodePcmInto(data: ByteArray, output: ShortArray): Int {
+        if (data.isEmpty() || data.size % 2 != 0) return -1
+        val sampleCount = data.size / 2
+        if (output.size < sampleCount) return -1
+
+        val buffer = java.nio.ByteBuffer.wrap(data).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        for (i in 0 until sampleCount) {
+            output[i] = buffer.short
+        }
+        return sampleCount
     }
 
     private fun decodePcm(data: ByteArray): ShortArray {
@@ -871,9 +890,12 @@ class AudioManager(
 
         /**
          * Add audio samples to the jitter buffer for playback.
+         *
+         * @param samples Sample buffer (may be pooled, will be copied)
+         * @param sampleCount Number of valid samples in the buffer
          */
-        fun play(samples: ShortArray) {
-            if (samples.isEmpty()) return
+        fun play(samples: ShortArray, sampleCount: Int = samples.size) {
+            if (sampleCount <= 0) return
 
             synchronized(lock) {
                 if (!isInitialized) {
@@ -883,9 +905,11 @@ class AudioManager(
             }
 
             // Add frame to jitter buffer with sequence number
+            // Copy samples since the input may be a pooled buffer
+            val frameSamples = if (sampleCount == samples.size) samples else samples.copyOf(sampleCount)
             val seq = frameSequence++
             val timestamp = System.currentTimeMillis()
-            jitterBuffer.addFrame(samples, seq, timestamp)
+            jitterBuffer.addFrame(frameSamples, seq, timestamp)
         }
 
         /**

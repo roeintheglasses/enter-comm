@@ -142,6 +142,61 @@ class AdpcmCodec(
     }
 
     /**
+     * Encode PCM audio samples to ADPCM format into a pre-allocated buffer.
+     * Zero-copy variant for hot path to eliminate per-frame allocations.
+     *
+     * @param pcmData PCM samples (16-bit signed)
+     * @param output Pre-allocated output buffer (must be at least [HEADER_SIZE] + (samples+1)/2 bytes)
+     * @return Number of bytes written, or -1 on failure
+     */
+    fun encodeInto(pcmData: ShortArray, output: ByteArray): Int {
+        if (!isInitialized || pcmData.isEmpty()) {
+            return -1
+        }
+
+        return synchronized(encodeLock) {
+            try {
+                val adpcmSize = HEADER_SIZE + (pcmData.size + 1) / 2
+                if (output.size < adpcmSize) {
+                    logE { "Output buffer too small: ${output.size} < $adpcmSize" }
+                    return@synchronized -1
+                }
+
+                val buffer = ByteBuffer.wrap(output).order(ByteOrder.LITTLE_ENDIAN)
+
+                // Write header: predictor and step index
+                buffer.putShort(encoderPredictor.toShort())
+                buffer.put(encoderStepIndex.toByte())
+                buffer.put(0) // Reserved
+
+                // Encode samples (2 samples per byte)
+                var byteIndex = HEADER_SIZE
+                var i = 0
+
+                while (i < pcmData.size) {
+                    val sample1 = pcmData[i]
+                    val nibble1 = encodeADPCMSample(sample1.toInt())
+
+                    val nibble2 = if (i + 1 < pcmData.size) {
+                        encodeADPCMSample(pcmData[i + 1].toInt())
+                    } else {
+                        0
+                    }
+
+                    // Pack two 4-bit nibbles into one byte (low nibble first)
+                    output[byteIndex++] = ((nibble2 shl 4) or nibble1).toByte()
+                    i += 2
+                }
+
+                adpcmSize
+            } catch (e: Exception) {
+                logE({ "Encoding failed" }, e)
+                -1
+            }
+        }
+    }
+
+    /**
      * Decode ADPCM data back to PCM samples.
      *
      * @param adpcmData ADPCM-encoded data with header
@@ -184,6 +239,59 @@ class AdpcmCodec(
             } catch (e: Exception) {
                 logE({ "Decoding failed" }, e)
                 ShortArray(0)
+            }
+        }
+    }
+
+    /**
+     * Decode ADPCM data into a pre-allocated buffer.
+     * Zero-copy variant for hot path to eliminate per-frame allocations.
+     *
+     * @param adpcmData ADPCM-encoded data with header
+     * @param output Pre-allocated output buffer (must be at least (adpcmData.size - HEADER_SIZE) * 2 samples)
+     * @return Number of samples written, or -1 on failure
+     */
+    fun decodeInto(adpcmData: ByteArray, output: ShortArray): Int {
+        if (!isInitialized || adpcmData.size < HEADER_SIZE) {
+            return -1
+        }
+
+        return synchronized(decodeLock) {
+            try {
+                val buffer = ByteBuffer.wrap(adpcmData).order(ByteOrder.LITTLE_ENDIAN)
+
+                // Read header
+                decoderPredictor = buffer.short.toInt()
+                decoderStepIndex = buffer.get().toInt().coerceIn(0, STEP_TABLE.size - 1)
+                buffer.get() // Skip reserved byte
+
+                // Decode samples (2 samples per byte)
+                val sampleCount = (adpcmData.size - HEADER_SIZE) * 2
+                if (output.size < sampleCount) {
+                    logE { "Output buffer too small: ${output.size} < $sampleCount" }
+                    return@synchronized -1
+                }
+
+                var outIndex = 0
+
+                for (i in HEADER_SIZE until adpcmData.size) {
+                    val packedByte = adpcmData[i].toInt() and 0xFF
+
+                    // Low nibble first
+                    val nibble1 = packedByte and 0x0F
+                    output[outIndex++] = decodeADPCMSample(nibble1).toShort()
+
+                    // High nibble second
+                    if (outIndex < sampleCount) {
+                        val nibble2 = (packedByte shr 4) and 0x0F
+                        output[outIndex++] = decodeADPCMSample(nibble2).toShort()
+                    }
+                }
+
+                outIndex
+            } catch (e: Exception) {
+                logE({ "Decoding failed" }, e)
+                -1
             }
         }
     }

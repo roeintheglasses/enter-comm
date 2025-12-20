@@ -201,8 +201,10 @@ class MeshNetworkService : Service() {
             // Initialize Audio Manager
             try {
                 logD { "Initializing Audio Manager..." }
-                audioManager = AudioManager(this) { audioData ->
+                audioManager = AudioManager(this) { buffer, offset, length ->
                     try {
+                        // Copy the pooled buffer slice for async network send
+                        val audioData = buffer.copyOfRange(offset, offset + length)
                         meshNetworkManager.sendAudioData(audioData)
                     } catch (e: Exception) {
                         logE({ "Error sending audio data" }, e)
