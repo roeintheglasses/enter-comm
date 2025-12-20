@@ -178,3 +178,7 @@ network-settings.json
 # Performance profiling
 *.trace
 *.prof
+
+# Auto Claude data directory
+.auto-claude/
+logs/
