@@ -208,6 +208,10 @@ class LocationManager(private val context: Context) {
     private val _isTracking = MutableStateFlow(false)
     val isTracking: StateFlow<Boolean> = _isTracking.asStateFlow()
 
+    // Location events for UI updates
+    private val _events = MutableStateFlow<LocationEvent?>(null)
+    val events: StateFlow<LocationEvent?> = _events.asStateFlow()
+
     // Local node info (set from service)
     private var localNodeId: String = ""
     private var localNickname: String = ""
@@ -231,6 +235,7 @@ class LocationManager(private val context: Context) {
 
         override fun onProviderDisabled(provider: String) {
             logD { "Location provider disabled: $provider" }
+            emitEvent(LocationEvent.ProviderUnavailable(provider))
         }
     }
 
@@ -252,6 +257,7 @@ class LocationManager(private val context: Context) {
 
         if (!hasLocationPermission()) {
             logW { "Location permission not granted" }
+            emitEvent(LocationEvent.PermissionDenied)
             return false
         }
 
@@ -263,6 +269,7 @@ class LocationManager(private val context: Context) {
         val locationMgr = androidLocationManager
         if (locationMgr == null) {
             logE { "LocationManager not available" }
+            emitEvent(LocationEvent.ProviderUnavailable("system"))
             return false
         }
 
@@ -275,25 +282,13 @@ class LocationManager(private val context: Context) {
                     android.location.LocationManager.NETWORK_PROVIDER
                 else -> {
                     logW { "No location provider available" }
+                    emitEvent(LocationEvent.ProviderUnavailable("none"))
                     return false
                 }
             }
 
             // Get last known location immediately for quick display
-            try {
-                val lastLocation = locationMgr.getLastKnownLocation(provider)
-                    ?: locationMgr.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
-                    ?: locationMgr.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER)
-
-                if (lastLocation != null) {
-                    logD { "Using last known location: ${lastLocation.latitude}, ${lastLocation.longitude}" }
-                    updateLocalLocation(lastLocation)
-                } else {
-                    logD { "No last known location available" }
-                }
-            } catch (e: Exception) {
-                logW({ "Could not get last known location" }, e)
-            }
+            tryGetLastKnownLocation(locationMgr, provider)
 
             // Get battery-aware update interval
             val batteryLevel = getBatteryLevel()
@@ -308,13 +303,16 @@ class LocationManager(private val context: Context) {
             )
 
             _isTracking.value = true
+            emitEvent(LocationEvent.TrackingStarted(provider))
             logD { "Location tracking started with provider: $provider, interval: ${updateInterval}ms (battery: $batteryLevel%)" }
             return true
         } catch (e: SecurityException) {
             logE({ "Security exception starting location tracking" }, e)
+            emitEvent(LocationEvent.PermissionDenied)
             return false
         } catch (e: Exception) {
             logE({ "Error starting location tracking" }, e)
+            emitEvent(LocationEvent.ProviderUnavailable("error"))
             return false
         }
     }
@@ -326,6 +324,7 @@ class LocationManager(private val context: Context) {
         try {
             androidLocationManager?.removeUpdates(locationListener)
             _isTracking.value = false
+            emitEvent(LocationEvent.TrackingStopped)
             logD { "Location tracking stopped" }
         } catch (e: Exception) {
             logE({ "Error stopping location tracking" }, e)
@@ -457,6 +456,7 @@ class LocationManager(private val context: Context) {
 
         _localLocation.value = peerLocation
         updateRadarData()
+        emitEvent(LocationEvent.LocationUpdated(peerLocation))
 
         // Broadcast location to peers
         scope.launch {
@@ -538,6 +538,28 @@ class LocationManager(private val context: Context) {
             context,
             Manifest.permission.ACCESS_FINE_LOCATION,
         ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun emitEvent(event: LocationEvent) {
+        _events.value = event
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun tryGetLastKnownLocation(locationMgr: android.location.LocationManager, provider: String) {
+        try {
+            val lastLocation = locationMgr.getLastKnownLocation(provider)
+                ?: locationMgr.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
+                ?: locationMgr.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER)
+
+            if (lastLocation != null) {
+                logD { "Using last known location: ${lastLocation.latitude}, ${lastLocation.longitude}" }
+                updateLocalLocation(lastLocation)
+            } else {
+                logD { "No last known location available" }
+            }
+        } catch (e: Exception) {
+            logW({ "Could not get last known location" }, e)
+        }
     }
 
     /**
