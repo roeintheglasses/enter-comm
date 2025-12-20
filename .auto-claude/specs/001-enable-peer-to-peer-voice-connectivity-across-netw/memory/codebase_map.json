@@ -1,0 +1,10 @@
+{
+  "discovered_files": {
+    "app/src/main/java/com/entercomm/bikeintercom/mesh/MeshNetworkManager.kt": {
+      "description": "getLocalIPAddresses() now prioritizes WiFi Direct IPs by returning them first in the list. Uses isWiFiDirectInterface() helper to detect P2P interfaces (p2p0, p2p-wlan0-*, etc.) and categorizes IPs accordingly.",
+      "category": "networking",
+      "discovered_at": "2025-12-20T09:09:24.206464+00:00"
+    }
+  },
+  "last_updated": "2025-12-20T09:09:24.206472+00:00"
+}
