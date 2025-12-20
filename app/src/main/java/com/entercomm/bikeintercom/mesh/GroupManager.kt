@@ -84,6 +84,17 @@ sealed class GroupEvent {
     data class GroupLeft(val groupId: String) : GroupEvent()
     data class NicknameChanged(val nodeId: String, val newNickname: String) : GroupEvent()
     data class ChannelChanged(val newChannel: Int) : GroupEvent()
+
+    // Typed error events for better pattern matching
+    data class GroupNotFound(val groupId: String) : GroupEvent()
+    data class Banned(val message: String) : GroupEvent()
+    data class WrongPassword(val groupId: String) : GroupEvent()
+    data class GroupIsFull(val groupId: String) : GroupEvent()
+    data class PermissionDenied(val action: String) : GroupEvent()
+    data class Kicked(val message: String) : GroupEvent()
+
+    /** @deprecated Use typed error events instead */
+    @Deprecated("Use typed error events (GroupNotFound, Banned, WrongPassword, GroupIsFull, PermissionDenied, Kicked) instead")
     data class Error(val message: String) : GroupEvent()
 }
 
@@ -306,19 +317,19 @@ class GroupManager(
     fun joinGroup(groupId: String, password: String? = null): Boolean {
         val group = availableGroups[groupId]
         if (group == null) {
-            emitEvent(GroupEvent.Error("Group not found"))
+            emitEvent(GroupEvent.GroupNotFound(groupId))
             return false
         }
 
         // Check if banned
         if (bannedNodes.contains(localNodeId)) {
-            emitEvent(GroupEvent.Error("You are banned from this group"))
+            emitEvent(GroupEvent.Banned("You are banned from this group"))
             return false
         }
 
         // Check password
         if (group.isPasswordProtected && !group.checkPassword(password ?: "")) {
-            emitEvent(GroupEvent.Error("Incorrect password"))
+            emitEvent(GroupEvent.WrongPassword(groupId))
             return false
         }
 
@@ -360,12 +371,12 @@ class GroupManager(
         val group = _currentGroup.value ?: return false
 
         if (group.ownerId != localNodeId) {
-            emitEvent(GroupEvent.Error("Only the owner can kick members"))
+            emitEvent(GroupEvent.PermissionDenied("kick members"))
             return false
         }
 
         if (nodeId == localNodeId) {
-            emitEvent(GroupEvent.Error("Cannot kick yourself"))
+            emitEvent(GroupEvent.PermissionDenied("kick yourself"))
             return false
         }
 
@@ -390,12 +401,12 @@ class GroupManager(
         val group = _currentGroup.value ?: return false
 
         if (group.ownerId != localNodeId) {
-            emitEvent(GroupEvent.Error("Only the owner can ban members"))
+            emitEvent(GroupEvent.PermissionDenied("ban members"))
             return false
         }
 
         if (nodeId == localNodeId) {
-            emitEvent(GroupEvent.Error("Cannot ban yourself"))
+            emitEvent(GroupEvent.PermissionDenied("ban yourself"))
             return false
         }
 
@@ -462,7 +473,7 @@ class GroupManager(
         val group = _currentGroup.value ?: return false
 
         if (group.ownerId != localNodeId) {
-            emitEvent(GroupEvent.Error("Only the owner can change channel"))
+            emitEvent(GroupEvent.PermissionDenied("change channel"))
             return false
         }
 
@@ -627,14 +638,14 @@ class GroupManager(
     }
 
     private fun handleJoinReject(@Suppress("UNUSED_PARAMETER") senderId: String, data: String) {
-        val reason = when (data) {
-            "banned" -> "You are banned from this group"
-            "password" -> "Incorrect password"
-            "full" -> "Group is full"
-            else -> "Join request rejected"
+        val event = when (data) {
+            "banned" -> GroupEvent.Banned("You are banned from this group")
+            "password" -> GroupEvent.WrongPassword("unknown") // Group ID not available in rejection
+            "full" -> GroupEvent.GroupIsFull("unknown") // Group ID not available in rejection
+            else -> GroupEvent.PermissionDenied("join group")
         }
-        emitEvent(GroupEvent.Error(reason))
-        logD { "Join rejected: $reason" }
+        emitEvent(event)
+        logD { "Join rejected: $data" }
     }
 
     private fun handleLeave(senderId: String, data: String) {
@@ -656,7 +667,7 @@ class GroupManager(
             _currentGroup.value = null
             memberMap.clear()
             updateMembersList()
-            emitEvent(GroupEvent.Error("You were kicked from the group"))
+            emitEvent(GroupEvent.Kicked("You were kicked from the group"))
             logD { "We were kicked from group" }
         }
     }
@@ -668,7 +679,7 @@ class GroupManager(
             _currentGroup.value = null
             memberMap.clear()
             updateMembersList()
-            emitEvent(GroupEvent.Error("You were banned from the group"))
+            emitEvent(GroupEvent.Banned("You were banned from the group"))
             logD { "We were banned from group" }
         }
     }
