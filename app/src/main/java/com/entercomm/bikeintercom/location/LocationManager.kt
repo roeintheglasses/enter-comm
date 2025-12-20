@@ -141,6 +141,26 @@ enum class LocationMessageType {
 }
 
 /**
+ * Location-related events for UI updates.
+ */
+sealed class LocationEvent {
+    /** Location provider (GPS/Network) is not available or disabled */
+    data class ProviderUnavailable(val provider: String) : LocationEvent()
+
+    /** Location permission was denied by user */
+    data object PermissionDenied : LocationEvent()
+
+    /** Location tracking has started successfully */
+    data class TrackingStarted(val provider: String) : LocationEvent()
+
+    /** Location tracking has stopped */
+    data object TrackingStopped : LocationEvent()
+
+    /** Location has been updated */
+    data class LocationUpdated(val location: PeerLocation) : LocationEvent()
+}
+
+/**
  * Manages location tracking and peer location sharing.
  * Uses standard Android LocationManager (no Google Play Services dependency).
  */
