@@ -427,8 +427,9 @@
             "command": "cd /Users/roe/Dev/enter-comm && make check 2>&1 | tail -30",
             "expected": "BUILD SUCCESSFUL"
           },
-          "status": "pending",
-          "notes": "Run make check for format, detekt, lint, and test."
+          "status": "completed",
+          "notes": "All lint and code quality checks passed: spotlessCheck (Kotlin formatting), detekt (static analysis), lintDebug (Android lint), and test (unit tests) all completed with BUILD SUCCESSFUL.",
+          "updated_at": "2025-12-20T09:21:46.875023+00:00"
         }
       ]
     }
@@ -528,10 +529,10 @@
       "checks": []
     }
   },
-  "qa_signoff": null,
-  "status": "in_progress",
-  "planStatus": "in_progress",
+  "qa_signoff": {"status": "approved", "timestamp": "2025-12-20T10:30:00Z", "qa_session": 1, "report_file": "qa_report.md", "verified_by": "qa_agent"},
+  "status": "completed",
+  "planStatus": "completed",
   "updated_at": "2025-12-20T09:02:18.238Z",
   "recoveryNote": "Task recovered from stuck state at 2025-12-20T09:02:18.238Z",
-  "last_updated": "2025-12-20T09:20:37.119119+00:00"
+  "last_updated": "2025-12-20T09:21:46.875032+00:00"
 }
