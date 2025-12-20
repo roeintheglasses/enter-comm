@@ -9,8 +9,8 @@ import org.junit.Test
 class TechnicalComponentsTest {
 
     // Expected colors from TechnicalComponents.kt (private vals duplicated for testing)
-    private val TechYellow = Color(0xFFFFD54F)
-    private val TechOrange = Color(0xFFFF9800)
+    private val techYellow = Color(0xFFFFD54F)
+    private val techOrange = Color(0xFFFF9800)
 
     // ============================================================================
     // formatBytes Tests
@@ -112,7 +112,7 @@ class TechnicalComponentsTest {
         assertEquals("1.0 MB", formatBytes(1024 * 1024))
 
         // Just under 1 GB
-        val justUnderGB = 1024L * 1024 * 1024 - (1024 * 1024)
+        val justUnderGB = 1024L * 1024 * 1024 - 1024 * 1024
         assertTrue(formatBytes(justUnderGB).endsWith("MB"))
 
         // Exactly 1 GB
@@ -145,17 +145,17 @@ class TechnicalComponentsTest {
 
     @Test
     fun `getPacketLossColor returns yellow for values between 5 and 15 percent`() {
-        assertEquals(TechYellow, getPacketLossColor(5.01f))
-        assertEquals(TechYellow, getPacketLossColor(10f))
-        assertEquals(TechYellow, getPacketLossColor(15f))
+        assertEquals(techYellow, getPacketLossColor(5.01f))
+        assertEquals(techYellow, getPacketLossColor(10f))
+        assertEquals(techYellow, getPacketLossColor(15f))
     }
 
     @Test
     fun `getPacketLossColor returns orange for values between 15 and 30 percent`() {
-        assertEquals(TechOrange, getPacketLossColor(15.01f))
-        assertEquals(TechOrange, getPacketLossColor(20f))
-        assertEquals(TechOrange, getPacketLossColor(25f))
-        assertEquals(TechOrange, getPacketLossColor(30f))
+        assertEquals(techOrange, getPacketLossColor(15.01f))
+        assertEquals(techOrange, getPacketLossColor(20f))
+        assertEquals(techOrange, getPacketLossColor(25f))
+        assertEquals(techOrange, getPacketLossColor(30f))
     }
 
     @Test
@@ -182,10 +182,10 @@ class TechnicalComponentsTest {
         assertEquals(TechGreen, getPacketLossColor(5f))
 
         // At 15% boundary - should be yellow (<=15 is yellow)
-        assertEquals(TechYellow, getPacketLossColor(15f))
+        assertEquals(techYellow, getPacketLossColor(15f))
 
         // At 30% boundary - should be orange (<=30 is orange)
-        assertEquals(TechOrange, getPacketLossColor(30f))
+        assertEquals(techOrange, getPacketLossColor(30f))
     }
 
     @Test

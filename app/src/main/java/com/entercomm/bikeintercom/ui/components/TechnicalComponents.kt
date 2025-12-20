@@ -1,3 +1,5 @@
+@file:Suppress("TooManyFunctions", "LongMethod", "UnusedPrivateMember")
+
 package com.entercomm.bikeintercom.ui.components
 
 import androidx.compose.animation.*
@@ -1272,12 +1274,7 @@ fun getPacketLossColor(packetLossPercent: Float): Color {
  * Follows TechnicalStatusCard pattern with animated border glow.
  */
 @Composable
-fun NetworkStatsCard(
-    stats: NetworkStats,
-    startTime: Long,
-    isActive: Boolean = false,
-    modifier: Modifier = Modifier,
-) {
+fun NetworkStatsCard(stats: NetworkStats, startTime: Long, isActive: Boolean = false, modifier: Modifier = Modifier) {
     val infiniteTransition = rememberInfiniteTransition(label = "statsCardPulse")
 
     val pulseAlpha by infiniteTransition.animateFloat(
@@ -1564,12 +1561,7 @@ fun NetworkStatsCard(
  * Individual stat item with label and value.
  */
 @Composable
-private fun StatItem(
-    label: String,
-    value: String,
-    color: Color,
-    modifier: Modifier = Modifier,
-) {
+private fun StatItem(label: String, value: String, color: Color, modifier: Modifier = Modifier) {
     Column(
         modifier = modifier,
     ) {
@@ -1594,10 +1586,7 @@ private fun StatItem(
  * Displays key metrics: packets, bytes, and packet loss percentage.
  */
 @Composable
-fun NetworkStatsRow(
-    stats: NetworkStats,
-    modifier: Modifier = Modifier,
-) {
+fun NetworkStatsRow(stats: NetworkStats, modifier: Modifier = Modifier) {
     val packetLossColor = getPacketLossColor(stats.packetLossPercent)
 
     Row(
@@ -1694,7 +1683,7 @@ private fun NetworkStatsCardNormalPreview() {
                 discoveryRequestsSent = 15,
                 discoveryResponsesReceived = 12,
             ),
-            startTime = System.currentTimeMillis() - (5 * 60 * 1000), // 5 minutes ago
+            startTime = System.currentTimeMillis() - 5 * 60 * 1000, // 5 minutes ago
             isActive = true,
             modifier = Modifier.padding(16.dp),
         )
@@ -1726,7 +1715,7 @@ private fun NetworkStatsCardHighPacketLossPreview() {
                 discoveryRequestsSent = 20,
                 discoveryResponsesReceived = 8,
             ),
-            startTime = System.currentTimeMillis() - (10 * 60 * 1000), // 10 minutes ago
+            startTime = System.currentTimeMillis() - 10 * 60 * 1000, // 10 minutes ago
             isActive = true,
             modifier = Modifier.padding(16.dp),
         )
@@ -1790,7 +1779,7 @@ private fun NetworkStatsCardLongUptimePreview() {
                 discoveryRequestsSent = 240,
                 discoveryResponsesReceived = 235,
             ),
-            startTime = System.currentTimeMillis() - (2 * 60 * 60 * 1000), // 2 hours ago
+            startTime = System.currentTimeMillis() - 2 * 60 * 60 * 1000, // 2 hours ago
             isActive = true,
             modifier = Modifier.padding(16.dp),
         )
