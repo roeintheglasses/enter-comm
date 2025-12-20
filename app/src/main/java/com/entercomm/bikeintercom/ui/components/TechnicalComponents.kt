@@ -32,6 +32,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -1583,6 +1584,138 @@ private fun StatItem(
             style = MaterialTheme.typography.bodyLarge,
             color = color,
             fontWeight = FontWeight.SemiBold,
+        )
+    }
+}
+
+// ============================================================================
+// Preview Functions for NetworkStatsCard
+// ============================================================================
+
+/**
+ * Preview for NetworkStatsCard showing normal network operation.
+ * Demonstrates typical metrics with active connection and low packet loss.
+ */
+@Preview(
+    name = "NetworkStatsCard - Normal Operation",
+    showBackground = true,
+    backgroundColor = 0xFF0A0A0A,
+)
+@Composable
+private fun NetworkStatsCardNormalPreview() {
+    EnterCommTheme {
+        NetworkStatsCard(
+            stats = NetworkStats(
+                packetsSent = 1250,
+                packetsReceived = 1248,
+                bytesSent = 512_000,
+                bytesReceived = 1_024_000,
+                audioPacketsSent = 450,
+                audioPacketsReceived = 445,
+                heartbeatsSent = 120,
+                heartbeatsReceived = 118,
+                discoveryRequestsSent = 15,
+                discoveryResponsesReceived = 12,
+            ),
+            startTime = System.currentTimeMillis() - (5 * 60 * 1000), // 5 minutes ago
+            isActive = true,
+            modifier = Modifier.padding(16.dp),
+        )
+    }
+}
+
+/**
+ * Preview for NetworkStatsCard showing high packet loss scenario.
+ * Demonstrates warning/error state with significant packet loss (>30%).
+ */
+@Preview(
+    name = "NetworkStatsCard - High Packet Loss",
+    showBackground = true,
+    backgroundColor = 0xFF0A0A0A,
+)
+@Composable
+private fun NetworkStatsCardHighPacketLossPreview() {
+    EnterCommTheme {
+        NetworkStatsCard(
+            stats = NetworkStats(
+                packetsSent = 1000,
+                packetsReceived = 600, // 40% packet loss
+                bytesSent = 256_000,
+                bytesReceived = 128_000,
+                audioPacketsSent = 300,
+                audioPacketsReceived = 180,
+                heartbeatsSent = 100,
+                heartbeatsReceived = 60,
+                discoveryRequestsSent = 20,
+                discoveryResponsesReceived = 8,
+            ),
+            startTime = System.currentTimeMillis() - (10 * 60 * 1000), // 10 minutes ago
+            isActive = true,
+            modifier = Modifier.padding(16.dp),
+        )
+    }
+}
+
+/**
+ * Preview for NetworkStatsCard showing zero stats (just started).
+ * Demonstrates initial state when connection is first established.
+ */
+@Preview(
+    name = "NetworkStatsCard - Zero Stats (Just Started)",
+    showBackground = true,
+    backgroundColor = 0xFF0A0A0A,
+)
+@Composable
+private fun NetworkStatsCardZeroStatsPreview() {
+    EnterCommTheme {
+        NetworkStatsCard(
+            stats = NetworkStats(
+                packetsSent = 0,
+                packetsReceived = 0,
+                bytesSent = 0,
+                bytesReceived = 0,
+                audioPacketsSent = 0,
+                audioPacketsReceived = 0,
+                heartbeatsSent = 0,
+                heartbeatsReceived = 0,
+                discoveryRequestsSent = 0,
+                discoveryResponsesReceived = 0,
+            ),
+            startTime = System.currentTimeMillis(), // Just now
+            isActive = false,
+            modifier = Modifier.padding(16.dp),
+        )
+    }
+}
+
+/**
+ * Preview for NetworkStatsCard showing long uptime scenario.
+ * Demonstrates display with hours of connection time and large data volumes.
+ */
+@Preview(
+    name = "NetworkStatsCard - Long Uptime",
+    showBackground = true,
+    backgroundColor = 0xFF0A0A0A,
+)
+@Composable
+private fun NetworkStatsCardLongUptimePreview() {
+    EnterCommTheme {
+        NetworkStatsCard(
+            stats = NetworkStats(
+                packetsSent = 125_000,
+                packetsReceived = 124_500,
+                bytesSent = 512_000_000, // ~512 MB
+                bytesReceived = 1_024_000_000, // ~1 GB
+                audioPacketsSent = 45_000,
+                audioPacketsReceived = 44_800,
+                heartbeatsSent = 7_200, // 2 hours of heartbeats
+                heartbeatsReceived = 7_180,
+                discoveryRequestsSent = 240,
+                discoveryResponsesReceived = 235,
+            ),
+            startTime = System.currentTimeMillis() - (2 * 60 * 60 * 1000), // 2 hours ago
+            isActive = true,
+            modifier = Modifier.padding(16.dp),
         )
     }
 }
