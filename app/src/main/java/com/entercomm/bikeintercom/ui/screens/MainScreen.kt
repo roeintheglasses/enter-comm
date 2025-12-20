@@ -47,9 +47,9 @@ import com.entercomm.bikeintercom.ui.components.*
 import com.entercomm.bikeintercom.ui.theme.*
 import com.entercomm.bikeintercom.util.AccessibilityManager
 import com.entercomm.bikeintercom.util.AccessibilitySettings
-import com.entercomm.bikeintercom.util.BoneConductionMode
 import com.entercomm.bikeintercom.util.rememberHapticFeedback
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * App state that drives all animations cohesively
@@ -771,6 +771,7 @@ private fun RadarContent(radarData: RadarData, isTracking: Boolean, onStartTrack
 @Suppress("LongMethod") // LongMethod: pre-existing due to multiple settings sections
 @Composable
 private fun SettingsContent(meshTopology: MeshTopology?, onboardingManager: OnboardingManager?, accessibilityManager: AccessibilityManager?) {
+    val context = LocalContext.current
     val userPrefs by onboardingManager?.userPreferences?.collectAsState()
         ?: remember { mutableStateOf(null) }
 
@@ -778,50 +779,92 @@ private fun SettingsContent(meshTopology: MeshTopology?, onboardingManager: Onbo
     val accessibilitySettings by accessibilityManager?.settings?.collectAsState()
         ?: remember { mutableStateOf(null) }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(PitchBlack)
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        Text(
-            text = "Settings",
-            style = MaterialTheme.typography.headlineMedium,
-            color = TextPrimary,
-            fontWeight = FontWeight.Bold,
+    // Snackbar state for restart notification
+    val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(PitchBlack)
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text(
+                text = "Settings",
+                style = MaterialTheme.typography.headlineMedium,
+                color = TextPrimary,
+                fontWeight = FontWeight.Bold,
+            )
+
+            // Profile section
+            ProfileSettingsCard(userPrefs, onboardingManager)
+
+            // Voice Feedback section
+            if (accessibilitySettings != null && accessibilityManager != null) {
+                VoiceFeedbackCard(accessibilitySettings!!, accessibilityManager)
+            }
+
+            // Haptic Feedback section
+            if (accessibilitySettings != null && accessibilityManager != null) {
+                HapticFeedbackCard(accessibilitySettings!!, accessibilityManager)
+            }
+
+            // Display Accessibility section
+            if (accessibilitySettings != null && accessibilityManager != null) {
+                DisplayAccessibilityCard(
+                    settings = accessibilitySettings!!,
+                    accessibilityManager = accessibilityManager,
+                    onRestartRequired = {
+                        coroutineScope.launch {
+                            val result = snackbarHostState.showSnackbar(
+                                message = "Restart required to apply changes",
+                                actionLabel = "Restart Now",
+                                duration = SnackbarDuration.Long,
+                            )
+                            if (result == SnackbarResult.ActionPerformed) {
+                                restartApp(context)
+                            }
+                        }
+                    },
+                )
+            }
+
+            // Riding Mode section
+            if (accessibilitySettings != null && accessibilityManager != null) {
+                RidingModeCard(accessibilitySettings!!, accessibilityManager)
+            }
+
+            // Network topology section
+            NetworkTopologyCard(meshTopology)
+
+            // About section
+            AboutCard()
+        }
+
+        // Snackbar host at the bottom
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter),
         )
-
-        // Profile section
-        ProfileSettingsCard(userPrefs, onboardingManager)
-
-        // Voice Feedback section
-        if (accessibilitySettings != null && accessibilityManager != null) {
-            VoiceFeedbackCard(accessibilitySettings!!, accessibilityManager)
-        }
-
-        // Haptic Feedback section
-        if (accessibilitySettings != null && accessibilityManager != null) {
-            HapticFeedbackCard(accessibilitySettings!!, accessibilityManager)
-        }
-
-        // Display Accessibility section
-        if (accessibilitySettings != null && accessibilityManager != null) {
-            DisplayAccessibilityCard(accessibilitySettings!!, accessibilityManager)
-        }
-
-        // Riding Mode section
-        if (accessibilitySettings != null && accessibilityManager != null) {
-            RidingModeCard(accessibilitySettings!!, accessibilityManager)
-        }
-
-        // Network topology section
-        NetworkTopologyCard(meshTopology)
-
-        // About section
-        AboutCard()
     }
+}
+
+/**
+ * Restart the app by relaunching the main activity.
+ */
+private fun restartApp(context: android.content.Context) {
+    val packageManager = context.packageManager
+    val intent = packageManager.getLaunchIntentForPackage(context.packageName)
+    intent?.addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP)
+    intent?.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+    context.startActivity(intent)
+    if (context is android.app.Activity) {
+        context.finish()
+    }
+    Runtime.getRuntime().exit(0)
 }
 
 @Composable
@@ -990,7 +1033,7 @@ private fun HapticFeedbackCard(settings: AccessibilitySettings, accessibilityMan
  * Display Accessibility settings card with large text mode and high contrast mode toggles.
  */
 @Composable
-private fun DisplayAccessibilityCard(settings: AccessibilitySettings, accessibilityManager: AccessibilityManager) {
+private fun DisplayAccessibilityCard(settings: AccessibilitySettings, accessibilityManager: AccessibilityManager, onRestartRequired: () -> Unit = {}) {
     Card(
         colors = CardDefaults.cardColors(containerColor = DarkSurface),
     ) {
@@ -1021,6 +1064,7 @@ private fun DisplayAccessibilityCard(settings: AccessibilitySettings, accessibil
                 checked = settings.largeTextMode,
                 onCheckedChange = { enabled ->
                     accessibilityManager.updateSetting { it.copy(largeTextMode = enabled) }
+                    onRestartRequired()
                 },
             )
 
@@ -1031,6 +1075,7 @@ private fun DisplayAccessibilityCard(settings: AccessibilitySettings, accessibil
                 checked = settings.highContrastMode,
                 onCheckedChange = { enabled ->
                     accessibilityManager.updateSetting { it.copy(highContrastMode = enabled) }
+                    onRestartRequired()
                 },
             )
         }
@@ -1038,19 +1083,17 @@ private fun DisplayAccessibilityCard(settings: AccessibilitySettings, accessibil
 }
 
 /**
- * Riding Mode settings card with bone conduction, volume PTT, swipe gestures, and one-handed mode.
+ * Riding Mode settings card with volume PTT.
  */
 @Composable
 private fun RidingModeCard(settings: AccessibilitySettings, accessibilityManager: AccessibilityManager) {
-    val isBoneConductionDetected by accessibilityManager.isBoneConductionDetected.collectAsState()
-
     Card(
         colors = CardDefaults.cardColors(containerColor = DarkSurface),
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             RidingModeCardHeader()
             Spacer(modifier = Modifier.height(12.dp))
-            RidingModeCardContent(settings, accessibilityManager, isBoneConductionDetected)
+            RidingModeCardContent(settings, accessibilityManager)
         }
     }
 }
@@ -1077,25 +1120,7 @@ private fun RidingModeCardHeader() {
 }
 
 @Composable
-private fun RidingModeCardContent(settings: AccessibilitySettings, accessibilityManager: AccessibilityManager, isBoneConductionDetected: Boolean) {
-    // Bone conduction mode dropdown
-    val boneConductionDescription = if (settings.boneConduction == BoneConductionMode.AUTO) {
-        if (isBoneConductionDetected) "Detected: Active" else "Not detected"
-    } else {
-        null
-    }
-
-    SettingsDropdown(
-        label = "Bone Conduction",
-        selectedOption = settings.boneConduction,
-        options = BoneConductionMode.entries.toList(),
-        onOptionSelected = { mode ->
-            accessibilityManager.updateSetting { it.copy(boneConduction = mode) }
-        },
-        optionLabel = { it.displayName() },
-        description = boneConductionDescription,
-    )
-
+private fun RidingModeCardContent(settings: AccessibilitySettings, accessibilityManager: AccessibilityManager) {
     // Volume button PTT toggle
     SettingsToggle(
         label = "Volume Button PTT",
@@ -1103,26 +1128,6 @@ private fun RidingModeCardContent(settings: AccessibilitySettings, accessibility
         checked = settings.volumeButtonPtt,
         onCheckedChange = { enabled ->
             accessibilityManager.updateSetting { it.copy(volumeButtonPtt = enabled) }
-        },
-    )
-
-    // Swipe gestures toggle
-    SettingsToggle(
-        label = "Swipe Gestures",
-        description = "Enable swipe gestures for quick actions",
-        checked = settings.swipeGesturesEnabled,
-        onCheckedChange = { enabled ->
-            accessibilityManager.updateSetting { it.copy(swipeGesturesEnabled = enabled) }
-        },
-    )
-
-    // One-handed mode toggle
-    SettingsToggle(
-        label = "One-Handed Mode",
-        description = "Optimize layout for single-hand operation",
-        checked = settings.oneHandedMode,
-        onCheckedChange = { enabled ->
-            accessibilityManager.updateSetting { it.copy(oneHandedMode = enabled) }
         },
     )
 }

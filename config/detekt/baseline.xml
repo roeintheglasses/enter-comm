@@ -13,13 +13,8 @@
     <ID>ClassOrdering:LocationManager.kt$LocationManager$Companion</ID>
     <ID>ClassOrdering:LocationManager.kt$PeerLocation$Companion</ID>
     <ID>ClassOrdering:LocationManager.kt$RadarData$Companion</ID>
-    <ID>ClassOrdering:MeshNetworkManager.kt$MeshNetworkManager$// Callbacks for audio, control, group, and location messages var onAudioDataReceived: ((ByteArray, String) -&gt; Unit)? = null</ID>
     <ID>ClassOrdering:MeshNetworkManager.kt$MeshNetworkManager$Companion</ID>
-    <ID>ClassOrdering:MeshNetworkManager.kt$MeshNetworkManager$private fun isRateLimited(ipAddress: String): Boolean</ID>
     <ID>ClassOrdering:MeshNetworkManager.kt$MeshNetworkManager$private fun validateDiscoveryPayload(payload: String): DiscoveryPayload?</ID>
-    <ID>ClassOrdering:MeshNetworkManager.kt$MeshNetworkManager$var onControlMessageReceived: ((String, String) -&gt; Unit)? = null</ID>
-    <ID>ClassOrdering:MeshNetworkManager.kt$MeshNetworkManager$var onGroupMessageReceived: ((GroupMessageType, String, ByteArray) -&gt; Unit)? = null</ID>
-    <ID>ClassOrdering:MeshNetworkManager.kt$MeshNetworkManager$var onLocationMessageReceived: ((LocationMessageType, String, ByteArray) -&gt; Unit)? = null</ID>
     <ID>ClassOrdering:MeshNetworkService.kt$MeshNetworkService$Companion</ID>
     <ID>ClassOrdering:MeshProtocol.kt$MeshProtocol$/** * Get a human-readable description of the protocol. */ val protocolDescription: String</ID>
     <ID>ClassOrdering:MeshProtocol.kt$MeshProtocol$/** * Get the protocol version identifier. * Used for protocol negotiation and debugging. */ val protocolVersion: String</ID>
@@ -36,9 +31,8 @@
     <ID>CyclomaticComplexMethod:MeshNetworkManager.kt$MeshNetworkManager$private fun handleIncomingMessage(message: MeshMessage, senderIp: String)</ID>
     <ID>CyclomaticComplexMethod:TechnicalComponents.kt$@Composable fun EnhancedNetworkTopology(topology: MeshTopology, modifier: Modifier = Modifier, onNodeClick: ((TopologyNode) -&gt; Unit)? = null)</ID>
     <ID>CyclomaticComplexMethod:TechnicalComponents.kt$@Composable fun TechnicalButton( text: String, onClick: () -&gt; Unit, modifier: Modifier = Modifier, icon: ImageVector? = null, isActive: Boolean = false, buttonType: TechnicalButtonType = TechnicalButtonType.PRIMARY, enabled: Boolean = true, minHeight: Dp = AppConfig.UI.MIN_BUTTON_HEIGHT_DP.dp, )</ID>
-    <ID>DataClassShouldBeImmutable:MeshNetworkManager.kt$MeshNetworkManager.JoinAttemptTracker$var count: Int = 0</ID>
-    <ID>DataClassShouldBeImmutable:MeshNetworkManager.kt$MeshNetworkManager.JoinAttemptTracker$var windowStart: Long = System.currentTimeMillis()</ID>
     <ID>LargeClass:MeshNetworkManager.kt$MeshNetworkManager</ID>
+    <ID>LargeClass:MeshNetworkService.kt$MeshNetworkService : Service</ID>
     <ID>LongMethod:GroupCodeDisplay.kt$@Composable fun GroupCodeDisplay(groupCode: String, modifier: Modifier = Modifier, onCopied: (() -&gt; Unit)? = null)</ID>
     <ID>LongMethod:GroupCodeDisplay.kt$@Composable fun GroupCodeShareRow(groupCode: String, modifier: Modifier = Modifier, onCopied: (() -&gt; Unit)? = null, onShared: (() -&gt; Unit)? = null)</ID>
     <ID>LongMethod:GroupComponents.kt$@Composable fun CreateGroupDialog(onDismiss: () -&gt; Unit, onCreate: (name: String, channel: Int, password: String?, maxSize: Int) -&gt; Unit)</ID>
@@ -48,9 +42,7 @@
     <ID>LongMethod:MainScreen.kt$@Composable fun IntercomMainScreen(meshService: MeshNetworkService?, isServiceBound: Boolean, onboardingManager: OnboardingManager? = null)</ID>
     <ID>LongMethod:MainScreen.kt$@Composable private fun BottomInfoSection(appMode: AppMode, connectedDevices: Int, isRunning: Boolean, modifier: Modifier = Modifier)</ID>
     <ID>LongMethod:MainScreen.kt$@Composable private fun RadarContent(radarData: RadarData, isTracking: Boolean, onStartTracking: () -&gt; Unit, onStopTracking: () -&gt; Unit, onRangeChange: () -&gt; Unit)</ID>
-    <ID>LongMethod:MainScreen.kt$@Composable private fun SettingsContent(meshTopology: MeshTopology?, onboardingManager: OnboardingManager?)</ID>
     <ID>LongMethod:MainScreen.kt$@Composable private fun StartButton(onClick: () -&gt; Unit, enabled: Boolean)</ID>
-    <ID>LongMethod:MainScreen.kt$@OptIn(ExperimentalFoundationApi::class) @Composable private fun PTTButton(isRecording: Boolean, audioLevel: Float, onPress: () -&gt; Unit, onLongPress: () -&gt; Unit)</ID>
     <ID>LongMethod:MeshNetworkManager.kt$MeshNetworkManager$fun scanAndConnectToAvailableDevices()</ID>
     <ID>LongMethod:MeshNetworkManager.kt$MeshNetworkManager$private fun handleDiscoveryMessage(message: MeshMessage, senderIp: String)</ID>
     <ID>LongMethod:MeshNetworkService.kt$MeshNetworkService$fun startMeshNetwork()</ID>
@@ -76,9 +68,7 @@
     <ID>NestedBlockDepth:AudioManager.kt$AudioManager$private suspend fun processAudioInput()</ID>
     <ID>NestedBlockDepth:ConnectionCoordinator.kt$ConnectionCoordinator$private fun getLocalWiFiDirectIP(): String</ID>
     <ID>NestedBlockDepth:ConnectionCoordinator.kt$ConnectionCoordinator$private fun getWiFiDirectGroupOwnerIP(): String</ID>
-    <ID>NestedBlockDepth:ConnectionCoordinator.kt$ConnectionCoordinator$private suspend fun handleWiFiDirectEvent(event: WiFiDirectEvent)</ID>
     <ID>NestedBlockDepth:MeshNetworkManager.kt$MeshNetworkManager$fun getLocalIPAddresses(): List&lt;String&gt;</ID>
-    <ID>NestedBlockDepth:MeshNetworkManager.kt$MeshNetworkManager$private fun getNetworkBroadcastAddresses(): List&lt;String&gt;</ID>
     <ID>NestedBlockDepth:MeshNetworkManager.kt$MeshNetworkManager$private suspend fun startAudioListener()</ID>
     <ID>ReturnCount:ConnectionCoordinator.kt$ConnectionCoordinator$fun connectToDevice(deviceAddress: String): Result&lt;Unit&gt;</ID>
     <ID>ReturnCount:EncryptedMeshProtocol.kt$EncryptedMeshProtocol$override fun deserialize(data: ByteArray, length: Int): MeshMessage?</ID>
@@ -94,11 +84,10 @@
     <ID>SwallowedException:PipeDelimitedMeshProtocol.kt$PipeDelimitedMeshProtocol$e: IllegalArgumentException</ID>
     <ID>SwallowedException:WiFiDirectManager.kt$WiFiDirectManager$e: IllegalArgumentException</ID>
     <ID>TooGenericExceptionCaught:AdpcmCodec.kt$AdpcmCodec$e: Exception</ID>
-    <ID>TooGenericExceptionCaught:ClipboardUtils.kt$ClipboardUtils$e: Exception</ID>
-    <ID>TooGenericExceptionCaught:ShareUtils.kt$ShareUtils$e: Exception</ID>
     <ID>TooGenericExceptionCaught:AudioEffectsProcessor.kt$AudioEffectsProcessor$e: Exception</ID>
     <ID>TooGenericExceptionCaught:AudioManager.kt$AudioManager$e: Exception</ID>
     <ID>TooGenericExceptionCaught:AudioManager.kt$AudioManager.PlaybackProcessor$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:ClipboardUtils.kt$ClipboardUtils$e: Exception</ID>
     <ID>TooGenericExceptionCaught:ConnectionCoordinator.kt$ConnectionCoordinator$e: Exception</ID>
     <ID>TooGenericExceptionCaught:DistanceVectorRouter.kt$DistanceVectorRouter$e: Exception</ID>
     <ID>TooGenericExceptionCaught:EncryptedMeshProtocol.kt$EncryptedMeshProtocol$e: Exception</ID>
@@ -111,6 +100,7 @@
     <ID>TooGenericExceptionCaught:OnboardingManager.kt$OnboardingManager$e: Exception</ID>
     <ID>TooGenericExceptionCaught:PipeDelimitedMeshProtocol.kt$PipeDelimitedMeshProtocol$e: Exception</ID>
     <ID>TooGenericExceptionCaught:Result.kt$Result.Companion$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:ShareUtils.kt$ShareUtils$e: Exception</ID>
     <ID>TooGenericExceptionCaught:WiFiDirectManager.kt$WiFiDirectManager$e: Exception</ID>
     <ID>TooManyFunctions:DistanceVectorRouter.kt$DistanceVectorRouter</ID>
     <ID>TooManyFunctions:GroupManager.kt$GroupManager</ID>
@@ -199,9 +189,6 @@
     <ID>UnusedPrivateProperty:RadarComponents.kt$val fontSize = 12.sp.toPx()</ID>
     <ID>UnusedPrivateProperty:RadarComponents.kt$val textMeasurer = rememberTextMeasurer()</ID>
     <ID>UnusedPrivateProperty:Theme.kt$private val LightColorScheme = lightColorScheme( primary = Purple40, secondary = PurpleGrey40, tertiary = Pink40, )</ID>
-    <ID>UnusedPrivateProperty:WiFiDirectManager.kt$WiFiDirectManager.Companion$private const val SERVICE_INSTANCE = "EnterCommBikeIntercom"</ID>
-    <ID>UnusedPrivateProperty:WiFiDirectManager.kt$WiFiDirectManager.Companion$private const val SERVICE_TYPE = "_entercomm._tcp"</ID>
-    <ID>UseIfInsteadOfWhen:MainScreen.kt$when (userPrefs?.connectionMode) { ConnectionMode.OPEN_MODE -&gt; TechOrange else -&gt; TechGreen }</ID>
     <ID>UseIfInsteadOfWhen:MainScreen.kt$when { isPressed -&gt; 0.92f else -&gt; 1f }</ID>
     <ID>UseIfInsteadOfWhen:MainScreen.kt$when { isTracking -&gt; Color.White else -&gt; TechCyan }</ID>
     <ID>UseIfInsteadOfWhen:RadarComponents.kt$when { meters &lt; 1000 -&gt; "${meters.toInt()}m" else -&gt; "${(meters / 1000).let { "%.1f".format(it) }}km" }</ID>

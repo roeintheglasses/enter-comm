@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
+import android.view.KeyEvent
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -32,7 +33,11 @@ class MainActivity : ComponentActivity() {
     private var meshService: MeshNetworkService? = null
     private var isServiceBound by mutableStateOf(false)
     private lateinit var onboardingManager: OnboardingManager
+    private lateinit var accessibilityManager: AccessibilityManager
     private var showOnboarding by mutableStateOf(true)
+
+    // Track volume button PTT state
+    private var isVolumeButtonRecording by mutableStateOf(false)
 
     private val requiredPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         arrayOf(
@@ -143,24 +148,18 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         logD { "onCreate() started" }
 
-        // Initialize onboarding manager
-        onboardingManager = OnboardingManager(this)
-        showOnboarding = onboardingManager.needsOnboarding()
-        logD { "Onboarding needed: $showOnboarding" }
-
-        // Check permissions
-        if (hasAllPermissions()) {
-            logD { "All critical permissions granted, initializing service" }
-            Toast.makeText(this, "All permissions ready! Starting app...", Toast.LENGTH_SHORT).show()
-            initializeService()
-        } else {
-            logD { "Missing critical permissions, requesting them" }
-            requestPermissions()
-        }
+        initializeManagers()
+        checkPermissionsAndStartService()
 
         logD { "Setting up UI content" }
         setContent {
-            EnterCommTheme {
+            // Collect accessibility settings for theme
+            val accessibilitySettings by accessibilityManager.settings.collectAsState()
+
+            EnterCommTheme(
+                largeTextMode = accessibilitySettings.largeTextMode,
+                highContrastMode = accessibilitySettings.highContrastMode,
+            ) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,
@@ -204,12 +203,69 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun initializeManagers() {
+        onboardingManager = OnboardingManager(this)
+        showOnboarding = onboardingManager.needsOnboarding()
+        logD { "Onboarding needed: $showOnboarding" }
+
+        accessibilityManager = AccessibilityManager(this)
+        accessibilityManager.initialize()
+        logD { "Accessibility manager initialized" }
+    }
+
+    private fun checkPermissionsAndStartService() {
+        if (hasAllPermissions()) {
+            logD { "All critical permissions granted, initializing service" }
+            Toast.makeText(this, "All permissions ready! Starting app...", Toast.LENGTH_SHORT).show()
+            initializeService()
+        } else {
+            logD { "Missing critical permissions, requesting them" }
+            requestPermissions()
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         if (isServiceBound) {
             unbindService(serviceConnection)
             isServiceBound = false
         }
+        if (::accessibilityManager.isInitialized) {
+            accessibilityManager.shutdown()
+        }
+    }
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        if (shouldHandleVolumePtt(keyCode)) {
+            // Start recording on volume button press
+            if (!isVolumeButtonRecording && meshService?.serviceState?.value?.isRunning == true) {
+                isVolumeButtonRecording = true
+                meshService?.startRecording()
+                logD { "Volume button PTT: Started recording" }
+            }
+            return true // Consume the event
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
+    override fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
+        if (shouldHandleVolumePtt(keyCode)) {
+            // Stop recording on volume button release
+            if (isVolumeButtonRecording) {
+                isVolumeButtonRecording = false
+                meshService?.stopRecording()
+                logD { "Volume button PTT: Stopped recording" }
+            }
+            return true // Consume the event
+        }
+        return super.onKeyUp(keyCode, event)
+    }
+
+    private fun shouldHandleVolumePtt(keyCode: Int): Boolean {
+        val isVolumeKey = keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN
+        return ::accessibilityManager.isInitialized &&
+            accessibilityManager.settings.value.volumeButtonPtt &&
+            isVolumeKey
     }
 
     private fun hasAllPermissions(): Boolean {

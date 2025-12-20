@@ -229,10 +229,19 @@ class MeshNetworkService : Service() {
                 // Sync peer discovery with group membership
                 meshNetworkManager.onPeerDiscovered = { peerNodeId, peerNickname ->
                     groupManager.addDiscoveredPeer(peerNodeId, peerNickname)
+                    // Voice announcement for rider joined
+                    val totalCount = meshNetworkManager.connectedNodes.value.size
+                    accessibilityManager.voiceFeedback.announceRiderJoined(peerNickname, totalCount)
                 }
                 // Sync peer disconnection with group membership
                 meshNetworkManager.onPeerDisconnected = { peerNodeId ->
+                    // Get nickname before removing (for announcement)
+                    val nickname = groupManager.members.value
+                        .find { it.nodeId == peerNodeId }?.nickname
                     groupManager.removeDisconnectedPeer(peerNodeId)
+                    // Voice announcement for rider left
+                    val totalCount = meshNetworkManager.connectedNodes.value.size
+                    accessibilityManager.voiceFeedback.announceRiderLeft(nickname, totalCount)
                 }
                 // Sync the user's nickname to mesh network for discovery messages
                 meshNetworkManager.setNickname(groupManager.nickname.value)
@@ -427,6 +436,9 @@ class MeshNetworkService : Service() {
                     )
                 }
 
+                // Voice announcement for mesh network started
+                accessibilityManager.voiceFeedback.announceMeshStarting()
+
                 logD { "Mesh network started successfully" }
             } catch (e: Exception) {
                 logE({ "Failed to start mesh network" }, e)
@@ -495,6 +507,9 @@ class MeshNetworkService : Service() {
 
                 ServiceCompat.stopForeground(this@MeshNetworkService, ServiceCompat.STOP_FOREGROUND_REMOVE)
 
+                // Voice announcement for mesh network stopped
+                accessibilityManager.voiceFeedback.announceMeshStopped()
+
                 logD { "Mesh network stopped" }
             } catch (e: Exception) {
                 logE({ "Error stopping mesh network" }, e)
@@ -505,10 +520,12 @@ class MeshNetworkService : Service() {
     fun startRecording() {
         if (_serviceState.value.isRunning && ::audioManager.isInitialized) {
             audioManager.startRecording()
+            accessibilityManager.voiceFeedback.announceRecordingState(true)
             logD { "Audio recording started" }
         } else {
             val message = if (!_serviceState.value.isRunning) "Cannot start recording: Mesh network not active" else "Audio manager not initialized"
             onError?.invoke(message)
+            accessibilityManager.voiceFeedback.announceError(message)
             logW { message }
         }
     }
@@ -516,6 +533,7 @@ class MeshNetworkService : Service() {
     fun stopRecording() {
         if (::audioManager.isInitialized) {
             audioManager.stopRecording()
+            accessibilityManager.voiceFeedback.announceRecordingState(false)
             logD { "Audio recording stopped" }
         } else {
             logW { "Audio manager not initialized, cannot stop recording" }

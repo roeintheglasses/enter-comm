@@ -18,7 +18,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.entercomm.bikeintercom.ui.theme.*
-import com.entercomm.bikeintercom.util.BoneConductionMode
 
 /**
  * A toggle switch setting row for boolean accessibility options.
@@ -333,15 +332,4 @@ private fun <T> SettingsDropdownMenuItem(option: T, isSelected: Boolean, optionL
         },
         onClick = onClick,
     )
-}
-
-/**
- * Helper function to format BoneConductionMode for display.
- */
-fun BoneConductionMode.displayName(): String {
-    return when (this) {
-        BoneConductionMode.AUTO -> "Auto"
-        BoneConductionMode.ENABLED -> "Enabled"
-        BoneConductionMode.DISABLED -> "Disabled"
-    }
 }

@@ -6,9 +6,63 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
+
+// High contrast colors for accessibility
+private val HighContrastWhite = Color(0xFFFFFFFF)
+private val HighContrastGreen = Color(0xFF00FF99) // Brighter green
+private val HighContrastCyan = Color(0xFF00FFFF) // Pure cyan
+private val HighContrastRed = Color(0xFFFF4444) // Brighter red
+private val HighContrastBlue = Color(0xFF4499FF) // Brighter blue
+private val HighContrastBorder = Color(0xFF555555) // More visible borders
+
+// High Contrast Color Scheme for accessibility
+private val HighContrastColorScheme = darkColorScheme(
+    // Core colors - brighter for visibility
+    primary = HighContrastGreen,
+    onPrimary = PitchBlack,
+    primaryContainer = DarkSurfaceVariant,
+    onPrimaryContainer = HighContrastGreen,
+
+    secondary = HighContrastCyan,
+    onSecondary = PitchBlack,
+    secondaryContainer = DarkSurfaceVariant,
+    onSecondaryContainer = HighContrastCyan,
+
+    tertiary = HighContrastBlue,
+    onTertiary = PitchBlack,
+    tertiaryContainer = DarkSurfaceVariant,
+    onTertiaryContainer = HighContrastBlue,
+
+    // Error colors
+    error = HighContrastRed,
+    onError = HighContrastWhite,
+    errorContainer = DarkSurfaceVariant,
+    onErrorContainer = HighContrastRed,
+
+    // Background colors - pure black with white text
+    background = PitchBlack,
+    onBackground = HighContrastWhite,
+    surface = PitchBlack, // Pure black instead of dark gray
+    onSurface = HighContrastWhite,
+    surfaceVariant = DarkSurfaceVariant,
+    onSurfaceVariant = HighContrastWhite, // White instead of gray
+
+    // Outline colors - more visible
+    outline = HighContrastBorder,
+    outlineVariant = HighContrastBorder,
+
+    // Surface tint
+    surfaceTint = HighContrastGreen,
+
+    // Inverse colors
+    inverseSurface = HighContrastWhite,
+    inverseOnSurface = PitchBlack,
+    inversePrimary = HighContrastGreen,
+)
 
 // Pitch Black Theme - Always use dark colors for this app
 private val PitchBlackColorScheme = darkColorScheme(
@@ -72,15 +126,19 @@ private val LightColorScheme = lightColorScheme(
 fun EnterCommTheme(
     darkTheme: Boolean = true, // Always dark theme for this app
     usePitchBlack: Boolean = true, // Control whether to use custom pitch black theme
+    largeTextMode: Boolean = false, // Accessibility: larger text
+    highContrastMode: Boolean = false, // Accessibility: higher contrast colors
     content: @Composable () -> Unit,
 ) {
-    // Always use pitch black theme for this app, ignore system preferences
-    val colorScheme = if (usePitchBlack) {
-        PitchBlackColorScheme
-    } else {
-        // Fallback to standard dark theme if needed
-        DarkColorScheme
+    // Select color scheme based on high contrast setting
+    val colorScheme = when {
+        highContrastMode -> HighContrastColorScheme
+        usePitchBlack -> PitchBlackColorScheme
+        else -> DarkColorScheme
     }
+
+    // Select typography based on large text setting
+    val typography = if (largeTextMode) LargeTypography else Typography
 
     val view = LocalView.current
     if (!view.isInEditMode) {
@@ -95,7 +153,7 @@ fun EnterCommTheme(
 
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = Typography,
+        typography = typography,
         content = content,
     )
 }
