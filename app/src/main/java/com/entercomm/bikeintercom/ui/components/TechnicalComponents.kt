@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.entercomm.bikeintercom.config.AppConfig
 import com.entercomm.bikeintercom.mesh.MeshTopology
+import com.entercomm.bikeintercom.mesh.NetworkStats
 import com.entercomm.bikeintercom.mesh.TopologyNode
 import com.entercomm.bikeintercom.ui.theme.*
 import com.entercomm.bikeintercom.util.rememberHapticFeedback
@@ -1235,5 +1236,353 @@ fun ConnectionStatusBanner(isConnected: Boolean, isConnecting: Boolean = false, 
                 letterSpacing = 0.5.sp,
             )
         }
+    }
+}
+
+/**
+ * Format bytes to human-readable string (B, KB, MB, GB).
+ * Follows the formatDistance pattern from RadarComponents.kt.
+ */
+fun formatBytes(bytes: Long): String {
+    if (bytes < 0) return "0 B"
+    return when {
+        bytes < 1024 -> "$bytes B"
+        bytes < 1024 * 1024 -> "${bytes / 1024} KB"
+        bytes < 1024 * 1024 * 1024 -> "${"%.1f".format(bytes / (1024.0 * 1024.0))} MB"
+        else -> "${"%.2f".format(bytes / (1024.0 * 1024.0 * 1024.0))} GB"
+    }
+}
+
+/**
+ * Get appropriate color based on packet loss percentage.
+ * Green (0-5%), Yellow (5-15%), Orange (15-30%), Red (30%+)
+ */
+fun getPacketLossColor(packetLossPercent: Float): Color {
+    return when {
+        packetLossPercent <= 5f -> TechGreen
+        packetLossPercent <= 15f -> TechYellow
+        packetLossPercent <= 30f -> TechOrange
+        else -> TechRed
+    }
+}
+
+/**
+ * Network statistics card displaying detailed network metrics.
+ * Follows TechnicalStatusCard pattern with animated border glow.
+ */
+@Composable
+fun NetworkStatsCard(
+    stats: NetworkStats,
+    startTime: Long,
+    isActive: Boolean = false,
+    modifier: Modifier = Modifier,
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "statsCardPulse")
+
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 0.8f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1500, easing = EaseInOutCubic),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "pulseAlpha",
+    )
+
+    val borderColor by animateColorAsState(
+        targetValue = if (isActive) TechGreen else DarkBorder,
+        animationSpec = tween(400, easing = EaseOutCubic),
+        label = "borderColor",
+    )
+
+    val glowColor = if (isActive) {
+        TechGreen.copy(alpha = pulseAlpha * 0.3f)
+    } else {
+        Color.Transparent
+    }
+
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .drawBehind {
+                if (isActive) {
+                    drawRect(
+                        brush = Brush.radialGradient(
+                            colors = listOf(glowColor, Color.Transparent),
+                            center = Offset(size.width / 2, size.height / 2),
+                            radius = size.maxDimension,
+                        ),
+                    )
+                }
+            }
+            .border(
+                width = if (isActive) 2.dp else 1.dp,
+                color = borderColor,
+                shape = RoundedCornerShape(16.dp),
+            ),
+        colors = CardDefaults.cardColors(
+            containerColor = DarkSurface,
+        ),
+        shape = RoundedCornerShape(16.dp),
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+        ) {
+            // Header row with title and status indicator
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "NETWORK STATS",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = TextPrimary,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp,
+                )
+
+                StatusIndicatorDot(
+                    isActive = isActive,
+                    isError = false,
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Uptime display
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Uptime",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary,
+                )
+                Text(
+                    text = stats.getUptimeString(startTime),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TechCyan,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Packet loss percentage
+            val packetLossColor = getPacketLossColor(stats.packetLossPercent)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Packet Loss",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary,
+                )
+                Text(
+                    text = "${"%.1f".format(stats.packetLossPercent)}%",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = packetLossColor,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Divider
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(DarkBorder),
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Packets section
+            Text(
+                text = "PACKETS",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextTertiary,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp,
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                StatItem(
+                    label = "Sent",
+                    value = stats.packetsSent.toString(),
+                    color = TechGreen,
+                    modifier = Modifier.weight(1f),
+                )
+                StatItem(
+                    label = "Received",
+                    value = stats.packetsReceived.toString(),
+                    color = TechCyan,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Bytes section
+            Text(
+                text = "DATA TRANSFER",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextTertiary,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp,
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                StatItem(
+                    label = "Sent",
+                    value = formatBytes(stats.bytesSent),
+                    color = TechGreen,
+                    modifier = Modifier.weight(1f),
+                )
+                StatItem(
+                    label = "Received",
+                    value = formatBytes(stats.bytesReceived),
+                    color = TechCyan,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Audio packets section
+            Text(
+                text = "AUDIO PACKETS",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextTertiary,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp,
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                StatItem(
+                    label = "Sent",
+                    value = stats.audioPacketsSent.toString(),
+                    color = TechGreen,
+                    modifier = Modifier.weight(1f),
+                )
+                StatItem(
+                    label = "Received",
+                    value = stats.audioPacketsReceived.toString(),
+                    color = TechCyan,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Heartbeats section
+            Text(
+                text = "HEARTBEATS",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextTertiary,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp,
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                StatItem(
+                    label = "Sent",
+                    value = stats.heartbeatsSent.toString(),
+                    color = TechGreen,
+                    modifier = Modifier.weight(1f),
+                )
+                StatItem(
+                    label = "Received",
+                    value = stats.heartbeatsReceived.toString(),
+                    color = TechCyan,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Discovery section
+            Text(
+                text = "DISCOVERY",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextTertiary,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp,
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                StatItem(
+                    label = "Requests",
+                    value = stats.discoveryRequestsSent.toString(),
+                    color = TechGreen,
+                    modifier = Modifier.weight(1f),
+                )
+                StatItem(
+                    label = "Responses",
+                    value = stats.discoveryResponsesReceived.toString(),
+                    color = TechCyan,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Individual stat item with label and value.
+ */
+@Composable
+private fun StatItem(
+    label: String,
+    value: String,
+    color: Color,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = TextTertiary,
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyLarge,
+            color = color,
+            fontWeight = FontWeight.SemiBold,
+        )
     }
 }
