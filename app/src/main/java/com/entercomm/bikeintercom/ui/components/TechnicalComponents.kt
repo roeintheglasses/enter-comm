@@ -1588,6 +1588,83 @@ private fun StatItem(
     }
 }
 
+/**
+ * Compact network stats row for inline display in smaller UI areas.
+ * Follows ConnectionStatusBanner pattern for compact horizontal layout.
+ * Displays key metrics: packets, bytes, and packet loss percentage.
+ */
+@Composable
+fun NetworkStatsRow(
+    stats: NetworkStats,
+    modifier: Modifier = Modifier,
+) {
+    val packetLossColor = getPacketLossColor(stats.packetLossPercent)
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(DarkSurface.copy(alpha = 0.5f))
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // Packets section
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.SwapVert,
+                contentDescription = null,
+                tint = TechCyan,
+                modifier = Modifier.size(16.dp),
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = "${stats.packetsSent}↑ ${stats.packetsReceived}↓",
+                style = MaterialTheme.typography.labelMedium,
+                color = TextSecondary,
+            )
+        }
+
+        // Data transfer section
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Storage,
+                contentDescription = null,
+                tint = TechGreen,
+                modifier = Modifier.size(16.dp),
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = "${formatBytes(stats.bytesSent)}↑ ${formatBytes(stats.bytesReceived)}↓",
+                style = MaterialTheme.typography.labelMedium,
+                color = TextSecondary,
+            )
+        }
+
+        // Packet loss section
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(packetLossColor),
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = "${"%.1f".format(stats.packetLossPercent)}%",
+                style = MaterialTheme.typography.labelMedium,
+                color = packetLossColor,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+    }
+}
+
 // ============================================================================
 // Preview Functions for NetworkStatsCard
 // ============================================================================
@@ -1716,6 +1793,100 @@ private fun NetworkStatsCardLongUptimePreview() {
             startTime = System.currentTimeMillis() - (2 * 60 * 60 * 1000), // 2 hours ago
             isActive = true,
             modifier = Modifier.padding(16.dp),
+        )
+    }
+}
+
+// ============================================================================
+// Preview Functions for NetworkStatsRow
+// ============================================================================
+
+/**
+ * Preview for NetworkStatsRow showing normal network operation.
+ * Demonstrates compact inline display with typical metrics.
+ */
+@Preview(
+    name = "NetworkStatsRow - Normal Operation",
+    showBackground = true,
+    backgroundColor = 0xFF0A0A0A,
+)
+@Composable
+private fun NetworkStatsRowNormalPreview() {
+    EnterCommTheme {
+        NetworkStatsRow(
+            stats = NetworkStats(
+                packetsSent = 1250,
+                packetsReceived = 1248,
+                bytesSent = 512_000,
+                bytesReceived = 1_024_000,
+                audioPacketsSent = 450,
+                audioPacketsReceived = 445,
+                heartbeatsSent = 120,
+                heartbeatsReceived = 118,
+                discoveryRequestsSent = 15,
+                discoveryResponsesReceived = 12,
+            ),
+            modifier = Modifier.padding(8.dp),
+        )
+    }
+}
+
+/**
+ * Preview for NetworkStatsRow showing high packet loss scenario.
+ * Demonstrates warning indicator with significant packet loss.
+ */
+@Preview(
+    name = "NetworkStatsRow - High Packet Loss",
+    showBackground = true,
+    backgroundColor = 0xFF0A0A0A,
+)
+@Composable
+private fun NetworkStatsRowHighPacketLossPreview() {
+    EnterCommTheme {
+        NetworkStatsRow(
+            stats = NetworkStats(
+                packetsSent = 1000,
+                packetsReceived = 600, // 40% packet loss
+                bytesSent = 256_000,
+                bytesReceived = 128_000,
+                audioPacketsSent = 300,
+                audioPacketsReceived = 180,
+                heartbeatsSent = 100,
+                heartbeatsReceived = 60,
+                discoveryRequestsSent = 20,
+                discoveryResponsesReceived = 8,
+            ),
+            modifier = Modifier.padding(8.dp),
+        )
+    }
+}
+
+/**
+ * Preview for NetworkStatsRow showing large data volumes.
+ * Demonstrates formatting of large byte values (MB/GB range).
+ */
+@Preview(
+    name = "NetworkStatsRow - Large Data Volume",
+    showBackground = true,
+    backgroundColor = 0xFF0A0A0A,
+)
+@Composable
+private fun NetworkStatsRowLargeDataPreview() {
+    EnterCommTheme {
+        NetworkStatsRow(
+            stats = NetworkStats(
+                packetsSent = 125_000,
+                packetsReceived = 124_500,
+                bytesSent = 512_000_000, // ~512 MB
+                bytesReceived = 1_024_000_000, // ~1 GB
+                audioPacketsSent = 45_000,
+                audioPacketsReceived = 44_800,
+                heartbeatsSent = 7_200,
+                heartbeatsReceived = 7_180,
+                discoveryRequestsSent = 240,
+                discoveryResponsesReceived = 235,
+            ),
+            modifier = Modifier.padding(8.dp),
         )
     }
 }
