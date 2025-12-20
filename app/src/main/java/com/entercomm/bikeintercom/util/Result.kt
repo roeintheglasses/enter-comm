@@ -65,4 +65,5 @@ sealed class MeshError(val message: String, val cause: Throwable? = null) {
     class ServiceError(message: String, cause: Throwable? = null) : MeshError(message, cause)
     class Timeout(message: String) : MeshError(message)
     class Unknown(message: String, cause: Throwable? = null) : MeshError(message, cause)
+    class InvalidGroupCode(message: String) : MeshError(message)
 }
