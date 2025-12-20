@@ -1614,7 +1614,9 @@ class MeshNetworkManager(
     }
 
     fun getLocalIPAddresses(): List<String> {
-        val ipAddresses = mutableListOf<String>()
+        // Separate lists to prioritize WiFi Direct interfaces for P2P connectivity
+        val wifiDirectIpAddresses = mutableListOf<String>()
+        val regularIpAddresses = mutableListOf<String>()
 
         try {
             val networkInterfaces = NetworkInterface.getNetworkInterfaces()
@@ -1624,13 +1626,21 @@ class MeshNetworkManager(
                     continue
                 }
 
+                val interfaceName = networkInterface.name
+                val isP2pInterface = isWiFiDirectInterface(interfaceName)
+
                 for (interfaceAddress in networkInterface.interfaceAddresses) {
                     val inetAddress = interfaceAddress.address
                     if (inetAddress is Inet4Address) {
                         val ipAddress = inetAddress.hostAddress
                         if (ipAddress != null && !ipAddress.startsWith("127.")) {
-                            ipAddresses.add(ipAddress)
-                            logD { "Found local IP: $ipAddress on interface ${networkInterface.name}" }
+                            if (isP2pInterface) {
+                                wifiDirectIpAddresses.add(ipAddress)
+                                logD { "Found WiFi Direct IP: $ipAddress on interface $interfaceName" }
+                            } else {
+                                regularIpAddresses.add(ipAddress)
+                                logD { "Found local IP: $ipAddress on interface $interfaceName" }
+                            }
                         }
                     }
                 }
@@ -1639,7 +1649,9 @@ class MeshNetworkManager(
             logE({ "Error getting local IP addresses" }, e)
         }
 
-        return ipAddresses
+        // Return WiFi Direct IPs first, followed by regular IPs
+        // This prioritizes P2P connectivity when available
+        return wifiDirectIpAddresses + regularIpAddresses
     }
 
     /**
