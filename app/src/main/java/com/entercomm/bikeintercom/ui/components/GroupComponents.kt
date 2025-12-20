@@ -38,182 +38,168 @@ fun GroupInfoCard(
     onLeaveGroup: () -> Unit,
     onCreateGroup: () -> Unit,
     onJoinGroupByCode: () -> Unit = {},
+    incomingVolume: Float? = null,
+    voiceFeedbackVolume: Float? = null,
+    onIncomingVolumeChange: ((Float) -> Unit)? = null,
+    onVoiceFeedbackVolumeChange: ((Float) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-        ),
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-        ) {
-            // Nickname row (read-only now)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column {
-                    Text(
-                        text = "Your Nickname",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        text = nickname,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
-                // Show tappable group code badge if available
-                if (groupCode != null) {
-                    GroupCodeDisplay(groupCode = groupCode)
-                }
-            }
-
+    Card(modifier = modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            GroupInfoNicknameRow(nickname, groupCode)
             Spacer(modifier = Modifier.height(12.dp))
             Divider()
             Spacer(modifier = Modifier.height(12.dp))
+            GroupInfoContent(group, memberCount, groupCode, incomingVolume, voiceFeedbackVolume, onLeaveGroup, onCreateGroup, onJoinGroupByCode, onIncomingVolumeChange, onVoiceFeedbackVolumeChange)
+        }
+    }
+}
 
-            if (group != null) {
-                // Group info
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = group.groupName,
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            // Channel badge
-                            Surface(
-                                shape = RoundedCornerShape(4.dp),
-                                color = MaterialTheme.colorScheme.primaryContainer,
-                            ) {
-                                Text(
-                                    text = "CH ${group.channelNumber}",
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                )
-                            }
-                            // Member count
-                            Text(
-                                text = "$memberCount/${group.maxSize} members",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            // Password indicator
-                            if (group.isPasswordProtected) {
-                                Icon(
-                                    imageVector = Icons.Default.Lock,
-                                    contentDescription = "Password protected",
-                                    modifier = Modifier.size(14.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-                    }
-                    TextButton(
-                        onClick = onLeaveGroup,
-                        colors = ButtonDefaults.textButtonColors(
-                            contentColor = MaterialTheme.colorScheme.error,
-                        ),
-                    ) {
-                        Text("Leave")
-                    }
-                }
+@Composable
+private fun GroupInfoNicknameRow(nickname: String, groupCode: String?) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        Column {
+            Text("Your Nickname", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(nickname, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        }
+        if (groupCode != null) GroupCodeDisplay(groupCode = groupCode)
+    }
+}
 
-                // Group code sharing info with copy/share buttons
-                if (groupCode != null) {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Divider()
-                    Spacer(modifier = Modifier.height(12.dp))
-                    GroupCodeShareRow(groupCode = groupCode)
-                }
-            } else if (groupCode != null) {
-                // Connected by code only (no full GroupManager group)
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column {
-                            Text(
-                                text = "Connected",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                            )
-                            Text(
-                                text = "Listening on code $groupCode",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        TextButton(
-                            onClick = onLeaveGroup,
-                            colors = ButtonDefaults.textButtonColors(
-                                contentColor = MaterialTheme.colorScheme.error,
-                            ),
-                        ) {
-                            Text("Leave")
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(12.dp))
-                    GroupCodeShareRow(groupCode = groupCode)
-                }
-            } else {
-                // Not connected at all - show create and join buttons
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Text(
-                        text = "Not in a group",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        Button(onClick = onCreateGroup) {
-                            Icon(
-                                imageVector = Icons.Default.Add,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Create Group")
-                        }
-                        OutlinedButton(onClick = onJoinGroupByCode) {
-                            Icon(
-                                imageVector = Icons.Default.Login,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Join Group")
-                        }
-                    }
-                }
+@Composable
+private fun GroupInfoContent(
+    group: MeshGroup?,
+    memberCount: Int,
+    groupCode: String?,
+    incomingVolume: Float?,
+    voiceFeedbackVolume: Float?,
+    onLeaveGroup: () -> Unit,
+    onCreateGroup: () -> Unit,
+    onJoinGroupByCode: () -> Unit,
+    onIncomingVolumeChange: ((Float) -> Unit)?,
+    onVoiceFeedbackVolumeChange: ((Float) -> Unit)?,
+) {
+    when {
+        group != null -> GroupInfoActiveGroup(group, memberCount, groupCode, incomingVolume, voiceFeedbackVolume, onLeaveGroup, onIncomingVolumeChange, onVoiceFeedbackVolumeChange)
+        groupCode != null -> GroupInfoCodeOnly(groupCode, incomingVolume, voiceFeedbackVolume, onLeaveGroup, onIncomingVolumeChange, onVoiceFeedbackVolumeChange)
+        else -> GroupInfoNotConnected(onCreateGroup, onJoinGroupByCode)
+    }
+}
+
+@Composable
+private fun GroupInfoActiveGroup(
+    group: MeshGroup,
+    memberCount: Int,
+    groupCode: String?,
+    incomingVolume: Float?,
+    voiceFeedbackVolume: Float?,
+    onLeaveGroup: () -> Unit,
+    onIncomingVolumeChange: ((Float) -> Unit)?,
+    onVoiceFeedbackVolumeChange: ((Float) -> Unit)?,
+) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(group.groupName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Spacer(modifier = Modifier.height(4.dp))
+            GroupInfoBadges(group, memberCount)
+        }
+        TextButton(onClick = onLeaveGroup, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("Leave") }
+    }
+    if (groupCode != null) {
+        Spacer(Modifier.height(12.dp))
+        Divider()
+        Spacer(Modifier.height(12.dp))
+        GroupCodeShareRow(groupCode)
+    }
+    GroupInfoVolumeSection(incomingVolume, voiceFeedbackVolume, onIncomingVolumeChange, onVoiceFeedbackVolumeChange)
+}
+
+@Composable
+private fun GroupInfoBadges(group: MeshGroup, memberCount: Int) {
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Surface(shape = RoundedCornerShape(4.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+            Text("CH ${group.channelNumber}", Modifier.padding(horizontal = 8.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+        }
+        Text("$memberCount/${group.maxSize} members", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (group.isPasswordProtected) Icon(Icons.Default.Lock, "Password protected", Modifier.size(14.dp), MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun GroupInfoCodeOnly(
+    groupCode: String,
+    incomingVolume: Float?,
+    voiceFeedbackVolume: Float?,
+    onLeaveGroup: () -> Unit,
+    onIncomingVolumeChange: ((Float) -> Unit)?,
+    onVoiceFeedbackVolumeChange: ((Float) -> Unit)?,
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Column {
+                Text("Connected", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("Listening on code $groupCode", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            TextButton(onClick = onLeaveGroup, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("Leave") }
+        }
+        Spacer(Modifier.height(12.dp))
+        GroupCodeShareRow(groupCode)
+        GroupInfoVolumeSection(incomingVolume, voiceFeedbackVolume, onIncomingVolumeChange, onVoiceFeedbackVolumeChange)
+    }
+}
+
+@Composable
+private fun GroupInfoVolumeSection(incomingVolume: Float?, voiceFeedbackVolume: Float?, onIncomingVolumeChange: ((Float) -> Unit)?, onVoiceFeedbackVolumeChange: ((Float) -> Unit)?) {
+    if (incomingVolume != null && onIncomingVolumeChange != null) {
+        Spacer(Modifier.height(12.dp))
+        Divider()
+        Spacer(Modifier.height(12.dp))
+        GroupVolumeControls(incomingVolume, voiceFeedbackVolume ?: 0.8f, onIncomingVolumeChange, onVoiceFeedbackVolumeChange ?: {})
+    }
+}
+
+@Composable
+private fun GroupInfoNotConnected(onCreateGroup: () -> Unit, onJoinGroupByCode: () -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+        Text("Not in a group", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Button(onClick = onCreateGroup) {
+                Icon(Icons.Default.Add, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Create Group")
+            }
+            OutlinedButton(onClick = onJoinGroupByCode) {
+                Icon(Icons.Default.Login, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Join Group")
             }
         }
+    }
+}
+
+/**
+ * Volume controls for a group.
+ */
+@Composable
+private fun GroupVolumeControls(incomingVolume: Float, voiceFeedbackVolume: Float, onIncomingVolumeChange: (Float) -> Unit, onVoiceFeedbackVolumeChange: (Float) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Volume Settings", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        VolumeSliderRow(Icons.Default.VolumeUp, "Incoming", incomingVolume, onIncomingVolumeChange)
+        VolumeSliderRow(Icons.Default.RecordVoiceOver, "Feedback", voiceFeedbackVolume, onVoiceFeedbackVolumeChange)
+    }
+}
+
+@Composable
+private fun VolumeSliderRow(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, value: Float, onValueChange: (Float) -> Unit) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.width(120.dp)) {
+            Icon(icon, null, Modifier.size(20.dp), MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.width(8.dp))
+            Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Slider(value = value, onValueChange = onValueChange, modifier = Modifier.weight(1f), valueRange = 0f..1f)
+        Text("${(value * 100).toInt()}%", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.width(40.dp))
     }
 }
 

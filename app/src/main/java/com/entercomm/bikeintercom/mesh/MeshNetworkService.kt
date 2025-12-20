@@ -16,6 +16,7 @@ import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import com.entercomm.bikeintercom.audio.AudioManager
 import com.entercomm.bikeintercom.config.AppConfig
+import com.entercomm.bikeintercom.group.GroupMemoryManager
 import com.entercomm.bikeintercom.location.LocationManager
 import com.entercomm.bikeintercom.service.ConnectionCoordinator
 import com.entercomm.bikeintercom.service.ConnectionEvent
@@ -58,6 +59,7 @@ class MeshNetworkService : Service() {
     private lateinit var groupManager: GroupManager
     private lateinit var locationManager: LocationManager
     private lateinit var accessibilityManager: AccessibilityManager
+    private lateinit var groupMemoryManager: GroupMemoryManager
 
     // Extracted components
     private lateinit var notificationHelper: NotificationHelper
@@ -100,6 +102,10 @@ class MeshNetworkService : Service() {
             accessibilityManager = AccessibilityManager(this)
             accessibilityManager.initialize()
             logD { "Accessibility manager initialized" }
+
+            // Initialize group memory manager
+            groupMemoryManager = GroupMemoryManager(this)
+            logD { "Group memory manager initialized" }
 
             // Try to initialize managers, but don't fail the service if it doesn't work
             try {
@@ -657,29 +663,50 @@ class MeshNetworkService : Service() {
     }
 
     /**
+     * Get the group memory manager for group history access.
+     */
+    fun getGroupMemoryManager(): GroupMemoryManager? {
+        return if (::groupMemoryManager.isInitialized) groupMemoryManager else null
+    }
+
+    /**
      * Set the group code for mesh filtering.
      * Only nodes with matching group codes will connect.
      */
     fun setGroupCode(code: String?) {
-        if (::meshNetworkManager.isInitialized) {
-            meshNetworkManager.setGroupCode(code)
-            logD { "Group code set to: $code" }
-
-            // Propagate group code to WiFiDirectManager for service discovery filtering
-            if (::wifiDirectManager.isInitialized) {
-                wifiDirectManager.setGroupCode(code)
-                logD { "Group code propagated to WiFiDirectManager: $code" }
-            }
-
-            // Create/update group in GroupManager when using group code
-            if (code != null && ::groupManager.isInitialized) {
-                groupManager.joinByCode(code)
-            } else if (code == null && ::groupManager.isInitialized) {
-                groupManager.leaveGroupByCode()
-            }
-        } else {
+        if (!::meshNetworkManager.isInitialized) {
             logW { "Cannot set group code - mesh network manager not initialized" }
+            return
         }
+
+        meshNetworkManager.setGroupCode(code)
+        logD { "Group code set to: $code" }
+
+        // Propagate group code to WiFiDirectManager for service discovery filtering
+        if (::wifiDirectManager.isInitialized) {
+            wifiDirectManager.setGroupCode(code)
+            logD { "Group code propagated to WiFiDirectManager: $code" }
+        }
+
+        // Create/update group in GroupManager when using group code
+        if (code != null && ::groupManager.isInitialized) {
+            groupManager.joinByCode(code)
+            recordGroupJoinAndApplyVolumes(code)
+        } else if (code == null && ::groupManager.isInitialized) {
+            groupManager.leaveGroupByCode()
+        }
+    }
+
+    private fun recordGroupJoinAndApplyVolumes(code: String) {
+        if (!::groupMemoryManager.isInitialized) return
+
+        groupMemoryManager.recordGroupJoin(code)
+        val volumes = groupMemoryManager.getGroupVolumes(code)
+
+        if (::accessibilityManager.isInitialized) {
+            accessibilityManager.updateSetting { it.copy(voiceVolume = volumes.voiceFeedbackVolume) }
+        }
+        logD { "Applied saved volumes for group $code: incoming=${volumes.incomingVolume}, voice=${volumes.voiceFeedbackVolume}" }
     }
 
     /**

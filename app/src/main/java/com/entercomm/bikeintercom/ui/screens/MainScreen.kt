@@ -38,6 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.entercomm.bikeintercom.group.GroupMemory
 import com.entercomm.bikeintercom.location.RadarData
 import com.entercomm.bikeintercom.mesh.*
 import com.entercomm.bikeintercom.onboarding.ConnectionMode
@@ -120,6 +121,13 @@ fun IntercomMainScreen(meshService: MeshNetworkService?, isServiceBound: Boolean
     var showCreateGroupDialog by remember { mutableStateOf(false) }
     var showJoinGroupDialog by remember { mutableStateOf<MeshGroup?>(null) }
     var showJoinGroupByCodeDialog by remember { mutableStateOf(false) }
+    var showRenameGroupDialog by remember { mutableStateOf<GroupMemory?>(null) }
+    var showClearHistoryDialog by remember { mutableStateOf(false) }
+
+    // Group memory state
+    val groupMemoryManager = meshService?.getGroupMemoryManager()
+    val groupHistory by groupMemoryManager?.groupHistory?.collectAsState()
+        ?: remember { mutableStateOf(emptyList()) }
 
     // Derive app mode from state - this drives all animations
     val appMode by remember(isServiceBound, serviceState) {
@@ -266,6 +274,14 @@ fun IntercomMainScreen(meshService: MeshNetworkService?, isServiceBound: Boolean
                     val formattedGroupCode = userPrefs?.currentGroupCode?.let {
                         onboardingManager?.formatGroupCode(it)
                     }
+                    val rawGroupCode = userPrefs?.currentGroupCode
+
+                    // Get current volume preferences for the active group
+                    val currentGroupVolumes = rawGroupCode?.let {
+                        groupMemoryManager?.getGroupVolumes(it)
+                    }
+                    val accessibilitySettings by accessibilityManager?.settings?.collectAsState()
+                        ?: remember { mutableStateOf(null) }
 
                     GroupContent(
                         currentGroup = currentGroup,
@@ -275,6 +291,9 @@ fun IntercomMainScreen(meshService: MeshNetworkService?, isServiceBound: Boolean
                         availableGroups = groupManager?.getAvailableGroups() ?: emptyList(),
                         isOwner = groupManager?.isOwner() ?: false,
                         localNodeId = meshService?.getMeshNetworkManager()?.let { "" } ?: "",
+                        groupHistory = groupHistory,
+                        incomingVolume = currentGroupVolumes?.incomingVolume,
+                        voiceFeedbackVolume = accessibilitySettings?.voiceVolume,
                         onCreateGroup = { showCreateGroupDialog = true },
                         onLeaveGroup = {
                             // Leave the GroupManager group
@@ -289,6 +308,27 @@ fun IntercomMainScreen(meshService: MeshNetworkService?, isServiceBound: Boolean
                         onKickMember = { nodeId -> groupManager?.kickMember(nodeId) },
                         onBanMember = { nodeId -> groupManager?.banMember(nodeId) },
                         onChannelChange = { channel -> groupManager?.changeChannel(channel) },
+                        onRejoinGroup = { group ->
+                            onboardingManager?.setCurrentGroupCode(group.groupCode)
+                            meshService?.setGroupCode(group.groupCode)
+                            Toast.makeText(context, "Rejoining ${group.displayName}...", Toast.LENGTH_SHORT).show()
+                        },
+                        onRenameGroup = { group -> showRenameGroupDialog = group },
+                        onRemoveGroup = { group -> groupMemoryManager?.removeGroup(group.groupCode) },
+                        onClearHistory = { showClearHistoryDialog = true },
+                        onIncomingVolumeChange = { volume ->
+                            rawGroupCode?.let { code ->
+                                val voiceVol = accessibilitySettings?.voiceVolume ?: 0.8f
+                                groupMemoryManager?.setGroupVolumes(code, volume, voiceVol)
+                            }
+                        },
+                        onVoiceFeedbackVolumeChange = { volume ->
+                            accessibilityManager?.updateSetting { it.copy(voiceVolume = volume) }
+                            rawGroupCode?.let { code ->
+                                val incomingVol = currentGroupVolumes?.incomingVolume ?: 0.8f
+                                groupMemoryManager?.setGroupVolumes(code, incomingVol, volume)
+                            }
+                        },
                     )
                 }
                 NavigationTab.RADAR -> {
@@ -371,6 +411,27 @@ fun IntercomMainScreen(meshService: MeshNetworkService?, isServiceBound: Boolean
                 Toast.makeText(context, "Joined group: ${onboardingManager?.formatGroupCode(normalizedCode) ?: normalizedCode}", Toast.LENGTH_SHORT).show()
             },
             isValidCode = { code -> onboardingManager?.isValidGroupCode(code) ?: false },
+        )
+    }
+
+    // Group history dialogs
+    showRenameGroupDialog?.let { group ->
+        RenameGroupDialog(
+            group = group,
+            onDismiss = { showRenameGroupDialog = null },
+            onRename = { newName ->
+                groupMemoryManager?.renameGroup(group.groupCode, newName)
+            },
+        )
+    }
+
+    if (showClearHistoryDialog) {
+        ClearHistoryDialog(
+            onDismiss = { showClearHistoryDialog = false },
+            onConfirm = {
+                groupMemoryManager?.clearHistory()
+                Toast.makeText(context, "Group history cleared", Toast.LENGTH_SHORT).show()
+            },
         )
     }
 }
@@ -462,6 +523,9 @@ private fun GroupContent(
     availableGroups: List<MeshGroup>,
     isOwner: Boolean,
     localNodeId: String,
+    groupHistory: List<GroupMemory>,
+    incomingVolume: Float?,
+    voiceFeedbackVolume: Float?,
     onCreateGroup: () -> Unit,
     onLeaveGroup: () -> Unit,
     onJoinGroup: (MeshGroup) -> Unit,
@@ -469,66 +533,63 @@ private fun GroupContent(
     onKickMember: (String) -> Unit,
     onBanMember: (String) -> Unit,
     onChannelChange: (Int) -> Unit,
+    onRejoinGroup: (GroupMemory) -> Unit,
+    onRenameGroup: (GroupMemory) -> Unit,
+    onRemoveGroup: (GroupMemory) -> Unit,
+    onClearHistory: () -> Unit,
+    onIncomingVolumeChange: (Float) -> Unit,
+    onVoiceFeedbackVolumeChange: (Float) -> Unit,
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(PitchBlack)
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        Text(
-            text = "Group & Channel",
-            style = MaterialTheme.typography.headlineMedium,
-            color = TextPrimary,
-            fontWeight = FontWeight.Bold,
-        )
-
-        // Group info card
+    Column(modifier = Modifier.fillMaxSize().background(PitchBlack).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Text("Group & Channel", style = MaterialTheme.typography.headlineMedium, color = TextPrimary, fontWeight = FontWeight.Bold)
         GroupInfoCard(
-            group = currentGroup,
-            memberCount = members.size,
-            nickname = nickname,
-            groupCode = groupCode,
-            onLeaveGroup = onLeaveGroup,
-            onCreateGroup = onCreateGroup,
-            onJoinGroupByCode = onJoinGroupByCode,
+            currentGroup, members.size, nickname, groupCode, onLeaveGroup, onCreateGroup,
+            onJoinGroupByCode, incomingVolume, voiceFeedbackVolume, onIncomingVolumeChange, onVoiceFeedbackVolumeChange,
         )
+        GroupHistorySection(currentGroup, groupCode, groupHistory, onRejoinGroup, onRenameGroup, onRemoveGroup, onClearHistory)
+        GroupChannelSection(currentGroup, isOwner, onChannelChange)
+        GroupMemberSection(currentGroup, members, localNodeId, isOwner, onKickMember, onBanMember)
+        GroupAvailableSection(currentGroup, availableGroups, onJoinGroup)
+    }
+}
 
-        // Channel selector (if in group and owner)
-        if (currentGroup != null && isOwner) {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = DarkSurface),
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    ChannelSelector(
-                        currentChannel = currentGroup.channelNumber,
-                        onChannelChange = onChannelChange,
-                        enabled = isOwner,
-                    )
-                }
+@Composable
+private fun GroupHistorySection(
+    currentGroup: MeshGroup?,
+    groupCode: String?,
+    groupHistory: List<GroupMemory>,
+    onRejoinGroup: (GroupMemory) -> Unit,
+    onRenameGroup: (GroupMemory) -> Unit,
+    onRemoveGroup: (GroupMemory) -> Unit,
+    onClearHistory: () -> Unit,
+) {
+    if (currentGroup == null && groupCode == null && groupHistory.isNotEmpty()) {
+        GroupHistoryCard(groupHistory, onRejoinGroup, onRenameGroup, onRemoveGroup, onClearHistory)
+    }
+}
+
+@Composable
+private fun GroupChannelSection(currentGroup: MeshGroup?, isOwner: Boolean, onChannelChange: (Int) -> Unit) {
+    if (currentGroup != null && isOwner) {
+        Card(colors = CardDefaults.cardColors(containerColor = DarkSurface)) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                ChannelSelector(currentGroup.channelNumber, onChannelChange, isOwner)
             }
         }
+    }
+}
 
-        // Member list
-        if (currentGroup != null && members.isNotEmpty()) {
-            MemberList(
-                members = members,
-                localNodeId = localNodeId,
-                isOwner = isOwner,
-                onKickMember = onKickMember,
-                onBanMember = onBanMember,
-            )
-        }
+@Composable
+private fun GroupMemberSection(currentGroup: MeshGroup?, members: List<GroupMember>, localNodeId: String, isOwner: Boolean, onKickMember: (String) -> Unit, onBanMember: (String) -> Unit) {
+    if (currentGroup != null && members.isNotEmpty()) {
+        MemberList(members, localNodeId, isOwner, onKickMember, onBanMember)
+    }
+}
 
-        // Available groups (if not in a group)
-        if (currentGroup == null && availableGroups.isNotEmpty()) {
-            AvailableGroupsList(
-                groups = availableGroups,
-                onJoinGroup = onJoinGroup,
-            )
-        }
+@Composable
+private fun GroupAvailableSection(currentGroup: MeshGroup?, availableGroups: List<MeshGroup>, onJoinGroup: (MeshGroup) -> Unit) {
+    if (currentGroup == null && availableGroups.isNotEmpty()) {
+        AvailableGroupsList(availableGroups, onJoinGroup)
     }
 }
 
