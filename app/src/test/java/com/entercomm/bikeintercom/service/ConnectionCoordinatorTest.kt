@@ -412,10 +412,7 @@ class ConnectionCoordinatorTest {
 
     // === Helper Functions ===
 
-    private fun createTestService(
-        address: String = "aa:bb:cc:dd:ee:ff",
-        groupCode: String? = "TEST12",
-    ): DiscoveredService {
+    private fun createTestService(address: String = "aa:bb:cc:dd:ee:ff", groupCode: String? = "TEST12"): DiscoveredService {
         return DiscoveredService(
             deviceAddress = address,
             instanceName = "EnterComm",
