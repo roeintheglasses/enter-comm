@@ -268,6 +268,16 @@ class MeshNetworkService : Service() {
                     is ConnectionEvent.DeviceDiscovered -> {
                         onDeviceDiscovered?.invoke(event.deviceName, event.deviceAddress)
                     }
+                    is ConnectionEvent.ServiceDiscovered -> {
+                        // Service discovered (may or may not match our group code)
+                        logD { "Service discovered: ${event.service.deviceAddress}" }
+                    }
+                    is ConnectionEvent.MatchingServiceDiscovered -> {
+                        // Matching service found - notify as device discovered
+                        val service = event.service
+                        val deviceName = service.device?.deviceName ?: service.instanceName
+                        onDeviceDiscovered?.invoke(deviceName, service.deviceAddress)
+                    }
                     is ConnectionEvent.ConnectionEstablished -> {
                         onConnectionEstablished?.invoke(event.address)
                     }
@@ -367,8 +377,14 @@ class MeshNetworkService : Service() {
                 meshNetworkManager.startMeshNetwork()
 
                 // Start device discovery and monitoring via connection coordinator
-                connectionCoordinator.startDiscovery()
+                // Pass current group code to enable WiFi Direct service discovery with group filtering
+                val currentGroupCode = meshNetworkManager.getGroupCode()
+                connectionCoordinator.startDiscovery(currentGroupCode)
                 connectionCoordinator.startMonitoring()
+
+                // Enable auto-connect to matching peers with same group code
+                connectionCoordinator.setAutoConnectEnabled(true)
+                logD { "WiFi Direct service discovery started with group code: $currentGroupCode" }
 
                 // Cancel any existing scan job before starting a new one
                 periodicScanJob?.cancel()
@@ -457,8 +473,11 @@ class MeshNetworkService : Service() {
                     meshNetworkManager.stopMeshNetwork()
                 }
 
-                // Stop WiFi Direct
+                // Stop WiFi Direct and cleanup services
                 if (::wifiDirectManager.isInitialized) {
+                    wifiDirectManager.stopServiceDiscovery()
+                    wifiDirectManager.clearLocalServices()
+                    wifiDirectManager.clearServiceRequests()
                     wifiDirectManager.stopDiscovery()
                     wifiDirectManager.disconnect()
                 }
@@ -591,6 +610,12 @@ class MeshNetworkService : Service() {
         if (::meshNetworkManager.isInitialized) {
             meshNetworkManager.setGroupCode(code)
             logD { "Group code set to: $code" }
+
+            // Propagate group code to WiFiDirectManager for service discovery filtering
+            if (::wifiDirectManager.isInitialized) {
+                wifiDirectManager.setGroupCode(code)
+                logD { "Group code propagated to WiFiDirectManager: $code" }
+            }
 
             // Create/update group in GroupManager when using group code
             if (code != null && ::groupManager.isInitialized) {

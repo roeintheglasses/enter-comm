@@ -42,6 +42,14 @@ object AppConfig {
         const val CONNECTION_TIMEOUT_MS = 30000L
         const val CONNECTION_COOLDOWN_MS = 5000L
         const val GROUP_OWNER_DEFAULT_IP = "192.168.49.1"
+
+        // Service Discovery Configuration
+        const val DISCOVERY_TIMEOUT_MS = 30_000L // Max time to wait for peer discovery
+        const val AUTO_CONNECT_DELAY_MS = 15_000L // Max time to establish connection after discovery
+        const val SERVICE_DISCOVERY_INTERVAL_MS = 5_000L // Interval between service discovery attempts
+        const val GROUP_OWNER_INTENT = 15 // 0-15, higher = prefer group owner, 15 = prefer client
+        const val SERVICE_TYPE = "_entercomm._tcp" // Bonjour service type for discovery
+        const val SERVICE_INSTANCE_NAME = "EnterComm" // Service instance name
     }
 
     // Service Configuration

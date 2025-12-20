@@ -181,4 +181,5 @@ network-settings.json
 
 # Auto Claude data directory
 .auto-claude/
-logs/
+logs/*
+.auto-claude-status*

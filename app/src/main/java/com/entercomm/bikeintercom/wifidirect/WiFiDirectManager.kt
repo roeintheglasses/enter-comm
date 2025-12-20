@@ -10,8 +10,11 @@ import android.content.pm.PackageManager
 import android.net.wifi.WpsInfo
 import android.net.wifi.p2p.*
 import android.net.wifi.p2p.WifiP2pManager.*
+import android.net.wifi.p2p.nsd.WifiP2pDnsSdServiceInfo
+import android.net.wifi.p2p.nsd.WifiP2pDnsSdServiceRequest
 import android.os.Build
 import androidx.core.content.ContextCompat
+import com.entercomm.bikeintercom.config.AppConfig
 import com.entercomm.bikeintercom.util.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,6 +30,17 @@ data class PeerDevice(
     val isConnected: Boolean = false,
 )
 
+/**
+ * Represents a discovered WiFi Direct service with group code information.
+ */
+data class DiscoveredService(
+    val deviceAddress: String,
+    val instanceName: String,
+    val serviceType: String,
+    val groupCode: String?,
+    val device: WifiP2pDevice? = null,
+)
+
 sealed class WiFiDirectEvent {
     object WiFiP2pEnabled : WiFiDirectEvent()
     object WiFiP2pDisabled : WiFiDirectEvent()
@@ -34,9 +48,20 @@ sealed class WiFiDirectEvent {
     data class ConnectionChanged(val info: WifiP2pInfo?) : WiFiDirectEvent()
     data class DeviceChanged(val device: WifiP2pDevice?) : WiFiDirectEvent()
     data class GroupInfoChanged(val clients: List<PeerDevice>, val isGroupOwner: Boolean) : WiFiDirectEvent()
+    object LocalServiceRegistered : WiFiDirectEvent()
+    object LocalServiceUnregistered : WiFiDirectEvent()
+    data class ServiceDiscovered(val service: DiscoveredService) : WiFiDirectEvent()
+    data class MatchingServiceDiscovered(val service: DiscoveredService) : WiFiDirectEvent()
+    object ServiceDiscoveryStarted : WiFiDirectEvent()
+    object ServiceDiscoveryStopped : WiFiDirectEvent()
+    data class AutoConnectionStarted(val service: DiscoveredService) : WiFiDirectEvent()
+    data class AutoConnectionFailed(val reason: String) : WiFiDirectEvent()
+    data class GroupCodeChanged(val previousCode: String?, val newCode: String?) : WiFiDirectEvent()
+    data class GroupModeChanged(val enabled: Boolean) : WiFiDirectEvent()
     data class Error(val message: String) : WiFiDirectEvent()
 }
 
+@Suppress("TooManyFunctions") // WiFi Direct manager requires many public methods for service lifecycle
 class WiFiDirectManager(
     private val context: Context,
     private val manager: WifiP2pManager,
@@ -44,11 +69,60 @@ class WiFiDirectManager(
 ) {
 
     companion object {
-        private const val SERVICE_TYPE = "_entercomm._tcp"
-        private const val SERVICE_INSTANCE = "EnterCommBikeIntercom"
+        private const val TXT_RECORD_GROUP_CODE_KEY = "group_code"
+
+        // Group code validation pattern: 4-8 uppercase alphanumeric characters
+        private val GROUP_CODE_PATTERN = Regex("^[A-Z0-9]{4,8}$")
+
+        /**
+         * Validates a group code format.
+         * Valid codes are 4-8 uppercase alphanumeric characters, or "OPEN" for open groups.
+         *
+         * @param code The group code to validate
+         * @return true if the code is valid, false otherwise
+         */
+        fun isValidGroupCode(code: String?): Boolean {
+            if (code == null) return true // null means no group code (open)
+            val normalizedCode = code.uppercase()
+            if (normalizedCode == "OPEN") return true
+            return GROUP_CODE_PATTERN.matches(normalizedCode)
+        }
+
+        /**
+         * Normalizes a group code for consistent comparison.
+         * Converts to uppercase and removes hyphens.
+         *
+         * @param code The group code to normalize
+         * @return The normalized code, or null if input is null or "OPEN"
+         */
+        fun normalizeGroupCode(code: String?): String? {
+            if (code == null) return null
+            val normalized = code.uppercase().replace("-", "")
+            return if (normalized == "OPEN") null else normalized
+        }
     }
 
     private var isReceiverRegistered = false
+    private var isLocalServiceRegistered = false
+    private var currentServiceInfo: WifiP2pDnsSdServiceInfo? = null
+    private var isServiceDiscoveryActive = false
+    private var currentServiceRequest: WifiP2pDnsSdServiceRequest? = null
+    private var isAutoConnecting = false
+    private var lastAutoConnectAttempt = 0L
+    private var autoConnectEnabled = false
+
+    private val _groupCode = MutableStateFlow<String?>(null)
+    val groupCode: StateFlow<String?> = _groupCode.asStateFlow()
+
+    // Group mode enabled - when true, only connect to devices with matching group codes
+    private val _groupModeEnabled = MutableStateFlow(true)
+    val groupModeEnabled: StateFlow<Boolean> = _groupModeEnabled.asStateFlow()
+
+    private val _discoveredServices = MutableStateFlow<List<DiscoveredService>>(emptyList())
+    val discoveredServices: StateFlow<List<DiscoveredService>> = _discoveredServices.asStateFlow()
+
+    private val _isServiceDiscovering = MutableStateFlow(false)
+    val isServiceDiscovering: StateFlow<Boolean> = _isServiceDiscovering.asStateFlow()
 
     /**
      * Check if required WiFi Direct permissions are granted
@@ -166,6 +240,8 @@ class WiFiDirectManager(
                 context.unregisterReceiver(receiver)
                 isReceiverRegistered = false
             }
+            clearServiceRequests()
+            clearLocalServices()
             stopDiscovery()
             disconnect()
         } catch (e: IllegalArgumentException) {
@@ -335,6 +411,595 @@ class WiFiDirectManager(
                 eventChannel.trySend(WiFiDirectEvent.GroupInfoChanged(peers, isGroupOwner))
             }
         }
+    }
+
+    /**
+     * Set the group code for service discovery filtering.
+     * The code will be normalized (uppercase, hyphens removed) and validated.
+     * If a local service is already registered, it will be re-registered with the new group code.
+     *
+     * @param code The group code to set (4-8 alphanumeric characters, or null for open mode)
+     * @return true if the group code was set successfully, false if validation failed
+     */
+    fun setGroupCode(code: String?): Boolean {
+        // Validate the group code format
+        if (!isValidGroupCode(code)) {
+            logW { "Invalid group code format: $code (must be 4-8 alphanumeric characters)" }
+            eventChannel.trySend(
+                WiFiDirectEvent.Error("Invalid group code format. Must be 4-8 alphanumeric characters."),
+            )
+            return false
+        }
+
+        // Normalize the code for consistent storage
+        val normalizedCode = normalizeGroupCode(code)
+        val previousCode = _groupCode.value
+
+        // Skip if the code hasn't changed
+        if (normalizedCode == previousCode) {
+            logD { "Group code unchanged: $normalizedCode" }
+            return true
+        }
+
+        _groupCode.value = normalizedCode
+        logD { "Group code set: $normalizedCode (was: $previousCode)" }
+
+        // Emit event for listeners
+        eventChannel.trySend(WiFiDirectEvent.GroupCodeChanged(previousCode, normalizedCode))
+
+        // Re-register local service if already registered with new group code
+        if (isLocalServiceRegistered) {
+            unregisterLocalService()
+            if (normalizedCode != null) {
+                registerLocalService(normalizedCode)
+            }
+        }
+
+        return true
+    }
+
+    /**
+     * Get the current group code.
+     */
+    fun getGroupCode(): String? = _groupCode.value
+
+    /**
+     * Enable or disable group mode filtering.
+     * When enabled, only devices with matching group codes will be considered for connection.
+     * When disabled, all discovered devices are eligible for connection (open mode).
+     *
+     * @param enabled true to enable group code filtering, false for open mode
+     */
+    fun setGroupModeEnabled(enabled: Boolean) {
+        val previousValue = _groupModeEnabled.value
+        if (enabled == previousValue) {
+            return
+        }
+
+        _groupModeEnabled.value = enabled
+        logD { "Group mode ${if (enabled) "enabled" else "disabled"}" }
+
+        // Emit event for listeners
+        eventChannel.trySend(WiFiDirectEvent.GroupModeChanged(enabled))
+    }
+
+    /**
+     * Check if group mode filtering is enabled.
+     *
+     * @return true if group code filtering is active, false if in open mode
+     */
+    fun isGroupModeEnabled(): Boolean = _groupModeEnabled.value
+
+    /**
+     * Check if a discovered service matches the current group code.
+     * Takes into account both the group code and group mode enabled state.
+     *
+     * @param service The discovered service to check
+     * @return true if the service matches (or if group mode is disabled), false otherwise
+     */
+    fun isMatchingService(service: DiscoveredService): Boolean {
+        // If group mode is disabled, all services match
+        if (!_groupModeEnabled.value) {
+            return true
+        }
+
+        val ourGroupCode = _groupCode.value
+
+        // If we have no group code (open mode), accept all services
+        if (ourGroupCode == null) {
+            return true
+        }
+
+        // Check if the service's group code matches ours
+        val theirGroupCode = normalizeGroupCode(service.groupCode)
+        return ourGroupCode == theirGroupCode
+    }
+
+    /**
+     * Clear the current group code and switch to open mode.
+     * This unregisters the local service if registered.
+     */
+    fun clearGroupCode() {
+        setGroupCode(null)
+    }
+
+    /**
+     * Register a local WiFi Direct service with the group code in the TXT record.
+     * This allows other devices to discover this device via service discovery
+     * and filter by group code.
+     */
+    @SuppressLint("MissingPermission") // Permission is checked in hasWifiDirectPermission()
+    fun registerLocalService(groupCode: String) {
+        if (!hasWifiDirectPermission()) {
+            val message = "WiFi Direct permissions not granted for service registration"
+            logE { message }
+            eventChannel.trySend(WiFiDirectEvent.Error(message))
+            return
+        }
+
+        // Unregister existing service first if any
+        if (isLocalServiceRegistered) {
+            unregisterLocalService()
+        }
+
+        // Build TXT record with group code
+        val txtRecord = mapOf(
+            TXT_RECORD_GROUP_CODE_KEY to groupCode,
+        )
+
+        // Create DNS-SD service info
+        val serviceInfo = WifiP2pDnsSdServiceInfo.newInstance(
+            AppConfig.WiFiDirect.SERVICE_INSTANCE_NAME,
+            AppConfig.WiFiDirect.SERVICE_TYPE,
+            txtRecord,
+        )
+
+        manager.addLocalService(
+            channel,
+            serviceInfo,
+            object : ActionListener {
+                override fun onSuccess() {
+                    isLocalServiceRegistered = true
+                    currentServiceInfo = serviceInfo
+                    _groupCode.value = groupCode
+                    logD { "Local service registered with group code: $groupCode" }
+                    eventChannel.trySend(WiFiDirectEvent.LocalServiceRegistered)
+                }
+
+                override fun onFailure(reason: Int) {
+                    val message = "Failed to register local service: ${getErrorMessage(reason)}"
+                    logE { message }
+                    eventChannel.trySend(WiFiDirectEvent.Error(message))
+                }
+            },
+        )
+    }
+
+    /**
+     * Unregister the local WiFi Direct service.
+     */
+    fun unregisterLocalService() {
+        if (!isLocalServiceRegistered) {
+            logD { "No local service to unregister" }
+            return
+        }
+
+        val serviceInfo = currentServiceInfo
+        if (serviceInfo == null) {
+            logW { "Local service marked as registered but serviceInfo is null" }
+            isLocalServiceRegistered = false
+            return
+        }
+
+        manager.removeLocalService(
+            channel,
+            serviceInfo,
+            object : ActionListener {
+                override fun onSuccess() {
+                    isLocalServiceRegistered = false
+                    currentServiceInfo = null
+                    logD { "Local service unregistered" }
+                    eventChannel.trySend(WiFiDirectEvent.LocalServiceUnregistered)
+                }
+
+                override fun onFailure(reason: Int) {
+                    // Still mark as unregistered to avoid stuck state
+                    isLocalServiceRegistered = false
+                    currentServiceInfo = null
+                    logE { "Failed to unregister local service: ${getErrorMessage(reason)}" }
+                }
+            },
+        )
+    }
+
+    /**
+     * Clear all registered local services.
+     */
+    fun clearLocalServices() {
+        manager.clearLocalServices(
+            channel,
+            object : ActionListener {
+                override fun onSuccess() {
+                    isLocalServiceRegistered = false
+                    currentServiceInfo = null
+                    logD { "All local services cleared" }
+                }
+
+                override fun onFailure(reason: Int) {
+                    isLocalServiceRegistered = false
+                    currentServiceInfo = null
+                    logE { "Failed to clear local services: ${getErrorMessage(reason)}" }
+                }
+            },
+        )
+    }
+
+    /**
+     * Check if a local service is currently registered.
+     */
+    fun isLocalServiceRegistered(): Boolean = isLocalServiceRegistered
+
+    /**
+     * Set up DNS-SD service discovery listeners.
+     * These listeners receive callbacks when services with TXT records are discovered.
+     */
+    @SuppressLint("MissingPermission") // Permission is checked in hasWifiDirectPermission()
+    private fun setupServiceDiscoveryListeners() {
+        // Listener for TXT records - provides the group code from service record
+        val txtListener = DnsSdTxtRecordListener { fullDomainName, txtRecordMap, srcDevice ->
+            val groupCode = txtRecordMap[TXT_RECORD_GROUP_CODE_KEY]
+            logD { "TXT record received: domain=$fullDomainName, groupCode=$groupCode, device=${srcDevice.deviceName}" }
+
+            val service = DiscoveredService(
+                deviceAddress = srcDevice.deviceAddress,
+                instanceName = fullDomainName.substringBefore('.'),
+                serviceType = fullDomainName.substringAfter('.'),
+                groupCode = groupCode,
+                device = srcDevice,
+            )
+
+            // Add to discovered services if not already present
+            val currentServices = _discoveredServices.value.toMutableList()
+            val existingIndex = currentServices.indexOfFirst { it.deviceAddress == service.deviceAddress }
+            if (existingIndex >= 0) {
+                currentServices[existingIndex] = service
+            } else {
+                currentServices.add(service)
+            }
+            _discoveredServices.value = currentServices
+
+            // Emit general service discovered event
+            eventChannel.trySend(WiFiDirectEvent.ServiceDiscovered(service))
+
+            // Check if group code matches our current group code (using normalized comparison)
+            if (isMatchingService(service)) {
+                logD { "Found matching service! Group code: $groupCode, device: ${srcDevice.deviceName}" }
+                eventChannel.trySend(WiFiDirectEvent.MatchingServiceDiscovered(service))
+            }
+        }
+
+        // Listener for service records - provides device info
+        val serviceListener = DnsSdServiceResponseListener { instanceName, serviceType, srcDevice ->
+            logD { "Service discovered: $instanceName ($serviceType) from ${srcDevice.deviceName}" }
+            // Request TXT record by triggering service discovery again if needed
+            // The TXT listener will be called with the full record
+        }
+
+        manager.setDnsSdResponseListeners(channel, serviceListener, txtListener)
+        logD { "Service discovery listeners configured" }
+    }
+
+    /**
+     * Start discovering WiFi Direct services.
+     * This discovers services advertised by other devices and filters by group code.
+     */
+    @SuppressLint("MissingPermission") // Permission is checked in hasWifiDirectPermission()
+    fun startServiceDiscovery() {
+        if (!hasWifiDirectPermission()) {
+            val message = "WiFi Direct permissions not granted for service discovery"
+            logE { message }
+            eventChannel.trySend(WiFiDirectEvent.Error(message))
+            return
+        }
+
+        if (isServiceDiscoveryActive) {
+            logD { "Service discovery already active" }
+            return
+        }
+
+        // Clear any previously discovered services
+        _discoveredServices.value = emptyList()
+
+        // Set up the listeners first
+        setupServiceDiscoveryListeners()
+
+        // Create a service request for DNS-SD services
+        val serviceRequest = WifiP2pDnsSdServiceRequest.newInstance()
+        currentServiceRequest = serviceRequest
+
+        // Add the service request
+        manager.addServiceRequest(
+            channel,
+            serviceRequest,
+            object : ActionListener {
+                override fun onSuccess() {
+                    logD { "Service request added successfully" }
+                    // Now start the actual discovery
+                    discoverServices()
+                }
+
+                override fun onFailure(reason: Int) {
+                    val message = "Failed to add service request: ${getErrorMessage(reason)}"
+                    logE { message }
+                    eventChannel.trySend(WiFiDirectEvent.Error(message))
+                }
+            },
+        )
+    }
+
+    /**
+     * Initiate service discovery after service request is added.
+     */
+    @SuppressLint("MissingPermission") // Permission is checked in caller
+    private fun discoverServices() {
+        manager.discoverServices(
+            channel,
+            object : ActionListener {
+                override fun onSuccess() {
+                    isServiceDiscoveryActive = true
+                    _isServiceDiscovering.value = true
+                    logD { "Service discovery started successfully" }
+                    eventChannel.trySend(WiFiDirectEvent.ServiceDiscoveryStarted)
+                }
+
+                override fun onFailure(reason: Int) {
+                    isServiceDiscoveryActive = false
+                    _isServiceDiscovering.value = false
+                    val message = "Service discovery failed: ${getErrorMessage(reason)}"
+                    logE { message }
+                    eventChannel.trySend(WiFiDirectEvent.Error(message))
+                }
+            },
+        )
+    }
+
+    /**
+     * Stop service discovery.
+     */
+    fun stopServiceDiscovery() {
+        if (!isServiceDiscoveryActive) {
+            logD { "Service discovery not active" }
+            return
+        }
+
+        val serviceRequest = currentServiceRequest
+        if (serviceRequest != null) {
+            manager.removeServiceRequest(
+                channel,
+                serviceRequest,
+                object : ActionListener {
+                    override fun onSuccess() {
+                        isServiceDiscoveryActive = false
+                        _isServiceDiscovering.value = false
+                        currentServiceRequest = null
+                        logD { "Service discovery stopped" }
+                        eventChannel.trySend(WiFiDirectEvent.ServiceDiscoveryStopped)
+                    }
+
+                    override fun onFailure(reason: Int) {
+                        // Still mark as inactive to avoid stuck state
+                        isServiceDiscoveryActive = false
+                        _isServiceDiscovering.value = false
+                        currentServiceRequest = null
+                        logE { "Failed to stop service discovery: ${getErrorMessage(reason)}" }
+                    }
+                },
+            )
+        } else {
+            isServiceDiscoveryActive = false
+            _isServiceDiscovering.value = false
+        }
+    }
+
+    /**
+     * Clear all service requests.
+     */
+    fun clearServiceRequests() {
+        manager.clearServiceRequests(
+            channel,
+            object : ActionListener {
+                override fun onSuccess() {
+                    isServiceDiscoveryActive = false
+                    _isServiceDiscovering.value = false
+                    currentServiceRequest = null
+                    _discoveredServices.value = emptyList()
+                    logD { "All service requests cleared" }
+                }
+
+                override fun onFailure(reason: Int) {
+                    isServiceDiscoveryActive = false
+                    _isServiceDiscovering.value = false
+                    currentServiceRequest = null
+                    logE { "Failed to clear service requests: ${getErrorMessage(reason)}" }
+                }
+            },
+        )
+    }
+
+    /**
+     * Check if service discovery is currently active.
+     */
+    fun isServiceDiscoveryActive(): Boolean = isServiceDiscoveryActive
+
+    /**
+     * Get discovered services that match the current group code.
+     * Uses normalized group code comparison and respects group mode enabled state.
+     *
+     * @return List of discovered services matching the current group criteria
+     */
+    fun getMatchingServices(): List<DiscoveredService> {
+        return _discoveredServices.value.filter { isMatchingService(it) }
+    }
+
+    /**
+     * Enable or disable automatic connection to matching peers.
+     * When enabled, the manager will automatically attempt to connect
+     * to peers with matching group codes when discovered.
+     */
+    fun setAutoConnectEnabled(enabled: Boolean) {
+        autoConnectEnabled = enabled
+        logD { "Auto-connect ${if (enabled) "enabled" else "disabled"}" }
+    }
+
+    /**
+     * Check if auto-connect is enabled.
+     */
+    fun isAutoConnectEnabled(): Boolean = autoConnectEnabled
+
+    /**
+     * Attempt to auto-connect to a matching service.
+     * This is called internally when a MatchingServiceDiscovered event occurs,
+     * or can be called externally to trigger connection to a known matching service.
+     *
+     * @param service The discovered service to connect to
+     * @return true if connection attempt was initiated, false if connection was skipped
+     */
+    @SuppressLint("MissingPermission") // Permission is checked in hasWifiDirectPermission()
+    fun autoConnectToMatchingPeer(service: DiscoveredService): Boolean {
+        val validationResult = validateAutoConnectConditions(service)
+        if (!validationResult.isValid) {
+            validationResult.failureReason?.let { reason ->
+                eventChannel.trySend(WiFiDirectEvent.AutoConnectionFailed(reason))
+            }
+            return false
+        }
+
+        val device = service.device ?: return false // Should never happen after validation
+
+        isAutoConnecting = true
+        lastAutoConnectAttempt = System.currentTimeMillis()
+
+        logD { "Auto-connecting to matching peer: ${device.deviceName} (${device.deviceAddress})" }
+        eventChannel.trySend(WiFiDirectEvent.AutoConnectionStarted(service))
+
+        // Initiate the connection
+        connectToPeer(device)
+
+        return true
+    }
+
+    /**
+     * Validates all conditions required for auto-connection.
+     * @return ValidationResult indicating if connection should proceed
+     */
+    @Suppress("ReturnCount") // Complex validation logic requires multiple early returns for clarity
+    private fun validateAutoConnectConditions(service: DiscoveredService): AutoConnectValidationResult {
+        // Check basic state conditions
+        val stateValidation = validateAutoConnectState(service)
+        if (!stateValidation.isValid) {
+            return stateValidation
+        }
+
+        // Check service and group code conditions
+        return validateServiceConditions(service)
+    }
+
+    /**
+     * Validates auto-connect state conditions (enabled, in-progress, cooldown, already connected).
+     */
+    private fun validateAutoConnectState(service: DiscoveredService): AutoConnectValidationResult {
+        if (!autoConnectEnabled) {
+            logD { "Auto-connect disabled, skipping connection to ${service.deviceAddress}" }
+            return AutoConnectValidationResult(isValid = false, failureReason = null)
+        }
+
+        if (isAutoConnecting) {
+            logW { "Auto-connection already in progress" }
+            return AutoConnectValidationResult(isValid = false, failureReason = null)
+        }
+
+        val now = System.currentTimeMillis()
+        val isInCooldown = now - lastAutoConnectAttempt < AppConfig.WiFiDirect.CONNECTION_COOLDOWN_MS
+        if (isInCooldown) {
+            val waitTime = (AppConfig.WiFiDirect.CONNECTION_COOLDOWN_MS - (now - lastAutoConnectAttempt)) / 1000
+            logW { "Auto-connection attempt too soon, wait $waitTime seconds" }
+            return AutoConnectValidationResult(isValid = false, failureReason = null)
+        }
+
+        val isAlreadyConnected = _connectionInfo.value?.groupFormed == true
+        return if (isAlreadyConnected) {
+            logD { "Already connected to a WiFi Direct group, skipping auto-connect" }
+            AutoConnectValidationResult(isValid = false, failureReason = null)
+        } else {
+            AutoConnectValidationResult(isValid = true, failureReason = null)
+        }
+    }
+
+    /**
+     * Validates service conditions (device info, group code match).
+     */
+    private fun validateServiceConditions(service: DiscoveredService): AutoConnectValidationResult {
+        if (service.device == null) {
+            logW { "Cannot auto-connect: service has no device info" }
+            return AutoConnectValidationResult(isValid = false, failureReason = "No device info available")
+        }
+
+        // Use isMatchingService for consistent group code validation
+        return if (!isMatchingService(service)) {
+            logW {
+                "Group code mismatch, skipping auto-connect. " +
+                    "Ours: ${_groupCode.value}, theirs: ${service.groupCode}"
+            }
+            AutoConnectValidationResult(isValid = false, failureReason = "Group code mismatch")
+        } else {
+            AutoConnectValidationResult(isValid = true, failureReason = null)
+        }
+    }
+
+    /**
+     * Result of auto-connect validation check.
+     */
+    private data class AutoConnectValidationResult(
+        val isValid: Boolean,
+        val failureReason: String?,
+    )
+
+    /**
+     * Reset auto-connection state.
+     * Call this when a connection attempt completes (success or failure).
+     */
+    fun resetAutoConnectState() {
+        isAutoConnecting = false
+        logD { "Auto-connect state reset" }
+    }
+
+    /**
+     * Check if an auto-connection attempt is currently in progress.
+     */
+    fun isAutoConnecting(): Boolean = isAutoConnecting
+
+    /**
+     * Attempt to connect to the first available matching service.
+     * Useful for initiating connection when services have already been discovered.
+     *
+     * @return true if connection attempt was initiated, false otherwise
+     */
+    fun connectToFirstMatchingService(): Boolean {
+        val matchingServices = getMatchingServices()
+        if (matchingServices.isEmpty()) {
+            logD { "No matching services available for connection" }
+            return false
+        }
+
+        // Try to connect to the first service with a valid device
+        for (service in matchingServices) {
+            if (service.device != null) {
+                return autoConnectToMatchingPeer(service)
+            }
+        }
+
+        logW { "No matching services with device info available" }
+        return false
     }
 
     private fun getErrorMessage(reason: Int): String {
