@@ -38,6 +38,9 @@ object BinaryDiscoveryPayload {
     /** Maximum length for any string field. */
     const val MAX_STRING_LENGTH = 255
 
+    /** Minimum payload size: version + 4 length bytes. */
+    private const val MIN_PAYLOAD_SIZE = 5
+
     /**
      * Discovery payload data.
      */
@@ -101,64 +104,44 @@ object BinaryDiscoveryPayload {
      * @param length Number of valid bytes in the data array
      * @return Parsed Payload, or null if parsing failed
      */
-    @Suppress("ReturnCount")
     fun deserialize(data: ByteArray, length: Int): Payload? {
-        if (length < 5) { // Minimum: version + 4 length bytes
+        val buffer = validateAndWrapBuffer(data, length) ?: return null
+        val fields = parseFields(buffer) ?: return null
+
+        // Register the node ID for decoding (important for binary protocol)
+        NodeIdEncoder.register(fields.nodeId)
+
+        return fields
+    }
+
+    /**
+     * Validate minimum length and version, return wrapped buffer if valid.
+     */
+    private fun validateAndWrapBuffer(data: ByteArray, length: Int): ByteBuffer? {
+        if (length < MIN_PAYLOAD_SIZE) {
             logW { "Discovery payload too short: $length bytes" }
             return null
         }
 
         val buffer = ByteBuffer.wrap(data, 0, length).order(ByteOrder.BIG_ENDIAN)
 
-        // Check version
         val version = buffer.get()
         if (version != VERSION) {
             logW { "Unsupported discovery payload version: $version" }
             return null
         }
 
-        // Read nodeId
-        val nodeIdLen = buffer.get().toInt() and 0xFF
-        if (buffer.remaining() < nodeIdLen + 3) {
-            logW { "Discovery payload truncated at nodeId" }
-            return null
-        }
-        val nodeIdBytes = ByteArray(nodeIdLen)
-        buffer.get(nodeIdBytes)
-        val nodeId = String(nodeIdBytes, Charsets.UTF_8)
+        return buffer
+    }
 
-        // Read deviceName
-        val deviceNameLen = buffer.get().toInt() and 0xFF
-        if (buffer.remaining() < deviceNameLen + 2) {
-            logW { "Discovery payload truncated at deviceName" }
-            return null
-        }
-        val deviceNameBytes = ByteArray(deviceNameLen)
-        buffer.get(deviceNameBytes)
-        val deviceName = String(deviceNameBytes, Charsets.UTF_8)
-
-        // Read groupCode
-        val groupCodeLen = buffer.get().toInt() and 0xFF
-        if (buffer.remaining() < groupCodeLen + 1) {
-            logW { "Discovery payload truncated at groupCode" }
-            return null
-        }
-        val groupCodeBytes = ByteArray(groupCodeLen)
-        buffer.get(groupCodeBytes)
-        val groupCode = String(groupCodeBytes, Charsets.UTF_8)
-
-        // Read nickname
-        val nicknameLen = buffer.get().toInt() and 0xFF
-        if (buffer.remaining() < nicknameLen) {
-            logW { "Discovery payload truncated at nickname" }
-            return null
-        }
-        val nicknameBytes = ByteArray(nicknameLen)
-        buffer.get(nicknameBytes)
-        val nickname = String(nicknameBytes, Charsets.UTF_8)
-
-        // Register the node ID for decoding (important for binary protocol)
-        NodeIdEncoder.register(nodeId)
+    /**
+     * Parse all string fields from the buffer.
+     */
+    private fun parseFields(buffer: ByteBuffer): Payload? {
+        val nodeId = readString(buffer, "nodeId", remainingAfter = 3) ?: return null
+        val deviceName = readString(buffer, "deviceName", remainingAfter = 2) ?: return null
+        val groupCode = readString(buffer, "groupCode", remainingAfter = 1) ?: return null
+        val nickname = readString(buffer, "nickname", remainingAfter = 0) ?: return null
 
         return Payload(
             nodeId = nodeId,
@@ -166,5 +149,24 @@ object BinaryDiscoveryPayload {
             groupCode = groupCode,
             nickname = nickname,
         )
+    }
+
+    /**
+     * Read a length-prefixed string from the buffer.
+     *
+     * @param buffer The buffer to read from
+     * @param fieldName Name of the field for error logging
+     * @param remainingAfter Expected minimum bytes remaining after this field
+     * @return The parsed string, or null if truncated
+     */
+    private fun readString(buffer: ByteBuffer, fieldName: String, remainingAfter: Int): String? {
+        val strLen = buffer.get().toInt() and 0xFF
+        if (buffer.remaining() < strLen + remainingAfter) {
+            logW { "Discovery payload truncated at $fieldName" }
+            return null
+        }
+        val bytes = ByteArray(strLen)
+        buffer.get(bytes)
+        return String(bytes, Charsets.UTF_8)
     }
 }

@@ -105,60 +105,6 @@ class MeshNetworkManager(
         val nickname: String,
     )
 
-    /**
-     * Validates a discovery message payload and returns a validated DiscoveryPayload if valid.
-     * Returns null if the message is malformed or fails validation.
-     * Uses binary format for efficient serialization.
-     */
-    @Suppress("ReturnCount", "ClassOrdering")
-    private fun validateDiscoveryPayload(payloadBytes: ByteArray): DiscoveryPayload? {
-        // Parse binary format
-        val parsed = BinaryDiscoveryPayload.deserialize(payloadBytes)
-        if (parsed == null) {
-            logW { "Invalid discovery payload: failed to parse binary format" }
-            return null
-        }
-
-        // Validate node ID (must be non-empty and match UUID-like pattern)
-        val nodeId = parsed.nodeId
-        if (nodeId.isEmpty() || nodeId.length > 36) {
-            logW { "Invalid discovery payload: invalid nodeId length" }
-            return null
-        }
-        if (!UUID_PATTERN.matches(nodeId)) {
-            logW { "Invalid discovery payload: nodeId doesn't match expected format" }
-            return null
-        }
-
-        // Validate device name (1-50 chars)
-        val deviceName = parsed.deviceName
-        if (deviceName.length !in MIN_DEVICE_NAME_LENGTH..MAX_DEVICE_NAME_LENGTH) {
-            logW { "Invalid discovery payload: deviceName length out of range (${deviceName.length})" }
-            return null
-        }
-
-        // Validate group code (4-8 alphanumeric, or "OPEN")
-        val groupCode = parsed.groupCode.uppercase()
-        if (groupCode != "OPEN" && !GROUP_CODE_PATTERN.matches(groupCode)) {
-            logW { "Invalid discovery payload: invalid groupCode format" }
-            return null
-        }
-
-        // Get nickname (defaults to deviceName if empty)
-        val nickname = if (parsed.nickname.isNotEmpty()) {
-            parsed.nickname.take(MAX_DEVICE_NAME_LENGTH)
-        } else {
-            deviceName
-        }
-
-        return DiscoveryPayload(
-            nodeId = nodeId,
-            deviceName = deviceName,
-            groupCode = groupCode,
-            nickname = nickname,
-        )
-    }
-
     // Sanitize device name at construction to ensure safe serialization
     private val deviceName: String = sanitizeForDelimitedFormat(deviceName)
 
@@ -259,6 +205,60 @@ class MeshNetworkManager(
     // Callback for peer disconnection - called when a peer is removed from the network
     // Parameter: nodeId
     var onPeerDisconnected: ((String) -> Unit)? = null
+
+    /**
+     * Validates a discovery message payload and returns a validated DiscoveryPayload if valid.
+     * Returns null if the message is malformed or fails validation.
+     * Uses binary format for efficient serialization.
+     */
+    private fun validateDiscoveryPayload(payloadBytes: ByteArray): DiscoveryPayload? {
+        val parsed = BinaryDiscoveryPayload.deserialize(payloadBytes)
+        if (parsed == null) {
+            logW { "Invalid discovery payload: failed to parse binary format" }
+            return null
+        }
+
+        return validateParsedDiscoveryPayload(parsed)
+    }
+
+    private fun validateParsedDiscoveryPayload(parsed: BinaryDiscoveryPayload.Payload): DiscoveryPayload? {
+        val nodeId = validateNodeId(parsed.nodeId) ?: return null
+        val deviceName = validateDeviceName(parsed.deviceName) ?: return null
+        val groupCode = validateGroupCode(parsed.groupCode) ?: return null
+        val nickname = parsed.nickname.ifEmpty { deviceName }.take(MAX_DEVICE_NAME_LENGTH)
+
+        return DiscoveryPayload(
+            nodeId = nodeId,
+            deviceName = deviceName,
+            groupCode = groupCode,
+            nickname = nickname,
+        )
+    }
+
+    private fun validateNodeId(nodeId: String): String? {
+        if (nodeId.isEmpty() || nodeId.length > 36 || !UUID_PATTERN.matches(nodeId)) {
+            logW { "Invalid discovery payload: invalid nodeId format" }
+            return null
+        }
+        return nodeId
+    }
+
+    private fun validateDeviceName(deviceName: String): String? {
+        if (deviceName.length !in MIN_DEVICE_NAME_LENGTH..MAX_DEVICE_NAME_LENGTH) {
+            logW { "Invalid discovery payload: deviceName length out of range (${deviceName.length})" }
+            return null
+        }
+        return deviceName
+    }
+
+    private fun validateGroupCode(groupCode: String): String? {
+        val normalized = groupCode.uppercase()
+        if (normalized != "OPEN" && !GROUP_CODE_PATTERN.matches(normalized)) {
+            logW { "Invalid discovery payload: invalid groupCode format" }
+            return null
+        }
+        return normalized
+    }
 
     /**
      * Set the group code for filtering connections.

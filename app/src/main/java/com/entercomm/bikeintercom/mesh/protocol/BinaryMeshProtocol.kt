@@ -93,43 +93,34 @@ class BinaryMeshProtocol : MeshProtocol {
      * @param length Number of valid bytes in the data array
      * @return Parsed MeshMessage, or null if parsing failed
      */
-    @Suppress("ReturnCount")
     override fun deserialize(data: ByteArray, length: Int): MeshMessage? {
-        // Validate minimum length
-        if (length < HEADER_SIZE) {
-            logW { "Message too short: $length bytes (minimum: $HEADER_SIZE)" }
-            return null
-        }
+        val header = parseHeader(data, length) ?: return null
+        val message = buildMessage(header) ?: return null
 
-        val buffer = ByteBuffer.wrap(data, 0, length).order(ByteOrder.BIG_ENDIAN)
+        logD { "Deserialized ${message.messageType} from ${message.sourceId}" }
+        return message
+    }
 
-        // Validate magic byte
-        val magic = buffer.get()
-        if (magic != MAGIC_BYTE) {
-            logW { "Invalid magic byte: ${magic.toInt() and 0xFF} (expected: ${MAGIC_BYTE.toInt() and 0xFF})" }
-            return null
-        }
+    /**
+     * Parsed header data from a binary message.
+     */
+    private data class ParsedHeader(
+        val messageType: MeshMessage.MessageType,
+        val ttl: Int,
+        val sourceIdEncoded: Long,
+        val destIdEncoded: Long,
+        val messageIdEncoded: Long,
+        val timestamp: Long,
+        val payload: ByteArray,
+    )
 
-        // Validate version (accept same major version)
-        val version = buffer.get()
-        val majorVersion = version.toInt() and 0xF0 shr 4
-        if (majorVersion != 1) {
-            logW { "Unsupported protocol version: $majorVersion" }
-            return null
-        }
+    /**
+     * Parse and validate the header from raw bytes.
+     */
+    private fun parseHeader(data: ByteArray, length: Int): ParsedHeader? {
+        val buffer = validateAndWrapBuffer(data, length) ?: return null
+        val messageType = parseMessageType(buffer) ?: return null
 
-        // Skip flags
-        buffer.get()
-
-        // Parse message type
-        val typeOrdinal = buffer.get().toInt() and 0xFF
-        val messageType = MeshMessage.MessageType.entries.getOrNull(typeOrdinal)
-        if (messageType == null) {
-            logW { "Unknown message type: $typeOrdinal" }
-            return null
-        }
-
-        // Parse remaining header fields
         val ttl = buffer.get().toInt() and 0xFF
         val sourceIdEncoded = buffer.long
         val destIdEncoded = buffer.long
@@ -137,43 +128,111 @@ class BinaryMeshProtocol : MeshProtocol {
         val timestamp = buffer.long
         val payloadLength = buffer.short.toInt() and 0xFFFF
 
-        // Validate payload length
-        val expectedTotal = HEADER_SIZE + payloadLength
-        if (length < expectedTotal) {
-            logW { "Truncated message: got $length bytes, expected $expectedTotal" }
-            return null
-        }
+        val payload = extractPayload(buffer, length, payloadLength) ?: return null
 
-        // Extract payload
-        val payload = ByteArray(payloadLength)
-        buffer.get(payload)
+        return ParsedHeader(
+            messageType = messageType,
+            ttl = ttl,
+            sourceIdEncoded = sourceIdEncoded,
+            destIdEncoded = destIdEncoded,
+            messageIdEncoded = messageIdEncoded,
+            timestamp = timestamp,
+            payload = payload,
+        )
+    }
 
-        // Decode node IDs
-        val sourceId = NodeIdEncoder.decode(sourceIdEncoded)
-        val destinationId = NodeIdEncoder.decode(destIdEncoded)
+    /**
+     * Validate header prefix and return a positioned buffer ready for field parsing.
+     * Validates length, magic byte, version, and skips flags.
+     */
+    private fun validateAndWrapBuffer(data: ByteArray, length: Int): ByteBuffer? {
+        if (!validateLength(length)) return null
+
+        val buffer = ByteBuffer.wrap(data, 0, length).order(ByteOrder.BIG_ENDIAN)
+
+        if (!validateMagicByte(buffer)) return null
+        if (!validateVersion(buffer)) return null
+
+        // Skip flags
+        buffer.get()
+
+        return buffer
+    }
+
+    /**
+     * Build a MeshMessage from parsed header data.
+     */
+    private fun buildMessage(header: ParsedHeader): MeshMessage? {
+        val sourceId = NodeIdEncoder.decode(header.sourceIdEncoded)
+        val destinationId = NodeIdEncoder.decode(header.destIdEncoded)
 
         if (sourceId == null) {
-            logW { "Unknown source node ID: $sourceIdEncoded" }
+            logW { "Unknown source node ID: ${header.sourceIdEncoded}" }
             return null
         }
 
         if (destinationId == null) {
-            logW { "Unknown destination node ID: $destIdEncoded" }
+            logW { "Unknown destination node ID: ${header.destIdEncoded}" }
             return null
         }
 
-        val message = MeshMessage(
-            messageId = decodeMessageId(messageIdEncoded),
+        return MeshMessage(
+            messageId = decodeMessageId(header.messageIdEncoded),
             sourceId = sourceId,
             destinationId = destinationId,
-            messageType = messageType,
-            ttl = ttl,
-            timestamp = timestamp,
-            payload = payload,
+            messageType = header.messageType,
+            ttl = header.ttl,
+            timestamp = header.timestamp,
+            payload = header.payload,
         )
+    }
 
-        logD { "Deserialized ${message.messageType} from ${message.sourceId}" }
-        return message
+    private fun validateLength(length: Int): Boolean {
+        if (length < HEADER_SIZE) {
+            logW { "Message too short: $length bytes (minimum: $HEADER_SIZE)" }
+            return false
+        }
+        return true
+    }
+
+    private fun validateMagicByte(buffer: ByteBuffer): Boolean {
+        val magic = buffer.get()
+        if (magic != MAGIC_BYTE) {
+            logW { "Invalid magic byte: ${magic.toInt() and 0xFF} (expected: ${MAGIC_BYTE.toInt() and 0xFF})" }
+            return false
+        }
+        return true
+    }
+
+    private fun validateVersion(buffer: ByteBuffer): Boolean {
+        val version = buffer.get()
+        val majorVersion = version.toInt() and 0xF0 shr 4
+        if (majorVersion != 1) {
+            logW { "Unsupported protocol version: $majorVersion" }
+            return false
+        }
+        return true
+    }
+
+    private fun parseMessageType(buffer: ByteBuffer): MeshMessage.MessageType? {
+        val typeOrdinal = buffer.get().toInt() and 0xFF
+        val messageType = MeshMessage.MessageType.entries.getOrNull(typeOrdinal)
+        if (messageType == null) {
+            logW { "Unknown message type: $typeOrdinal" }
+        }
+        return messageType
+    }
+
+    private fun extractPayload(buffer: ByteBuffer, totalLength: Int, payloadLength: Int): ByteArray? {
+        val expectedTotal = HEADER_SIZE + payloadLength
+        if (totalLength < expectedTotal) {
+            logW { "Truncated message: got $totalLength bytes, expected $expectedTotal" }
+            return null
+        }
+
+        val payload = ByteArray(payloadLength)
+        buffer.get(payload)
+        return payload
     }
 
     /**
