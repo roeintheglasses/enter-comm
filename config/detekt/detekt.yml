@@ -40,6 +40,7 @@ complexity:
     ignoreDefaultParameters: true
     ignoreDataClasses: true
     ignoreAnnotatedParameter: []
+    ignoreAnnotated: ['Composable']
   NestedBlockDepth:
     active: true
     threshold: 4

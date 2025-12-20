@@ -112,6 +112,9 @@ fun IntercomMainScreen(meshService: MeshNetworkService?, isServiceBound: Boolean
     val connectedNodes by meshNetworkManager?.connectedNodes?.collectAsState()
         ?: remember { mutableStateOf(emptyList()) }
     val networkStartTime = remember { System.currentTimeMillis() }
+    val diagnosticsState = remember(meshTopology, networkStats, connectedNodes, networkStartTime) {
+        DiagnosticsState(meshTopology, networkStats, connectedNodes, networkStartTime)
+    }
 
     // Dialog states
     var showCreateGroupDialog by remember { mutableStateOf(false) }
@@ -236,10 +239,7 @@ fun IntercomMainScreen(meshService: MeshNetworkService?, isServiceBound: Boolean
                         appMode = appMode,
                         audioLevel = audioLevel,
                         serviceState = serviceState,
-                        meshTopology = meshTopology,
-                        networkStats = networkStats,
-                        connectedNodes = connectedNodes,
-                        networkStartTime = networkStartTime,
+                        diagnosticsState = diagnosticsState,
                         showDiagnosticsSheet = showDiagnosticsSheet,
                         onDiagnosticsClick = { showDiagnosticsSheet = true },
                         onDiagnosticsDismiss = { showDiagnosticsSheet = false },
@@ -383,10 +383,7 @@ private fun IntercomContent(
     appMode: AppMode,
     audioLevel: Float,
     serviceState: ServiceState,
-    meshTopology: MeshTopology?,
-    networkStats: NetworkStats,
-    connectedNodes: List<MeshNode>,
-    networkStartTime: Long,
+    diagnosticsState: DiagnosticsState,
     showDiagnosticsSheet: Boolean,
     onDiagnosticsClick: () -> Unit,
     onDiagnosticsDismiss: () -> Unit,
@@ -449,13 +446,7 @@ private fun IntercomContent(
 
     // Diagnostics bottom sheet
     if (showDiagnosticsSheet) {
-        DiagnosticsBottomSheet(
-            meshTopology = meshTopology,
-            networkStats = networkStats,
-            connectedNodes = connectedNodes,
-            networkStartTime = networkStartTime,
-            onDismiss = onDiagnosticsDismiss,
-        )
+        DiagnosticsBottomSheet(state = diagnosticsState, onDismiss = onDiagnosticsDismiss)
     }
 }
 
