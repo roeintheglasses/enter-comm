@@ -49,4 +49,19 @@ object BatteryManager {
             100 // Default to full on error
         }
     }
+
+    /**
+     * Get battery-aware discovery interval for mesh network scanning.
+     *
+     * @param batteryLevel Current battery level (0-100)
+     * @return Discovery interval in milliseconds
+     *   - 0-20%: 120,000ms (2 minutes) - battery critical
+     *   - 21-50%: 60,000ms (1 minute) - battery low
+     *   - 51-100%: 30,000ms (30 seconds) - normal operation
+     */
+    fun getDiscoveryIntervalForBattery(batteryLevel: Int): Long = when (batteryLevel) {
+        in 0..20 -> 120_000L // 2 minutes when battery critical
+        in 21..50 -> 60_000L // 1 minute when battery low
+        else -> 30_000L // 30 seconds normally
+    }
 }
