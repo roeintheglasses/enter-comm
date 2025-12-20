@@ -743,16 +743,6 @@ class AudioManager(
         return sampleCount
     }
 
-    private fun decodePcm(data: ByteArray): ShortArray {
-        if (data.isEmpty() || data.size % 2 != 0) return ShortArray(0)
-        val buffer = java.nio.ByteBuffer.wrap(data).order(java.nio.ByteOrder.LITTLE_ENDIAN)
-        val samples = ShortArray(data.size / 2)
-        for (i in samples.indices) {
-            samples[i] = buffer.short
-        }
-        return samples
-    }
-
     private fun Float.format(decimals: Int) = "%.${decimals}f".format(this)
 
     /**

@@ -85,8 +85,7 @@ object AudioBufferPool {
      * @param slot 0 or 1 to select which buffer
      * @return Reusable ShortArray of size [FRAME_SIZE] (960 samples)
      */
-    fun getEffectsBuffer(slot: Int): ShortArray =
-        if (slot == 0) effectsBuffer1.get()!! else effectsBuffer2.get()!!
+    fun getEffectsBuffer(slot: Int): ShortArray = if (slot == 0) effectsBuffer1.get()!! else effectsBuffer2.get()!!
 
     /**
      * Acquire a ShortArray buffer from the decode pool.
@@ -113,8 +112,8 @@ object AudioBufferPool {
         decodeBufferSize = FRAME_SIZE * 2,
         frameSize = FRAME_SIZE,
         totalMemoryBytes = ENCODED_SIZE +
-            (FRAME_SIZE * 2 * 2) + // 2 effects buffers per thread
-            (DECODE_POOL_SIZE * FRAME_SIZE * 2), // decode pool
+            FRAME_SIZE * 2 * 2 + // 2 effects buffers per thread
+            DECODE_POOL_SIZE * FRAME_SIZE * 2, // decode pool
     )
 
     /**
