@@ -69,4 +69,5 @@ sealed class MeshError(val message: String, val cause: Throwable? = null) {
     class GroupFull(message: String) : MeshError(message)
     class LocationUnavailable(message: String) : MeshError(message)
     class EncryptionFailed(message: String, cause: Throwable? = null) : MeshError(message, cause)
+    class BannedFromGroup(message: String) : MeshError(message)
 }
