@@ -50,7 +50,8 @@ interface MeshProtocol {
     companion object {
         /**
          * Create the default protocol implementation.
+         * Uses binary protocol for efficient serialization.
          */
-        fun default(): MeshProtocol = PipeDelimitedMeshProtocol()
+        fun default(): MeshProtocol = BinaryMeshProtocol()
     }
 }

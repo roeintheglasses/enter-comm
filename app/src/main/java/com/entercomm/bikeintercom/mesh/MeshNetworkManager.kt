@@ -2,7 +2,9 @@ package com.entercomm.bikeintercom.mesh
 
 import com.entercomm.bikeintercom.config.AppConfig
 import com.entercomm.bikeintercom.location.LocationMessageType
+import com.entercomm.bikeintercom.mesh.protocol.BinaryDiscoveryPayload
 import com.entercomm.bikeintercom.mesh.protocol.MeshProtocol
+import com.entercomm.bikeintercom.mesh.protocol.NodeIdEncoder
 import com.entercomm.bikeintercom.util.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -106,17 +108,19 @@ class MeshNetworkManager(
     /**
      * Validates a discovery message payload and returns a validated DiscoveryPayload if valid.
      * Returns null if the message is malformed or fails validation.
-     * Format: nodeId|deviceName|groupCode|nickname (nickname is optional for backwards compatibility)
+     * Uses binary format for efficient serialization.
      */
-    private fun validateDiscoveryPayload(payload: String): DiscoveryPayload? {
-        val parts = payload.split("|")
-        if (parts.size < 2) {
-            logW { "Invalid discovery payload: too few fields" }
+    @Suppress("ReturnCount", "ClassOrdering")
+    private fun validateDiscoveryPayload(payloadBytes: ByteArray): DiscoveryPayload? {
+        // Parse binary format
+        val parsed = BinaryDiscoveryPayload.deserialize(payloadBytes)
+        if (parsed == null) {
+            logW { "Invalid discovery payload: failed to parse binary format" }
             return null
         }
 
         // Validate node ID (must be non-empty and match UUID-like pattern)
-        val nodeId = parts[0]
+        val nodeId = parsed.nodeId
         if (nodeId.isEmpty() || nodeId.length > 36) {
             logW { "Invalid discovery payload: invalid nodeId length" }
             return null
@@ -127,30 +131,30 @@ class MeshNetworkManager(
         }
 
         // Validate device name (1-50 chars)
-        val deviceName = parts[1]
+        val deviceName = parsed.deviceName
         if (deviceName.length !in MIN_DEVICE_NAME_LENGTH..MAX_DEVICE_NAME_LENGTH) {
             logW { "Invalid discovery payload: deviceName length out of range (${deviceName.length})" }
             return null
         }
 
         // Validate group code (4-8 alphanumeric, or "OPEN")
-        val groupCode = if (parts.size >= 3) parts[2].uppercase() else "OPEN"
+        val groupCode = parsed.groupCode.uppercase()
         if (groupCode != "OPEN" && !GROUP_CODE_PATTERN.matches(groupCode)) {
             logW { "Invalid discovery payload: invalid groupCode format" }
             return null
         }
 
-        // Get nickname (optional field, defaults to deviceName for backwards compatibility)
-        val nickname = if (parts.size >= 4 && parts[3].isNotEmpty()) {
-            sanitizeForDelimitedFormat(parts[3].take(MAX_DEVICE_NAME_LENGTH))
+        // Get nickname (defaults to deviceName if empty)
+        val nickname = if (parsed.nickname.isNotEmpty()) {
+            parsed.nickname.take(MAX_DEVICE_NAME_LENGTH)
         } else {
-            sanitizeForDelimitedFormat(deviceName)
+            deviceName
         }
 
         return DiscoveryPayload(
             nodeId = nodeId,
-            deviceName = sanitizeForDelimitedFormat(deviceName),
-            groupCode = sanitizeForDelimitedFormat(groupCode),
+            deviceName = deviceName,
+            groupCode = groupCode,
             nickname = nickname,
         )
     }
@@ -736,13 +740,12 @@ class MeshNetworkManager(
 
     private fun handleDiscoveryMessage(message: MeshMessage, senderIp: String) {
         logD { "Handling discovery message from $senderIp" }
-        logD { "Message payload: ${String(message.payload)}" }
+        logD { "Message payload size: ${message.payload.size} bytes" }
 
-        // Validate the discovery payload
-        val payloadString = String(message.payload)
-        val validatedPayload = validateDiscoveryPayload(payloadString)
+        // Validate the discovery payload (binary format)
+        val validatedPayload = validateDiscoveryPayload(message.payload)
         if (validatedPayload == null) {
-            logW { "Rejecting invalid discovery message from $senderIp: $payloadString" }
+            logW { "Rejecting invalid discovery message from $senderIp" }
             return
         }
 
@@ -1098,9 +1101,12 @@ class MeshNetworkManager(
 
     private fun broadcastDiscovery() {
         scope.launch {
-            // Include group code in discovery payload for filtering
+            // Register our own node ID for binary protocol encoding
+            NodeIdEncoder.register(nodeId)
+
+            // Create binary discovery payload
             val groupCodePart = groupCode ?: "OPEN"
-            val payload = "$nodeId|$deviceName|$groupCodePart|$userNickname".toByteArray()
+            val payload = BinaryDiscoveryPayload.serialize(nodeId, deviceName, groupCodePart, userNickname)
             val message = MeshMessage(
                 sourceId = nodeId,
                 destinationId = "broadcast",
@@ -1141,9 +1147,9 @@ class MeshNetworkManager(
             try {
                 logD { "Preparing discovery message to $ipAddress:$port" }
 
-                // Include group code in discovery payload for filtering
+                // Create binary discovery payload
                 val groupCodePart = groupCode ?: "OPEN"
-                val payload = "$nodeId|$deviceName|$groupCodePart|$userNickname".toByteArray()
+                val payload = BinaryDiscoveryPayload.serialize(nodeId, deviceName, groupCodePart, userNickname)
                 val message = MeshMessage(
                     sourceId = nodeId,
                     destinationId = "discovery",
@@ -1179,9 +1185,9 @@ class MeshNetworkManager(
             try {
                 logD { "Sending discovery probe to $ipAddress:$port" }
 
-                // Include group code in discovery probe for filtering (matches broadcastDiscovery format)
+                // Create binary discovery payload
                 val groupCodePart = groupCode ?: "OPEN"
-                val payload = "$nodeId|$deviceName|$groupCodePart|$userNickname".toByteArray()
+                val payload = BinaryDiscoveryPayload.serialize(nodeId, deviceName, groupCodePart, userNickname)
                 val message = MeshMessage(
                     sourceId = nodeId,
                     destinationId = "discovery",

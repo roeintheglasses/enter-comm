@@ -1,5 +1,6 @@
 package com.entercomm.bikeintercom.mesh
 
+import com.entercomm.bikeintercom.mesh.protocol.BinaryRouteAdvertisement
 import com.entercomm.bikeintercom.util.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -531,77 +532,18 @@ class DistanceVectorRouter(
     }
 
     /**
-     * Serialize route advertisement to bytes for transmission.
+     * Serialize route advertisement to binary format for transmission.
+     * Uses compact binary encoding for efficient bandwidth usage.
      */
     fun serializeAdvertisement(advertisement: RouteAdvertisement): ByteArray {
-        val sb = StringBuilder()
-        sb.append("${advertisement.version}|")
-        sb.append("${advertisement.sourceNodeId}|")
-        sb.append("${advertisement.sequenceNumber}|")
-        sb.append("${advertisement.timestamp}|")
-        sb.append("${advertisement.routes.size}|")
-
-        for (route in advertisement.routes) {
-            sb.append("${route.destination}:${route.metric}:${route.hopCount};")
-        }
-
-        return sb.toString().toByteArray(Charsets.UTF_8)
+        return BinaryRouteAdvertisement.serialize(advertisement)
     }
 
     /**
-     * Deserialize route advertisement from bytes.
+     * Deserialize route advertisement from binary format.
      */
     fun deserializeAdvertisement(data: ByteArray): RouteAdvertisement? {
-        return try {
-            val str = String(data, Charsets.UTF_8)
-            val parts = str.split("|")
-
-            if (parts.size < 5) return null
-
-            val version = parts[0].toInt()
-            val sourceNodeId = parts[1]
-            val sequenceNumber = parts[2].toInt()
-            val timestamp = parts[3].toLong()
-            // parts[4] is route count - used for validation but not stored
-
-            if (parts.size < 6) {
-                // No routes
-                return RouteAdvertisement(
-                    version = version,
-                    sourceNodeId = sourceNodeId,
-                    sequenceNumber = sequenceNumber,
-                    routes = emptyList(),
-                    timestamp = timestamp,
-                )
-            }
-
-            val routesStr = parts[5]
-            val routes = routesStr.split(";")
-                .filter { it.isNotEmpty() }
-                .mapNotNull { routeStr ->
-                    val routeParts = routeStr.split(":")
-                    if (routeParts.size == 3) {
-                        AdvertisedRoute(
-                            destination = routeParts[0],
-                            metric = routeParts[1].toInt(),
-                            hopCount = routeParts[2].toInt(),
-                        )
-                    } else {
-                        null
-                    }
-                }
-
-            RouteAdvertisement(
-                version = version,
-                sourceNodeId = sourceNodeId,
-                sequenceNumber = sequenceNumber,
-                routes = routes,
-                timestamp = timestamp,
-            )
-        } catch (e: Exception) {
-            logE({ "Failed to deserialize route advertisement" }, e)
-            null
-        }
+        return BinaryRouteAdvertisement.deserialize(data)
     }
 
     /**
