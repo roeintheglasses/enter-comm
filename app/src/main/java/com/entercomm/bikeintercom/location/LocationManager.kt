@@ -3,12 +3,9 @@ package com.entercomm.bikeintercom.location
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationListener
-import android.os.BatteryManager
 import android.os.Bundle
 import android.os.Looper
 import androidx.core.content.ContextCompat
@@ -169,22 +166,8 @@ class LocationManager(private val context: Context) {
     companion object {
         private const val LOCATION_TIMEOUT_MS = 30000L // Consider location stale after 30s
 
-        // Battery-aware GPS update intervals
-        private const val UPDATE_INTERVAL_NORMAL_MS = 5000L // 5 seconds when battery > 50%
-        private const val UPDATE_INTERVAL_LOW_MS = 15000L // 15 seconds when battery 21-50%
-        private const val UPDATE_INTERVAL_CRITICAL_MS = 30000L // 30 seconds when battery <= 20%
-
         // Minimum distance for location updates (meters)
         private const val MIN_DISTANCE_METERS = 5f // Only update if moved at least 5 meters
-
-        /**
-         * Get GPS update interval based on battery level.
-         */
-        fun getUpdateIntervalForBattery(batteryLevel: Int): Long = when {
-            batteryLevel > 50 -> UPDATE_INTERVAL_NORMAL_MS
-            batteryLevel > 20 -> UPDATE_INTERVAL_LOW_MS
-            else -> UPDATE_INTERVAL_CRITICAL_MS
-        }
     }
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
@@ -291,8 +274,8 @@ class LocationManager(private val context: Context) {
             tryGetLastKnownLocation(locationMgr, provider)
 
             // Get battery-aware update interval
-            val batteryLevel = getBatteryLevel()
-            val updateInterval = getUpdateIntervalForBattery(batteryLevel)
+            val batteryLevel = BatteryManager.getBatteryLevel(context)
+            val updateInterval = BatteryManager.getUpdateIntervalForBattery(batteryLevel)
 
             locationMgr.requestLocationUpdates(
                 provider,
@@ -559,28 +542,6 @@ class LocationManager(private val context: Context) {
             }
         } catch (e: Exception) {
             logW({ "Could not get last known location" }, e)
-        }
-    }
-
-    /**
-     * Get current battery level (0-100).
-     */
-    private fun getBatteryLevel(): Int {
-        return try {
-            val batteryStatus = context.registerReceiver(
-                null,
-                IntentFilter(Intent.ACTION_BATTERY_CHANGED),
-            )
-            val level = batteryStatus?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
-            val scale = batteryStatus?.getIntExtra(BatteryManager.EXTRA_SCALE, 100) ?: 100
-            if (level >= 0 && scale > 0) {
-                (level * 100) / scale
-            } else {
-                100 // Default to full if unknown
-            }
-        } catch (e: Exception) {
-            logW({ "Failed to get battery level" }, e)
-            100 // Default to full on error
         }
     }
 }
