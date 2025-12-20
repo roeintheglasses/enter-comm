@@ -351,6 +351,7 @@ class MeshNetworkService : Service() {
         }
     }
 
+    @Suppress("CyclomaticComplexMethod", "LongMethod")
     fun startMeshNetwork() {
         scope.launch {
             try {
@@ -389,8 +390,24 @@ class MeshNetworkService : Service() {
                 // Initialize WiFi Direct
                 wifiDirectManager.initialize()
 
-                // Start mesh network
-                meshNetworkManager.startMeshNetwork()
+                // DON'T start mesh network immediately - wait for WiFi Direct P2P group formation
+                // The ConnectionCoordinator will start mesh when a P2P group forms
+                // This ensures mesh traffic goes over the P2P interface, not regular WiFi
+
+                // Check if we're already in a P2P group (e.g., resuming after brief disconnect)
+                val currentConnection = wifiDirectManager.connectionInfo.value
+                if (currentConnection?.groupFormed == true) {
+                    logD { "Already in P2P group, starting mesh network on P2P interface" }
+                    val p2pInterface = meshNetworkManager.getWiFiDirectInterfaceAddress()
+                    if (p2pInterface != null) {
+                        meshNetworkManager.startMeshNetworkOnInterface(p2pInterface.first)
+                    } else {
+                        logW { "P2P group exists but interface not found, starting mesh on all interfaces" }
+                        meshNetworkManager.startMeshNetwork()
+                    }
+                } else {
+                    logD { "No P2P group yet, mesh will start when group forms" }
+                }
 
                 // Start device discovery and monitoring via connection coordinator
                 // Pass current group code to enable WiFi Direct service discovery with group filtering
@@ -408,21 +425,24 @@ class MeshNetworkService : Service() {
                 // Acquire WiFi lock for mesh network operation
                 acquireScanLocks()
 
-                // Start automatic device scanning after a short delay
+                // Start periodic device scanning as fallback
+                // Only scan within P2P subnet when mesh is active on P2P interface
                 periodicScanJob = launch {
                     delay(AppConfig.Service.INITIAL_SCAN_DELAY_MS)
 
-                    if (_serviceState.value.connectedDevices == 0) {
-                        logD { "No devices found via WiFi Direct, starting network scan..." }
+                    // Only scan if mesh is running and no devices connected
+                    if (meshNetworkManager.isActive.value && _serviceState.value.connectedDevices == 0) {
+                        logD { "No devices found, starting network scan within mesh network..." }
                         performScanWithWakeLock()
-                    } else {
-                        logD { "Devices already found via WiFi Direct, skipping network scan" }
                     }
 
-                    // Periodic scanning
+                    // Periodic scanning - only when mesh is active
                     while (isActive && _serviceState.value.isRunning) {
                         delay(AppConfig.Service.PERIODIC_SCAN_INTERVAL_MS)
-                        if (_serviceState.value.isRunning && _serviceState.value.connectedDevices == 0) {
+                        if (_serviceState.value.isRunning &&
+                            meshNetworkManager.isActive.value &&
+                            _serviceState.value.connectedDevices == 0
+                        ) {
                             logD { "No devices connected, performing periodic scan..." }
                             performScanWithWakeLock()
                         }
@@ -432,14 +452,14 @@ class MeshNetworkService : Service() {
                 updateServiceState {
                     copy(
                         isRunning = true,
-                        networkStatus = "Starting...",
+                        networkStatus = "Discovering peers...",
                     )
                 }
 
                 // Voice announcement for mesh network started
                 accessibilityManager.voiceFeedback.announceMeshStarting()
 
-                logD { "Mesh network started successfully" }
+                logD { "WiFi Direct discovery started, waiting for P2P group formation..." }
             } catch (e: Exception) {
                 logE({ "Failed to start mesh network" }, e)
                 onError?.invoke("Failed to start mesh network: ${e.message}")

@@ -42,6 +42,7 @@ object AppConfig {
         const val CONNECTION_TIMEOUT_MS = 30000L
         const val CONNECTION_COOLDOWN_MS = 5000L
         const val GROUP_OWNER_DEFAULT_IP = "192.168.49.1"
+        const val GROUP_OWNER_DEFAULT_SUBNET = "192.168.49"
 
         // Service Discovery Configuration
         const val DISCOVERY_TIMEOUT_MS = 30_000L // Max time to wait for peer discovery
@@ -50,6 +51,12 @@ object AppConfig {
         const val GROUP_OWNER_INTENT = 15 // 0-15, higher = prefer group owner, 15 = prefer client
         const val SERVICE_TYPE = "_entercomm._tcp" // Bonjour service type for discovery
         const val SERVICE_INSTANCE_NAME = "EnterComm" // Service instance name
+
+        // P2P Group Management
+        const val GROUP_CREATION_TIMEOUT_MS = 15_000L // Time to wait before creating own group
+        const val P2P_INTERFACE_READY_DELAY_MS = 500L // Delay for P2P interface to stabilize
+        const val P2P_INTERFACE_RETRY_COUNT = 5 // Max retries to find P2P interface
+        const val P2P_INTERFACE_RETRY_DELAY_MS = 1000L // Delay between P2P interface retries
     }
 
     // Service Configuration

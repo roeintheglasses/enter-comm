@@ -238,6 +238,10 @@ class MeshNetworkManager(
     private var groupCode: String? = null
     private var groupModeEnabled = true // Default to group mode for privacy
 
+    // P2P interface binding - when set, sockets are bound to this specific interface
+    private var boundInterfaceName: String? = null
+    private var boundAddress: InetAddress? = null
+
     // Callbacks for audio, control, group, and location messages
     var onAudioDataReceived: ((ByteArray, String) -> Unit)? = null
     var onControlMessageReceived: ((String, String) -> Unit)? = null
@@ -369,6 +373,10 @@ class MeshNetworkManager(
         }
         discoverySocket = null
         audioSocket = null
+
+        // Clear P2P interface binding
+        boundInterfaceName = null
+        boundAddress = null
 
         // Clear all data structures
         nodes.clear()
@@ -1480,11 +1488,36 @@ class MeshNetworkManager(
         return "node-${ipAddress.replace(".", "-")}"
     }
 
+    @Suppress("CyclomaticComplexMethod", "NestedBlockDepth")
     private fun getNetworkBroadcastAddresses(): List<String> {
         val broadcastAddresses = mutableListOf<String>()
 
         try {
-            // Always include general broadcast
+            // If bound to a P2P interface, only use that interface's broadcast
+            if (boundInterfaceName != null && boundAddress != null) {
+                val networkInterface = NetworkInterface.getByName(boundInterfaceName)
+                if (networkInterface != null && networkInterface.isUp) {
+                    collectBroadcastAddressesFromInterface(networkInterface, broadcastAddresses)
+                    logD { "Using only P2P interface broadcasts: ${broadcastAddresses.joinToString(", ")}" }
+
+                    // If we couldn't get a broadcast from the interface, calculate from bound address
+                    if (broadcastAddresses.isEmpty()) {
+                        val calculatedBroadcast = calculateBroadcastFromAddress(boundAddress!!)
+                        if (calculatedBroadcast != null) {
+                            broadcastAddresses.add(calculatedBroadcast)
+                            logD { "Calculated P2P broadcast from bound address: $calculatedBroadcast" }
+                        }
+                    }
+
+                    // Return early - only use P2P broadcasts
+                    if (broadcastAddresses.isNotEmpty()) {
+                        return broadcastAddresses
+                    }
+                }
+            }
+
+            // Not bound to P2P interface - use all interfaces
+            // Include general broadcast
             broadcastAddresses.add("255.255.255.255")
 
             val networkInterfaces = NetworkInterface.getNetworkInterfaces()
@@ -1514,6 +1547,23 @@ class MeshNetworkManager(
         }
 
         return broadcastAddresses
+    }
+
+    /**
+     * Calculate broadcast address from an IP address assuming /24 subnet.
+     * This is used as fallback when the network interface doesn't report broadcast.
+     */
+    private fun calculateBroadcastFromAddress(address: InetAddress): String? {
+        return try {
+            if (address !is Inet4Address) return null
+            val addressBytes = address.address
+            // Assume /24 subnet for P2P
+            addressBytes[3] = 0xFF.toByte()
+            addressBytes.joinToString(".") { (it.toInt() and 0xFF).toString() }
+        } catch (e: Exception) {
+            logW({ "Failed to calculate broadcast from address" }, e)
+            null
+        }
     }
 
     /**
@@ -1680,6 +1730,180 @@ class MeshNetworkManager(
      */
     fun getReachableDestinations(): Set<String> {
         return router.getReachableDestinations()
+    }
+
+    // ========== WiFi Direct P2P Interface Support ==========
+
+    /**
+     * Log all network interfaces for debugging.
+     * Useful for diagnosing P2P connectivity issues.
+     */
+    @Suppress("NestedBlockDepth")
+    fun logNetworkInterfaces() {
+        logD { "=== Network Interface Diagnostic ===" }
+        try {
+            val interfaces = NetworkInterface.getNetworkInterfaces()
+            for (networkInterface in interfaces) {
+                if (!networkInterface.isUp) continue
+
+                val isP2P = isWiFiDirectInterface(networkInterface.name)
+                val prefix = if (isP2P) "[P2P] " else ""
+
+                logD { "${prefix}Interface: ${networkInterface.name}" }
+                for (addr in networkInterface.interfaceAddresses) {
+                    val inetAddr = addr.address
+                    if (inetAddr is Inet4Address) {
+                        val broadcast = addr.broadcast?.hostAddress ?: "N/A"
+                        logD { "  - ${inetAddr.hostAddress}/${addr.networkPrefixLength} broadcast=$broadcast" }
+                    }
+                }
+            }
+            logD { "Bound interface: $boundInterfaceName, Bound address: ${boundAddress?.hostAddress ?: "none"}" }
+            logD { "=== End Network Interface Diagnostic ===" }
+        } catch (e: Exception) {
+            logE({ "Error logging interfaces" }, e)
+        }
+    }
+
+    /**
+     * Get the IP address of the WiFi Direct P2P interface if available.
+     * Returns a Pair of (interface name, IP address) or null if no P2P interface is active.
+     */
+    @Suppress("NestedBlockDepth")
+    fun getWiFiDirectInterfaceAddress(): Pair<String, InetAddress>? {
+        try {
+            val networkInterfaces = NetworkInterface.getNetworkInterfaces()
+            for (networkInterface in networkInterfaces) {
+                if (!networkInterface.isUp || networkInterface.isLoopback) continue
+
+                if (isWiFiDirectInterface(networkInterface.name)) {
+                    for (interfaceAddress in networkInterface.interfaceAddresses) {
+                        val inetAddress = interfaceAddress.address
+                        if (inetAddress is Inet4Address && !inetAddress.isLoopbackAddress) {
+                            logD { "Found P2P interface: ${networkInterface.name} -> ${inetAddress.hostAddress}" }
+                            return Pair(networkInterface.name, inetAddress)
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            logE({ "Error finding P2P interface" }, e)
+        }
+        logD { "No P2P interface found" }
+        return null
+    }
+
+    /**
+     * Check if mesh network is bound to a specific P2P interface.
+     */
+    fun isBoundToP2PInterface(): Boolean {
+        return boundInterfaceName != null && boundAddress != null
+    }
+
+    /**
+     * Get the currently bound interface name, if any.
+     */
+    fun getBoundInterfaceName(): String? = boundInterfaceName
+
+    /**
+     * Start mesh network bound to a specific network interface.
+     * Used for WiFi Direct P2P groups where we need to bind to the p2p interface.
+     *
+     * @param interfaceName The network interface name (e.g., "p2p-wlan0-0")
+     * @param localPort The port to bind to (defaults to DISCOVERY_PORT)
+     */
+    fun startMeshNetworkOnInterface(interfaceName: String, localPort: Int = DISCOVERY_PORT) {
+        if (isRunning) {
+            logD { "Mesh network already running, stopping first to rebind to interface" }
+            stopMeshNetwork()
+        }
+
+        // Find the interface and get its IP
+        val networkInterface = try {
+            NetworkInterface.getByName(interfaceName)
+        } catch (e: Exception) {
+            logE({ "Failed to get interface by name: $interfaceName" }, e)
+            null
+        }
+
+        if (networkInterface == null) {
+            logE { "Interface $interfaceName not found, falling back to default" }
+            startMeshNetwork(localPort)
+            return
+        }
+
+        val localAddress = networkInterface.interfaceAddresses
+            .firstOrNull { it.address is Inet4Address }
+            ?.address as? Inet4Address
+
+        if (localAddress == null) {
+            logE { "No IPv4 address on interface $interfaceName, falling back to default" }
+            startMeshNetwork(localPort)
+            return
+        }
+
+        logD { "Starting mesh on interface $interfaceName with IP ${localAddress.hostAddress}" }
+        boundInterfaceName = interfaceName
+        boundAddress = localAddress
+        startMeshNetworkWithAddress(localAddress, localPort)
+    }
+
+    /**
+     * Start mesh network bound to a specific IP address.
+     */
+    private fun startMeshNetworkWithAddress(bindAddress: InetAddress, localPort: Int) {
+        networkJob = scope.launch {
+            try {
+                logD { "Initializing mesh network on ${bindAddress.hostAddress}:$localPort..." }
+                isRunning = true
+                _isActive.value = true
+                networkStartTime = System.currentTimeMillis()
+
+                // Clean up any existing sockets
+                discoverySocket?.close()
+                audioSocket?.close()
+
+                // Create sockets bound to specific address
+                val discoverySocketAddress = InetSocketAddress(bindAddress, localPort)
+                discoverySocket = DatagramSocket(null).apply {
+                    reuseAddress = true
+                    broadcast = true
+                    soTimeout = SOCKET_TIMEOUT_MS
+                    bind(discoverySocketAddress)
+                }
+
+                val audioSocketAddress = InetSocketAddress(bindAddress, localPort + 1)
+                audioSocket = DatagramSocket(null).apply {
+                    reuseAddress = true
+                    soTimeout = SOCKET_TIMEOUT_MS
+                    bind(audioSocketAddress)
+                }
+
+                logD { "Mesh network sockets bound to ${bindAddress.hostAddress}: discovery=$localPort, audio=${localPort + 1}" }
+                logD { "Node ID: $nodeId, Device name: $deviceName" }
+
+                // Initialize the distance vector router
+                router.initialize()
+                logD { "Distance vector router initialized" }
+
+                // Start discovery and routing services
+                launch { startDiscoveryService() }
+                launch { startRoutingService() }
+                launch { startHeartbeatService() }
+                launch { startMessageListener() }
+                launch { startAudioListener() }
+                launch { startRouteAdvertisementService() }
+
+                // Log network interfaces for debugging
+                logNetworkInterfaces()
+
+                logD { "Mesh network services started successfully on ${bindAddress.hostAddress}:$localPort" }
+            } catch (e: Exception) {
+                logE({ "Failed to start mesh network on ${bindAddress.hostAddress}:$localPort" }, e)
+                e.printStackTrace()
+                stopMeshNetwork()
+            }
+        }
     }
 
     /**

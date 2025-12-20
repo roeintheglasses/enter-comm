@@ -66,6 +66,10 @@ class ConnectionCoordinator(
     private var lastConnectionAttempt = 0L
     private var monitorJob: Job? = null
     private var serviceDiscoveryJob: Job? = null
+    private var groupCreationJob: Job? = null
+
+    // Track if mesh network was started on P2P interface
+    private var meshStartedOnP2P = false
 
     // Service discovery is the primary mechanism; peer discovery is fallback
     private val _isServiceDiscovering = MutableStateFlow(false)
@@ -128,6 +132,7 @@ class ConnectionCoordinator(
      */
     private fun startServiceDiscoveryPrimary() {
         serviceDiscoveryJob?.cancel()
+        groupCreationJob?.cancel()
 
         // Register local service so other devices can discover us
         val groupCode = wifiDirectManager.getGroupCode()
@@ -151,6 +156,31 @@ class ConnectionCoordinator(
                 startPeerDiscoveryFallback()
             }
         }
+
+        // Schedule group creation if no matching peers found
+        // This ensures the first device in a group becomes the group owner
+        groupCreationJob = scope.launch {
+            delay(AppConfig.WiFiDirect.GROUP_CREATION_TIMEOUT_MS)
+            if (_connectionState.value == ConnectionState.DISCOVERING) {
+                val matchingServices = wifiDirectManager.getMatchingServices()
+                if (matchingServices.isEmpty()) {
+                    logD { "No matching services found after ${AppConfig.WiFiDirect.GROUP_CREATION_TIMEOUT_MS}ms, creating own group" }
+                    createWiFiDirectGroup()
+                }
+            }
+        }
+    }
+
+    /**
+     * Create a WiFi Direct group to become the group owner.
+     * This is called when no matching services are found within the timeout.
+     * Other devices can then discover and join this group.
+     */
+    private fun createWiFiDirectGroup() {
+        logD { "Creating WiFi Direct group as group owner..." }
+        _connectionState.value = ConnectionState.CONNECTING
+        wifiDirectManager.createGroup()
+        // The group formation will be handled by handleGroupFormed() when ConnectionChanged event fires
     }
 
     /**
@@ -178,6 +208,8 @@ class ConnectionCoordinator(
     fun stopDiscovery() {
         serviceDiscoveryJob?.cancel()
         serviceDiscoveryJob = null
+        groupCreationJob?.cancel()
+        groupCreationJob = null
 
         // Stop service discovery (primary)
         wifiDirectManager.stopServiceDiscovery()
@@ -571,8 +603,26 @@ class ConnectionCoordinator(
                 handleGroupFormed(info)
             } else {
                 logD { "WiFi Direct group disbanded" }
+
+                // Stop mesh network when P2P group disbands
+                if (meshStartedOnP2P) {
+                    logD { "Stopping mesh network (P2P group disbanded)" }
+                    meshNetworkManager.stopMeshNetwork()
+                    meshStartedOnP2P = false
+                }
+
                 isConnecting = false
                 _connectionState.value = ConnectionState.DISCONNECTED
+
+                // Restart discovery to find new peers
+                scope.launch {
+                    delay(AppConfig.WiFiDirect.CONNECTION_COOLDOWN_MS)
+                    val currentGroupCode = wifiDirectManager.getGroupCode()
+                    if (currentGroupCode != null) {
+                        logD { "Restarting discovery after group disbanded" }
+                        startServiceDiscoveryPrimary()
+                    }
+                }
             }
         }
     }
@@ -585,19 +635,71 @@ class ConnectionCoordinator(
         _isServiceDiscovering.value = false
         serviceDiscoveryJob?.cancel()
         serviceDiscoveryJob = null
+        groupCreationJob?.cancel()
+        groupCreationJob = null
 
-        val groupOwnerAddress = info.groupOwnerAddress?.hostAddress
+        // Wait briefly for P2P interface to stabilize
+        delay(AppConfig.WiFiDirect.P2P_INTERFACE_READY_DELAY_MS)
 
-        if (!info.isGroupOwner) {
-            // We're a client, connect to group owner's mesh network
-            val targetIP = groupOwnerAddress ?: getWiFiDirectGroupOwnerIP()
-            logD { "CLIENT: Connecting to group owner mesh at $targetIP" }
-            connectToMeshWithRetry(targetIP)
+        // Find and bind to the P2P interface
+        val p2pInterface = waitForP2PInterface()
+        if (p2pInterface != null) {
+            val (interfaceName, address) = p2pInterface
+            logD { "P2P interface ready: $interfaceName at ${address.hostAddress}" }
+
+            // Start mesh network bound to P2P interface
+            meshNetworkManager.startMeshNetworkOnInterface(interfaceName)
+            meshStartedOnP2P = true
+
+            val groupOwnerAddress = info.groupOwnerAddress?.hostAddress
+
+            if (!info.isGroupOwner) {
+                // We're a client, connect to group owner's mesh network
+                val targetIP = groupOwnerAddress ?: getWiFiDirectGroupOwnerIP()
+                logD { "CLIENT: Connecting to group owner mesh at $targetIP" }
+                connectToMeshWithRetry(targetIP)
+            } else {
+                // We're the group owner - mesh is running, wait for clients
+                logD { "GROUP OWNER: Mesh network running at ${address.hostAddress}, ready for client connections" }
+                wifiDirectManager.requestGroupInfo()
+            }
+
+            _events.emit(ConnectionEvent.ConnectionEstablished(address.hostAddress ?: "unknown"))
         } else {
-            // We're the group owner
-            logD { "GROUP OWNER: Ready for client connections at ${groupOwnerAddress ?: getLocalWiFiDirectIP()}" }
-            wifiDirectManager.requestGroupInfo()
+            logE { "P2P interface not found after group formation" }
+            _events.emit(ConnectionEvent.ConnectionFailed("P2P interface not available"))
+
+            // Fall back to starting mesh on all interfaces (legacy behavior)
+            logW { "Falling back to starting mesh on all interfaces" }
+            meshNetworkManager.startMeshNetwork()
+            meshStartedOnP2P = false
+
+            val groupOwnerAddress = info.groupOwnerAddress?.hostAddress
+            if (!info.isGroupOwner) {
+                val targetIP = groupOwnerAddress ?: getWiFiDirectGroupOwnerIP()
+                logD { "CLIENT (fallback): Connecting to group owner mesh at $targetIP" }
+                connectToMeshWithRetry(targetIP)
+            } else {
+                logD { "GROUP OWNER (fallback): Ready for client connections" }
+                wifiDirectManager.requestGroupInfo()
+            }
         }
+    }
+
+    /**
+     * Wait for P2P interface to become available with retries.
+     */
+    private suspend fun waitForP2PInterface(): Pair<String, Inet4Address>? {
+        repeat(AppConfig.WiFiDirect.P2P_INTERFACE_RETRY_COUNT) { attempt ->
+            val p2pInterface = meshNetworkManager.getWiFiDirectInterfaceAddress()
+            if (p2pInterface != null) {
+                @Suppress("UNCHECKED_CAST")
+                return p2pInterface as Pair<String, Inet4Address>
+            }
+            logD { "P2P interface not ready, retry ${attempt + 1}/${AppConfig.WiFiDirect.P2P_INTERFACE_RETRY_COUNT}" }
+            delay(AppConfig.WiFiDirect.P2P_INTERFACE_RETRY_DELAY_MS)
+        }
+        return null
     }
 
     private fun handleGroupInfoChanged(event: WiFiDirectEvent.GroupInfoChanged) {
@@ -693,33 +795,5 @@ class ConnectionCoordinator(
             logE({ "Error detecting group owner IP" }, e)
         }
         return AppConfig.WiFiDirect.GROUP_OWNER_DEFAULT_IP
-    }
-
-    private fun getLocalWiFiDirectIP(): String {
-        try {
-            val interfaces = NetworkInterface.getNetworkInterfaces()
-            for (networkInterface in interfaces) {
-                if (!networkInterface.isUp || networkInterface.isLoopback) continue
-
-                val name = networkInterface.name.lowercase()
-                if (name.contains("p2p") || name.contains("direct")) {
-                    for (addr in networkInterface.interfaceAddresses) {
-                        val inetAddr = addr.address
-                        if (inetAddr is Inet4Address && !inetAddr.hostAddress.isNullOrEmpty()) {
-                            val ip = inetAddr.hostAddress!!
-                            if (!ip.startsWith("127.")) {
-                                return ip
-                            }
-                        }
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            logE({ "Error detecting local IP" }, e)
-        }
-
-        // Fallback
-        val localIPs = meshNetworkManager.getLocalIPAddresses()
-        return localIPs.firstOrNull() ?: AppConfig.WiFiDirect.GROUP_OWNER_DEFAULT_IP
     }
 }

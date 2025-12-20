@@ -32,11 +32,13 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.entercomm.bikeintercom.config.AppConfig
 import com.entercomm.bikeintercom.mesh.MeshTopology
+import com.entercomm.bikeintercom.mesh.NetworkStats
 import com.entercomm.bikeintercom.mesh.TopologyNode
 import com.entercomm.bikeintercom.ui.theme.*
 import com.entercomm.bikeintercom.util.rememberHapticFeedback
@@ -1235,5 +1237,656 @@ fun ConnectionStatusBanner(isConnected: Boolean, isConnecting: Boolean = false, 
                 letterSpacing = 0.5.sp,
             )
         }
+    }
+}
+
+/**
+ * Format bytes to human-readable string (B, KB, MB, GB).
+ * Follows the formatDistance pattern from RadarComponents.kt.
+ */
+fun formatBytes(bytes: Long): String {
+    if (bytes < 0) return "0 B"
+    return when {
+        bytes < 1024 -> "$bytes B"
+        bytes < 1024 * 1024 -> "${bytes / 1024} KB"
+        bytes < 1024 * 1024 * 1024 -> "${"%.1f".format(bytes / (1024.0 * 1024.0))} MB"
+        else -> "${"%.2f".format(bytes / (1024.0 * 1024.0 * 1024.0))} GB"
+    }
+}
+
+/**
+ * Get appropriate color based on packet loss percentage.
+ * Green (0-5%), Yellow (5-15%), Orange (15-30%), Red (30%+)
+ */
+fun getPacketLossColor(packetLossPercent: Float): Color {
+    return when {
+        packetLossPercent <= 5f -> TechGreen
+        packetLossPercent <= 15f -> TechYellow
+        packetLossPercent <= 30f -> TechOrange
+        else -> TechRed
+    }
+}
+
+/**
+ * Network statistics card displaying detailed network metrics.
+ * Follows TechnicalStatusCard pattern with animated border glow.
+ */
+@Composable
+fun NetworkStatsCard(
+    stats: NetworkStats,
+    startTime: Long,
+    isActive: Boolean = false,
+    modifier: Modifier = Modifier,
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "statsCardPulse")
+
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 0.8f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1500, easing = EaseInOutCubic),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "pulseAlpha",
+    )
+
+    val borderColor by animateColorAsState(
+        targetValue = if (isActive) TechGreen else DarkBorder,
+        animationSpec = tween(400, easing = EaseOutCubic),
+        label = "borderColor",
+    )
+
+    val glowColor = if (isActive) {
+        TechGreen.copy(alpha = pulseAlpha * 0.3f)
+    } else {
+        Color.Transparent
+    }
+
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .drawBehind {
+                if (isActive) {
+                    drawRect(
+                        brush = Brush.radialGradient(
+                            colors = listOf(glowColor, Color.Transparent),
+                            center = Offset(size.width / 2, size.height / 2),
+                            radius = size.maxDimension,
+                        ),
+                    )
+                }
+            }
+            .border(
+                width = if (isActive) 2.dp else 1.dp,
+                color = borderColor,
+                shape = RoundedCornerShape(16.dp),
+            ),
+        colors = CardDefaults.cardColors(
+            containerColor = DarkSurface,
+        ),
+        shape = RoundedCornerShape(16.dp),
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+        ) {
+            // Header row with title and status indicator
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "NETWORK STATS",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = TextPrimary,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp,
+                )
+
+                StatusIndicatorDot(
+                    isActive = isActive,
+                    isError = false,
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Uptime display
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Uptime",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary,
+                )
+                Text(
+                    text = stats.getUptimeString(startTime),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TechCyan,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Packet loss percentage
+            val packetLossColor = getPacketLossColor(stats.packetLossPercent)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Packet Loss",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary,
+                )
+                Text(
+                    text = "${"%.1f".format(stats.packetLossPercent)}%",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = packetLossColor,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Divider
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(DarkBorder),
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Packets section
+            Text(
+                text = "PACKETS",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextTertiary,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp,
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                StatItem(
+                    label = "Sent",
+                    value = stats.packetsSent.toString(),
+                    color = TechGreen,
+                    modifier = Modifier.weight(1f),
+                )
+                StatItem(
+                    label = "Received",
+                    value = stats.packetsReceived.toString(),
+                    color = TechCyan,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Bytes section
+            Text(
+                text = "DATA TRANSFER",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextTertiary,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp,
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                StatItem(
+                    label = "Sent",
+                    value = formatBytes(stats.bytesSent),
+                    color = TechGreen,
+                    modifier = Modifier.weight(1f),
+                )
+                StatItem(
+                    label = "Received",
+                    value = formatBytes(stats.bytesReceived),
+                    color = TechCyan,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Audio packets section
+            Text(
+                text = "AUDIO PACKETS",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextTertiary,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp,
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                StatItem(
+                    label = "Sent",
+                    value = stats.audioPacketsSent.toString(),
+                    color = TechGreen,
+                    modifier = Modifier.weight(1f),
+                )
+                StatItem(
+                    label = "Received",
+                    value = stats.audioPacketsReceived.toString(),
+                    color = TechCyan,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Heartbeats section
+            Text(
+                text = "HEARTBEATS",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextTertiary,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp,
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                StatItem(
+                    label = "Sent",
+                    value = stats.heartbeatsSent.toString(),
+                    color = TechGreen,
+                    modifier = Modifier.weight(1f),
+                )
+                StatItem(
+                    label = "Received",
+                    value = stats.heartbeatsReceived.toString(),
+                    color = TechCyan,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Discovery section
+            Text(
+                text = "DISCOVERY",
+                style = MaterialTheme.typography.labelSmall,
+                color = TextTertiary,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp,
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                StatItem(
+                    label = "Requests",
+                    value = stats.discoveryRequestsSent.toString(),
+                    color = TechGreen,
+                    modifier = Modifier.weight(1f),
+                )
+                StatItem(
+                    label = "Responses",
+                    value = stats.discoveryResponsesReceived.toString(),
+                    color = TechCyan,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Individual stat item with label and value.
+ */
+@Composable
+private fun StatItem(
+    label: String,
+    value: String,
+    color: Color,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = TextTertiary,
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyLarge,
+            color = color,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+}
+
+/**
+ * Compact network stats row for inline display in smaller UI areas.
+ * Follows ConnectionStatusBanner pattern for compact horizontal layout.
+ * Displays key metrics: packets, bytes, and packet loss percentage.
+ */
+@Composable
+fun NetworkStatsRow(
+    stats: NetworkStats,
+    modifier: Modifier = Modifier,
+) {
+    val packetLossColor = getPacketLossColor(stats.packetLossPercent)
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(DarkSurface.copy(alpha = 0.5f))
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // Packets section
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.SwapVert,
+                contentDescription = null,
+                tint = TechCyan,
+                modifier = Modifier.size(16.dp),
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = "${stats.packetsSent}↑ ${stats.packetsReceived}↓",
+                style = MaterialTheme.typography.labelMedium,
+                color = TextSecondary,
+            )
+        }
+
+        // Data transfer section
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Storage,
+                contentDescription = null,
+                tint = TechGreen,
+                modifier = Modifier.size(16.dp),
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = "${formatBytes(stats.bytesSent)}↑ ${formatBytes(stats.bytesReceived)}↓",
+                style = MaterialTheme.typography.labelMedium,
+                color = TextSecondary,
+            )
+        }
+
+        // Packet loss section
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(packetLossColor),
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = "${"%.1f".format(stats.packetLossPercent)}%",
+                style = MaterialTheme.typography.labelMedium,
+                color = packetLossColor,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+    }
+}
+
+// ============================================================================
+// Preview Functions for NetworkStatsCard
+// ============================================================================
+
+/**
+ * Preview for NetworkStatsCard showing normal network operation.
+ * Demonstrates typical metrics with active connection and low packet loss.
+ */
+@Preview(
+    name = "NetworkStatsCard - Normal Operation",
+    showBackground = true,
+    backgroundColor = 0xFF0A0A0A,
+)
+@Composable
+private fun NetworkStatsCardNormalPreview() {
+    EnterCommTheme {
+        NetworkStatsCard(
+            stats = NetworkStats(
+                packetsSent = 1250,
+                packetsReceived = 1248,
+                bytesSent = 512_000,
+                bytesReceived = 1_024_000,
+                audioPacketsSent = 450,
+                audioPacketsReceived = 445,
+                heartbeatsSent = 120,
+                heartbeatsReceived = 118,
+                discoveryRequestsSent = 15,
+                discoveryResponsesReceived = 12,
+            ),
+            startTime = System.currentTimeMillis() - (5 * 60 * 1000), // 5 minutes ago
+            isActive = true,
+            modifier = Modifier.padding(16.dp),
+        )
+    }
+}
+
+/**
+ * Preview for NetworkStatsCard showing high packet loss scenario.
+ * Demonstrates warning/error state with significant packet loss (>30%).
+ */
+@Preview(
+    name = "NetworkStatsCard - High Packet Loss",
+    showBackground = true,
+    backgroundColor = 0xFF0A0A0A,
+)
+@Composable
+private fun NetworkStatsCardHighPacketLossPreview() {
+    EnterCommTheme {
+        NetworkStatsCard(
+            stats = NetworkStats(
+                packetsSent = 1000,
+                packetsReceived = 600, // 40% packet loss
+                bytesSent = 256_000,
+                bytesReceived = 128_000,
+                audioPacketsSent = 300,
+                audioPacketsReceived = 180,
+                heartbeatsSent = 100,
+                heartbeatsReceived = 60,
+                discoveryRequestsSent = 20,
+                discoveryResponsesReceived = 8,
+            ),
+            startTime = System.currentTimeMillis() - (10 * 60 * 1000), // 10 minutes ago
+            isActive = true,
+            modifier = Modifier.padding(16.dp),
+        )
+    }
+}
+
+/**
+ * Preview for NetworkStatsCard showing zero stats (just started).
+ * Demonstrates initial state when connection is first established.
+ */
+@Preview(
+    name = "NetworkStatsCard - Zero Stats (Just Started)",
+    showBackground = true,
+    backgroundColor = 0xFF0A0A0A,
+)
+@Composable
+private fun NetworkStatsCardZeroStatsPreview() {
+    EnterCommTheme {
+        NetworkStatsCard(
+            stats = NetworkStats(
+                packetsSent = 0,
+                packetsReceived = 0,
+                bytesSent = 0,
+                bytesReceived = 0,
+                audioPacketsSent = 0,
+                audioPacketsReceived = 0,
+                heartbeatsSent = 0,
+                heartbeatsReceived = 0,
+                discoveryRequestsSent = 0,
+                discoveryResponsesReceived = 0,
+            ),
+            startTime = System.currentTimeMillis(), // Just now
+            isActive = false,
+            modifier = Modifier.padding(16.dp),
+        )
+    }
+}
+
+/**
+ * Preview for NetworkStatsCard showing long uptime scenario.
+ * Demonstrates display with hours of connection time and large data volumes.
+ */
+@Preview(
+    name = "NetworkStatsCard - Long Uptime",
+    showBackground = true,
+    backgroundColor = 0xFF0A0A0A,
+)
+@Composable
+private fun NetworkStatsCardLongUptimePreview() {
+    EnterCommTheme {
+        NetworkStatsCard(
+            stats = NetworkStats(
+                packetsSent = 125_000,
+                packetsReceived = 124_500,
+                bytesSent = 512_000_000, // ~512 MB
+                bytesReceived = 1_024_000_000, // ~1 GB
+                audioPacketsSent = 45_000,
+                audioPacketsReceived = 44_800,
+                heartbeatsSent = 7_200, // 2 hours of heartbeats
+                heartbeatsReceived = 7_180,
+                discoveryRequestsSent = 240,
+                discoveryResponsesReceived = 235,
+            ),
+            startTime = System.currentTimeMillis() - (2 * 60 * 60 * 1000), // 2 hours ago
+            isActive = true,
+            modifier = Modifier.padding(16.dp),
+        )
+    }
+}
+
+// ============================================================================
+// Preview Functions for NetworkStatsRow
+// ============================================================================
+
+/**
+ * Preview for NetworkStatsRow showing normal network operation.
+ * Demonstrates compact inline display with typical metrics.
+ */
+@Preview(
+    name = "NetworkStatsRow - Normal Operation",
+    showBackground = true,
+    backgroundColor = 0xFF0A0A0A,
+)
+@Composable
+private fun NetworkStatsRowNormalPreview() {
+    EnterCommTheme {
+        NetworkStatsRow(
+            stats = NetworkStats(
+                packetsSent = 1250,
+                packetsReceived = 1248,
+                bytesSent = 512_000,
+                bytesReceived = 1_024_000,
+                audioPacketsSent = 450,
+                audioPacketsReceived = 445,
+                heartbeatsSent = 120,
+                heartbeatsReceived = 118,
+                discoveryRequestsSent = 15,
+                discoveryResponsesReceived = 12,
+            ),
+            modifier = Modifier.padding(8.dp),
+        )
+    }
+}
+
+/**
+ * Preview for NetworkStatsRow showing high packet loss scenario.
+ * Demonstrates warning indicator with significant packet loss.
+ */
+@Preview(
+    name = "NetworkStatsRow - High Packet Loss",
+    showBackground = true,
+    backgroundColor = 0xFF0A0A0A,
+)
+@Composable
+private fun NetworkStatsRowHighPacketLossPreview() {
+    EnterCommTheme {
+        NetworkStatsRow(
+            stats = NetworkStats(
+                packetsSent = 1000,
+                packetsReceived = 600, // 40% packet loss
+                bytesSent = 256_000,
+                bytesReceived = 128_000,
+                audioPacketsSent = 300,
+                audioPacketsReceived = 180,
+                heartbeatsSent = 100,
+                heartbeatsReceived = 60,
+                discoveryRequestsSent = 20,
+                discoveryResponsesReceived = 8,
+            ),
+            modifier = Modifier.padding(8.dp),
+        )
+    }
+}
+
+/**
+ * Preview for NetworkStatsRow showing large data volumes.
+ * Demonstrates formatting of large byte values (MB/GB range).
+ */
+@Preview(
+    name = "NetworkStatsRow - Large Data Volume",
+    showBackground = true,
+    backgroundColor = 0xFF0A0A0A,
+)
+@Composable
+private fun NetworkStatsRowLargeDataPreview() {
+    EnterCommTheme {
+        NetworkStatsRow(
+            stats = NetworkStats(
+                packetsSent = 125_000,
+                packetsReceived = 124_500,
+                bytesSent = 512_000_000, // ~512 MB
+                bytesReceived = 1_024_000_000, // ~1 GB
+                audioPacketsSent = 45_000,
+                audioPacketsReceived = 44_800,
+                heartbeatsSent = 7_200,
+                heartbeatsReceived = 7_180,
+                discoveryRequestsSent = 240,
+                discoveryResponsesReceived = 235,
+            ),
+            modifier = Modifier.padding(8.dp),
+        )
     }
 }
