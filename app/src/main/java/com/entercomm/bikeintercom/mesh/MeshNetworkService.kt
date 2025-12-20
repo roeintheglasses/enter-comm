@@ -473,8 +473,11 @@ class MeshNetworkService : Service() {
                     meshNetworkManager.stopMeshNetwork()
                 }
 
-                // Stop WiFi Direct
+                // Stop WiFi Direct and cleanup services
                 if (::wifiDirectManager.isInitialized) {
+                    wifiDirectManager.stopServiceDiscovery()
+                    wifiDirectManager.clearLocalServices()
+                    wifiDirectManager.clearServiceRequests()
                     wifiDirectManager.stopDiscovery()
                     wifiDirectManager.disconnect()
                 }

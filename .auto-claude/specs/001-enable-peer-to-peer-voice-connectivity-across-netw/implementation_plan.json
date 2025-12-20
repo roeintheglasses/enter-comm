@@ -223,8 +223,9 @@
             "command": "cd /Users/roe/Dev/enter-comm && ./gradlew compileDebugKotlin 2>&1 | grep -E '(BUILD|error)' | head -5",
             "expected": "BUILD SUCCESSFUL"
           },
-          "status": "pending",
-          "notes": "Call wifiDirectManager.registerLocalService() and startServiceDiscovery() after wifiDirectManager.initialize() in startMeshNetwork()."
+          "status": "completed",
+          "notes": "Auto-start WiFi Direct service discovery implemented in startMeshNetwork():\\n- Modified startMeshNetwork() to get current group code from meshNetworkManager.getGroupCode()\\n- Pass group code to connectionCoordinator.startDiscovery(currentGroupCode) for WiFi Direct service discovery with group filtering\\n- Added connectionCoordinator.setAutoConnectEnabled(true) to enable automatic connection to matching peers\\n- Added debug logging for service discovery initialization\\n- Build verification passed (BUILD SUCCESSFUL)\\n- Changes already committed in 16d3fae",
+          "updated_at": "2025-12-19T23:49:01.493958+00:00"
         },
         {
           "id": "subtask-4-2",
@@ -242,8 +243,9 @@
             "command": "cd /Users/roe/Dev/enter-comm && ./gradlew compileDebugKotlin 2>&1 | grep -E '(BUILD|error)' | head -5",
             "expected": "BUILD SUCCESSFUL"
           },
-          "status": "pending",
-          "notes": "Update setGroupCode() to also call wifiDirectManager.setGroupCode(code) for service discovery filtering."
+          "status": "completed",
+          "notes": "Group code propagation to WiFiDirectManager already implemented in setGroupCode():\\n- When setGroupCode(code) is called on MeshNetworkService, it propagates to both meshNetworkManager.setGroupCode(code) and wifiDirectManager.setGroupCode(code)\\n- Logging added for both propagations\\n- GroupManager integration handles join/leave by code\\n- Implementation already committed in c64fe5e\\n- Build verification passed (BUILD SUCCESSFUL)",
+          "updated_at": "2025-12-19T23:50:28.707198+00:00"
         },
         {
           "id": "subtask-4-3",
@@ -522,7 +524,7 @@
   "qa_signoff": null,
   "status": "in_progress",
   "planStatus": "in_progress",
-  "updated_at": "2025-12-19T23:19:32.426Z",
-  "recoveryNote": "Task recovered from stuck state at 2025-12-19T23:19:32.426Z",
-  "last_updated": "2025-12-19T23:46:34.012744+00:00"
+  "updated_at": "2025-12-20T09:02:18.238Z",
+  "recoveryNote": "Task recovered from stuck state at 2025-12-20T09:02:18.238Z",
+  "last_updated": "2025-12-19T23:50:28.707207+00:00"
 }
