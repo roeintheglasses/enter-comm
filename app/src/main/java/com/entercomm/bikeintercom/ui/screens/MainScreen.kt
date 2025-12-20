@@ -104,6 +104,15 @@ fun IntercomMainScreen(meshService: MeshNetworkService?, isServiceBound: Boolean
     // Topology state
     var meshTopology by remember { mutableStateOf<MeshTopology?>(null) }
 
+    // Network diagnostics state
+    var showDiagnosticsSheet by remember { mutableStateOf(false) }
+    val meshNetworkManager = meshService?.getMeshNetworkManager()
+    val networkStats by meshNetworkManager?.networkStats?.collectAsState()
+        ?: remember { mutableStateOf(NetworkStats()) }
+    val connectedNodes by meshNetworkManager?.connectedNodes?.collectAsState()
+        ?: remember { mutableStateOf(emptyList()) }
+    val networkStartTime = remember { System.currentTimeMillis() }
+
     // Dialog states
     var showCreateGroupDialog by remember { mutableStateOf(false) }
     var showJoinGroupDialog by remember { mutableStateOf<MeshGroup?>(null) }
@@ -228,6 +237,12 @@ fun IntercomMainScreen(meshService: MeshNetworkService?, isServiceBound: Boolean
                         audioLevel = audioLevel,
                         serviceState = serviceState,
                         meshTopology = meshTopology,
+                        networkStats = networkStats,
+                        connectedNodes = connectedNodes,
+                        networkStartTime = networkStartTime,
+                        showDiagnosticsSheet = showDiagnosticsSheet,
+                        onDiagnosticsClick = { showDiagnosticsSheet = true },
+                        onDiagnosticsDismiss = { showDiagnosticsSheet = false },
                         onPTTPress = {
                             if (serviceState.isRecording) {
                                 meshService?.stopRecording()
@@ -368,7 +383,13 @@ private fun IntercomContent(
     appMode: AppMode,
     audioLevel: Float,
     serviceState: ServiceState,
-    @Suppress("UNUSED_PARAMETER") meshTopology: MeshTopology?,
+    meshTopology: MeshTopology?,
+    networkStats: NetworkStats,
+    connectedNodes: List<MeshNode>,
+    networkStartTime: Long,
+    showDiagnosticsSheet: Boolean,
+    onDiagnosticsClick: () -> Unit,
+    onDiagnosticsDismiss: () -> Unit,
     onPTTPress: () -> Unit,
     onStartStop: () -> Unit,
 ) {
@@ -415,6 +436,26 @@ private fun IntercomContent(
                 modifier = Modifier.fillMaxWidth(),
             )
         }
+
+        // Network diagnostics FAB
+        NetworkDiagnosticsFAB(
+            onClick = onDiagnosticsClick,
+            connectedPeersCount = serviceState.connectedDevices,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(16.dp),
+        )
+    }
+
+    // Diagnostics bottom sheet
+    if (showDiagnosticsSheet) {
+        DiagnosticsBottomSheet(
+            meshTopology = meshTopology,
+            networkStats = networkStats,
+            connectedNodes = connectedNodes,
+            networkStartTime = networkStartTime,
+            onDismiss = onDiagnosticsDismiss,
+        )
     }
 }
 
