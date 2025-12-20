@@ -1494,18 +1494,14 @@ class MeshNetworkManager(
                     continue
                 }
 
-                logD { "Checking network interface: ${networkInterface.name}" }
+                collectBroadcastAddressesFromInterface(networkInterface, broadcastAddresses)
+            }
 
-                for (interfaceAddress in networkInterface.interfaceAddresses) {
-                    val broadcast = interfaceAddress.broadcast
-                    if (broadcast != null) {
-                        val broadcastAddr = broadcast.hostAddress
-                        if (broadcastAddr != null && !broadcastAddresses.contains(broadcastAddr)) {
-                            broadcastAddresses.add(broadcastAddr)
-                            logD { "Found broadcast address: $broadcastAddr for interface ${networkInterface.name}" }
-                        }
-                    }
-                }
+            // Always include common WiFi Direct broadcast address as a fallback
+            // WiFi Direct typically uses 192.168.49.x subnet
+            if (!broadcastAddresses.contains("192.168.49.255")) {
+                broadcastAddresses.add("192.168.49.255")
+                logD { "Added default WiFi Direct broadcast: 192.168.49.255" }
             }
         } catch (e: Exception) {
             logE({ "Error getting network broadcast addresses" }, e)
@@ -1518,6 +1514,103 @@ class MeshNetworkManager(
         }
 
         return broadcastAddresses
+    }
+
+    /**
+     * Collects broadcast addresses from a single network interface.
+     * Handles both regular interfaces and WiFi Direct interfaces that may not report
+     * broadcast addresses directly.
+     */
+    private fun collectBroadcastAddressesFromInterface(networkInterface: NetworkInterface, broadcastAddresses: MutableList<String>) {
+        val interfaceName = networkInterface.name
+        logD { "Checking network interface: $interfaceName" }
+
+        // Check if this is a WiFi Direct interface (p2p0, p2p-wlan0-*, etc.)
+        val isP2pInterface = isWiFiDirectInterface(interfaceName)
+        if (isP2pInterface) {
+            logD { "Detected WiFi Direct interface: $interfaceName" }
+        }
+
+        for (interfaceAddress in networkInterface.interfaceAddresses) {
+            val broadcast = interfaceAddress.broadcast
+            if (broadcast != null) {
+                addBroadcastIfNew(broadcast.hostAddress, interfaceName, broadcastAddresses)
+            } else if (isP2pInterface) {
+                // WiFi Direct interfaces may not report broadcast address directly
+                // Calculate it from the IP address and network prefix
+                tryAddCalculatedBroadcast(interfaceAddress, interfaceName, broadcastAddresses)
+            }
+        }
+    }
+
+    /**
+     * Adds a broadcast address to the list if it's new and valid.
+     */
+    private fun addBroadcastIfNew(broadcastAddr: String?, interfaceName: String, broadcastAddresses: MutableList<String>) {
+        if (broadcastAddr != null && !broadcastAddresses.contains(broadcastAddr)) {
+            broadcastAddresses.add(broadcastAddr)
+            logD { "Found broadcast address: $broadcastAddr for interface $interfaceName" }
+        }
+    }
+
+    /**
+     * Attempts to calculate and add a broadcast address for WiFi Direct interfaces.
+     */
+    private fun tryAddCalculatedBroadcast(interfaceAddress: InterfaceAddress, interfaceName: String, broadcastAddresses: MutableList<String>) {
+        val address = interfaceAddress.address
+        if (address is Inet4Address) {
+            val calculatedBroadcast = calculateBroadcastAddress(
+                address,
+                interfaceAddress.networkPrefixLength.toInt(),
+            )
+            if (calculatedBroadcast != null && !broadcastAddresses.contains(calculatedBroadcast)) {
+                broadcastAddresses.add(calculatedBroadcast)
+                logD { "Calculated WiFi Direct broadcast: $calculatedBroadcast for interface $interfaceName" }
+            }
+        }
+    }
+
+    /**
+     * Checks if a network interface is a WiFi Direct (P2P) interface.
+     * WiFi Direct interfaces are typically named:
+     * - p2p0 (older devices)
+     * - p2p-wlan0-* (newer devices, dynamic naming)
+     * - p2p-p2p0-* (some devices)
+     */
+    private fun isWiFiDirectInterface(interfaceName: String): Boolean {
+        val lowerName = interfaceName.lowercase()
+        return lowerName == "p2p0" ||
+            lowerName.startsWith("p2p-") ||
+            lowerName.contains("p2p")
+    }
+
+    /**
+     * Calculates the broadcast address from an IP address and network prefix length.
+     * For example: 192.168.49.1/24 -> 192.168.49.255
+     */
+    private fun calculateBroadcastAddress(address: Inet4Address, prefixLength: Int): String? {
+        return try {
+            val addressBytes = address.address
+            val maskBytes = ByteArray(4)
+
+            // Build the network mask
+            for (i in 0 until 4) {
+                val bitsInOctet = (prefixLength - i * 8).coerceIn(0, 8)
+                maskBytes[i] = (0xFF shl 8 - bitsInOctet).toByte()
+            }
+
+            // Calculate broadcast address: (IP | ~mask)
+            val broadcastBytes = ByteArray(4)
+            for (i in 0 until 4) {
+                broadcastBytes[i] = (addressBytes[i].toInt() or maskBytes[i].toInt().inv()).toByte()
+            }
+
+            // Convert to dotted decimal
+            broadcastBytes.joinToString(".") { (it.toInt() and 0xFF).toString() }
+        } catch (e: Exception) {
+            logW({ "Failed to calculate broadcast address" }, e)
+            null
+        }
     }
 
     fun getLocalIPAddresses(): List<String> {

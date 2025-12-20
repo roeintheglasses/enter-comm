@@ -263,8 +263,9 @@
             "command": "cd /Users/roe/Dev/enter-comm && ./gradlew compileDebugKotlin 2>&1 | grep -E '(BUILD|error)' | head -5",
             "expected": "BUILD SUCCESSFUL"
           },
-          "status": "pending",
-          "notes": "Call wifiDirectManager.unregisterLocalService() and stopServiceDiscovery() during cleanup."
+          "status": "completed",
+          "notes": "Added WiFi Direct service cleanup in stopMeshNetwork(). Added calls to stopServiceDiscovery(), clearLocalServices(), and clearServiceRequests() before the existing stopDiscovery() and disconnect() calls. This ensures proper cleanup of all WiFi Direct resources when stopping the mesh network. All pre-commit checks passed (Spotless, Detekt, Android Lint).",
+          "updated_at": "2025-12-20T09:03:41.630903+00:00"
         }
       ]
     },
@@ -526,5 +527,5 @@
   "planStatus": "in_progress",
   "updated_at": "2025-12-20T09:02:18.238Z",
   "recoveryNote": "Task recovered from stuck state at 2025-12-20T09:02:18.238Z",
-  "last_updated": "2025-12-19T23:50:28.707207+00:00"
+  "last_updated": "2025-12-20T09:03:41.630914+00:00"
 }
