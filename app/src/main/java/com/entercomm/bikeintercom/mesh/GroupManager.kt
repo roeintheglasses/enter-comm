@@ -84,6 +84,17 @@ sealed class GroupEvent {
     data class GroupLeft(val groupId: String) : GroupEvent()
     data class NicknameChanged(val nodeId: String, val newNickname: String) : GroupEvent()
     data class ChannelChanged(val newChannel: Int) : GroupEvent()
+
+    // Typed error events for better pattern matching
+    data class GroupNotFound(val groupId: String) : GroupEvent()
+    data class Banned(val message: String) : GroupEvent()
+    data class WrongPassword(val groupId: String) : GroupEvent()
+    data class GroupIsFull(val groupId: String) : GroupEvent()
+    data class PermissionDenied(val action: String) : GroupEvent()
+    data class Kicked(val message: String) : GroupEvent()
+
+    /** @deprecated Use typed error events instead */
+    @Deprecated("Use typed error events (GroupNotFound, Banned, WrongPassword, GroupIsFull, PermissionDenied, Kicked) instead")
     data class Error(val message: String) : GroupEvent()
 }
 
