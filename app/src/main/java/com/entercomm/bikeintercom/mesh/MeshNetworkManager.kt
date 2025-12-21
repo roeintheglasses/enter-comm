@@ -1,528 +1,264 @@
 package com.entercomm.bikeintercom.mesh
 
-import com.entercomm.bikeintercom.config.AppConfig
 import com.entercomm.bikeintercom.location.LocationMessageType
-import com.entercomm.bikeintercom.mesh.protocol.BinaryDiscoveryPayload
+import com.entercomm.bikeintercom.mesh.network.DiscoveryService
+import com.entercomm.bikeintercom.mesh.network.MessageDispatcher
+import com.entercomm.bikeintercom.mesh.network.NetworkInterfaceHelper
+import com.entercomm.bikeintercom.mesh.network.NetworkStatsCollector
+import com.entercomm.bikeintercom.mesh.network.NodeRegistry
+import com.entercomm.bikeintercom.mesh.network.RoutingService
+import com.entercomm.bikeintercom.mesh.network.SocketManager
 import com.entercomm.bikeintercom.mesh.protocol.MeshProtocol
-import com.entercomm.bikeintercom.mesh.protocol.NodeIdEncoder
-import com.entercomm.bikeintercom.util.*
-import kotlinx.coroutines.*
+import com.entercomm.bikeintercom.util.logD
+import com.entercomm.bikeintercom.util.logE
+import com.entercomm.bikeintercom.util.logW
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import java.net.*
-import java.util.*
-import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.launch
+import java.net.InetAddress
+import java.net.SocketTimeoutException
 
-data class MeshNode(
-    val nodeId: String,
-    val deviceName: String,
-    val ipAddress: String,
-    val port: Int,
-    val isDirectConnection: Boolean,
-    val lastSeen: Long = System.currentTimeMillis(),
-    val hopCount: Int = 1,
-    val linkQuality: Float = 1.0f,
-)
-
-data class MeshRoute(
-    val destinationId: String,
-    val nextHop: String,
-    val hopCount: Int,
-    val lastUpdated: Long = System.currentTimeMillis(),
-)
-
-data class MeshMessage(
-    val messageId: String = UUID.randomUUID().toString(),
-    val sourceId: String,
-    val destinationId: String,
-    val messageType: MessageType,
-    val payload: ByteArray,
-    val ttl: Int = 10,
-    val timestamp: Long = System.currentTimeMillis(),
-) {
-    enum class MessageType {
-        DISCOVERY,
-        ROUTE_UPDATE,
-        AUDIO_DATA,
-        CONTROL,
-        HEARTBEAT,
-        GROUP, // Group management messages
-        LOCATION, // Location sharing messages
-    }
-}
-
+/**
+ * Facade for the mesh network system.
+ * Orchestrates all network services and exposes the public API.
+ */
 class MeshNetworkManager(
     private val nodeId: String,
     deviceName: String,
     private val protocol: MeshProtocol = MeshProtocol.default(),
 ) {
+
     companion object {
         const val DISCOVERY_PORT = 8888
-        private const val AUDIO_PORT = 8889
         private const val HEARTBEAT_INTERVAL = 5000L
         private const val NODE_TIMEOUT = 15000L
-        private const val MAX_ROUTE_AGE = 30000L
-        private const val MAX_MESSAGE_CACHE_SIZE = 1000
-        private const val ROUTE_UPDATE_INTERVAL = 10000L // Send route updates every 10s
-        private const val SOCKET_TIMEOUT_MS = 1000 // 1 second timeout for socket receive operations
-
-        // Input validation constants
-        private const val MAX_DEVICE_NAME_LENGTH = 50
-        private const val MIN_DEVICE_NAME_LENGTH = 1
-        private const val MIN_GROUP_CODE_LENGTH = 4
-        private const val MAX_GROUP_CODE_LENGTH = 8
-        private val GROUP_CODE_PATTERN = Regex("^[A-Z0-9]{4,8}$")
-
-        // Accepts node-XXXXXXXX format or UUID-like format
-        private val UUID_PATTERN = Regex("^(node-[a-fA-F0-9]{8}|[a-fA-F0-9-]{8,36})$")
+        private const val DISCOVERY_INTERVAL = 10000L
+        private const val ROUTING_INTERVAL = 5000L
+        private const val ROUTE_UPDATE_INTERVAL = 10000L
 
         /**
          * Delimiter used in pipe-delimited message format.
-         * Fields containing this character must be sanitized before serialization.
          */
         private const val FIELD_DELIMITER = '|'
 
         /**
          * Sanitizes a string for use in pipe-delimited message format.
-         * Replaces pipe characters with underscores to prevent parsing issues.
-         *
-         * Note: This is a simple sanitization approach. For more robust serialization,
-         * consider migrating to a binary protocol (protobuf, MessagePack) in the future.
          */
         fun sanitizeForDelimitedFormat(value: String): String {
             return value.replace(FIELD_DELIMITER, '_')
         }
     }
 
-    /**
-     * Validated discovery message payload.
-     */
-    data class DiscoveryPayload(
-        val nodeId: String,
-        val deviceName: String,
-        val groupCode: String,
-        val nickname: String,
-    )
-
-    // Sanitize device name at construction to ensure safe serialization
+    // Sanitize device name at construction
     private val deviceName: String = sanitizeForDelimitedFormat(deviceName)
 
-    // User's nickname for display in group member lists
-    private var userNickname: String = sanitizeForDelimitedFormat(deviceName)
-
+    // Coroutine infrastructure
     private val supervisorJob = SupervisorJob()
     private val scope = CoroutineScope(Dispatchers.IO + supervisorJob)
     private var networkJob: Job? = null
 
-    private val _connectedNodes = MutableStateFlow<List<MeshNode>>(emptyList())
-    val connectedNodes: StateFlow<List<MeshNode>> = _connectedNodes.asStateFlow()
+    @Volatile private var isRunning = false
+    private val lifecycleLock = Any()
 
+    // Active state
     private val _isActive = MutableStateFlow(false)
     val isActive: StateFlow<Boolean> = _isActive.asStateFlow()
 
-    // Routing statistics
-    private val _routingStats = MutableStateFlow(RoutingStats())
-    val routingStats: StateFlow<RoutingStats> = _routingStats.asStateFlow()
-
-    // Network statistics for diagnostics
-    private val _networkStats = MutableStateFlow(NetworkStats())
-    val networkStats: StateFlow<NetworkStats> = _networkStats.asStateFlow()
-
-    // Network statistics counters
-    private var statsPacketsSent = 0L
-    private var statsPacketsReceived = 0L
-    private var statsBytesSent = 0L
-    private var statsBytesReceived = 0L
-    private var statsDiscoveryRequestsSent = 0L
-    private var statsDiscoveryResponsesReceived = 0L
-    private var statsAudioPacketsSent = 0L
-    private var statsAudioPacketsReceived = 0L
-    private var statsHeartbeatsSent = 0L
-    private var statsHeartbeatsReceived = 0L
-    private var networkStartTime = 0L
-
-    private val nodes = ConcurrentHashMap<String, MeshNode>()
-    private val routingTable = ConcurrentHashMap<String, MeshRoute>()
-
-    // Distance vector router for multi-hop routing
+    // Service components
+    private val socketManager = SocketManager()
+    private val nodeRegistry = NodeRegistry()
+    private val statsCollector = NetworkStatsCollector()
     private val router = DistanceVectorRouter(nodeId)
 
-    // LRU cache for message deduplication with max size to prevent unbounded growth
-    private val messageCache = object : LinkedHashMap<String, Long>(100, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Long>?): Boolean {
-            return size > MAX_MESSAGE_CACHE_SIZE
-        }
-    }
-    private val messageCacheLock = Any()
+    // Late-initialized services (depend on scope/sockets)
+    private lateinit var messageDispatcher: MessageDispatcher
+    private lateinit var routingService: RoutingService
+    private lateinit var discoveryService: DiscoveryService
 
-    // LRU cache for rate-limiting discovery responses with max size
-    private val discoveryResponseCache = object : LinkedHashMap<String, Long>(
-        AppConfig.Mesh.DISCOVERY_CACHE_MAX_SIZE,
-        0.75f,
-        true, // Access order for LRU
-    ) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Long>?): Boolean {
-            return size > AppConfig.Mesh.DISCOVERY_CACHE_MAX_SIZE
-        }
-    }
-    private val discoveryResponseCacheLock = Any()
+    // Delegated StateFlows
+    val connectedNodes: StateFlow<List<MeshNode>> get() = nodeRegistry.connectedNodes
+    val routingStats: StateFlow<RoutingStats> get() = messageDispatcher.routingStats
+    val networkStats: StateFlow<NetworkStats> get() = statsCollector.networkStats
 
-    // LRU cache of recently seen IPs for priority scanning (faster reconnection)
-    private val recentlySeenIps = object : LinkedHashMap<String, Long>(
-        AppConfig.Mesh.RECENTLY_SEEN_IPS_MAX_SIZE,
-        0.75f,
-        true,
-    ) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Long>?): Boolean {
-            return size > AppConfig.Mesh.RECENTLY_SEEN_IPS_MAX_SIZE
-        }
-    }
-    private val recentlySeenIpsLock = Any()
-
-    private var discoverySocket: DatagramSocket? = null
-    private var audioSocket: DatagramSocket? = null
-    private var isRunning = false
-
-    // Group filtering - only connect with nodes in the same group
-    private var groupCode: String? = null
-    private var groupModeEnabled = true // Default to group mode for privacy
-
-    // P2P interface binding - when set, sockets are bound to this specific interface
-    private var boundInterfaceName: String? = null
-    private var boundAddress: InetAddress? = null
-
-    // Callbacks for audio, control, group, and location messages
+    // Callbacks for messages
     var onAudioDataReceived: ((ByteArray, String) -> Unit)? = null
     var onControlMessageReceived: ((String, String) -> Unit)? = null
     var onGroupMessageReceived: ((GroupMessageType, String, ByteArray) -> Unit)? = null
     var onLocationMessageReceived: ((LocationMessageType, String, ByteArray) -> Unit)? = null
-
-    // Callback for peer discovery - called when a peer with matching group code is discovered
-    // Parameters: nodeId, deviceName
     var onPeerDiscovered: ((String, String) -> Unit)? = null
-
-    // Callback for peer disconnection - called when a peer is removed from the network
-    // Parameter: nodeId
     var onPeerDisconnected: ((String) -> Unit)? = null
 
     /**
-     * Validates a discovery message payload and returns a validated DiscoveryPayload if valid.
-     * Returns null if the message is malformed or fails validation.
-     * Uses binary format for efficient serialization.
+     * Start the mesh network on all available interfaces.
      */
-    private fun validateDiscoveryPayload(payloadBytes: ByteArray): DiscoveryPayload? {
-        val parsed = BinaryDiscoveryPayload.deserialize(payloadBytes)
-        if (parsed == null) {
-            logW { "Invalid discovery payload: failed to parse binary format" }
-            return null
-        }
-
-        return validateParsedDiscoveryPayload(parsed)
-    }
-
-    private fun validateParsedDiscoveryPayload(parsed: BinaryDiscoveryPayload.Payload): DiscoveryPayload? {
-        val nodeId = validateNodeId(parsed.nodeId) ?: return null
-        val deviceName = validateDeviceName(parsed.deviceName) ?: return null
-        val groupCode = validateGroupCode(parsed.groupCode) ?: return null
-        val nickname = parsed.nickname.ifEmpty { deviceName }.take(MAX_DEVICE_NAME_LENGTH)
-
-        return DiscoveryPayload(
-            nodeId = nodeId,
-            deviceName = deviceName,
-            groupCode = groupCode,
-            nickname = nickname,
-        )
-    }
-
-    private fun validateNodeId(nodeId: String): String? {
-        if (nodeId.isEmpty() || nodeId.length > 36 || !UUID_PATTERN.matches(nodeId)) {
-            logW { "Invalid discovery payload: invalid nodeId format" }
-            return null
-        }
-        return nodeId
-    }
-
-    private fun validateDeviceName(deviceName: String): String? {
-        if (deviceName.length !in MIN_DEVICE_NAME_LENGTH..MAX_DEVICE_NAME_LENGTH) {
-            logW { "Invalid discovery payload: deviceName length out of range (${deviceName.length})" }
-            return null
-        }
-        return deviceName
-    }
-
-    private fun validateGroupCode(groupCode: String): String? {
-        val normalized = groupCode.uppercase()
-        if (normalized != "OPEN" && !GROUP_CODE_PATTERN.matches(normalized)) {
-            logW { "Invalid discovery payload: invalid groupCode format" }
-            return null
-        }
-        return normalized
-    }
-
-    /**
-     * Set the group code for filtering connections.
-     * Only nodes with matching group codes will connect.
-     */
-    fun setGroupCode(code: String?) {
-        groupCode = code?.uppercase()?.replace("-", "")?.let { sanitizeForDelimitedFormat(it) }
-        logD { "Group code set to: $groupCode" }
-    }
-
-    /**
-     * Get the current group code.
-     */
-    fun getGroupCode(): String? = groupCode
-
-    /**
-     * Enable or disable group mode filtering.
-     * When disabled, connects to all nearby nodes (open mode).
-     */
-    fun setGroupModeEnabled(enabled: Boolean) {
-        groupModeEnabled = enabled
-        logD { "Group mode ${if (enabled) "enabled" else "disabled"}" }
-    }
-
-    /**
-     * Check if group mode is enabled.
-     */
-    fun isGroupModeEnabled(): Boolean = groupModeEnabled
-
-    /**
-     * Set the user's nickname for discovery messages.
-     * This is the name displayed to other users in the group.
-     */
-    fun setNickname(nickname: String) {
-        userNickname = sanitizeForDelimitedFormat(nickname.take(MAX_DEVICE_NAME_LENGTH))
-        logD { "Nickname set to: $userNickname" }
-    }
-
     fun startMeshNetwork(localPort: Int = DISCOVERY_PORT) {
-        if (isRunning) {
-            logD { "Mesh network already running" }
-            return
-        }
+        synchronized(lifecycleLock) {
+            if (isRunning) {
+                logD { "Mesh network already running" }
+                return
+            }
 
-        // Cancel any existing network job
-        networkJob?.cancel()
+            networkJob?.cancel()
 
-        networkJob = scope.launch {
-            try {
-                logD { "Starting mesh network on port $localPort..." }
-                isRunning = true
-                _isActive.value = true
-                networkStartTime = System.currentTimeMillis()
-                resetNetworkStats()
+            networkJob = scope.launch {
+                try {
+                    logD { "Starting mesh network on port $localPort..." }
 
-                // Close existing sockets first to prevent leaks
-                discoverySocket?.close()
-                audioSocket?.close()
+                    // Create sockets first - before setting isRunning
+                    if (!socketManager.createSockets(localPort)) {
+                        logE { "Failed to create sockets" }
+                        return@launch
+                    }
 
-                // Initialize sockets with proper configuration
-                // soTimeout prevents receive() from blocking indefinitely, allowing
-                // the listener loops to check isRunning and respond to cancellation
-                discoverySocket = DatagramSocket(localPort).apply {
-                    reuseAddress = true
-                    broadcast = true
-                    soTimeout = SOCKET_TIMEOUT_MS
+                    // Initialize services
+                    initializeServices(localPort)
+
+                    // Mark as running only after successful initialization
+                    synchronized(lifecycleLock) {
+                        isRunning = true
+                        _isActive.value = true
+                    }
+
+                    // Start all services
+                    startServices()
+
+                    logD { "Mesh network services started successfully on port $localPort" }
+                } catch (e: Exception) {
+                    logE({ "Failed to start mesh network on port $localPort" }, e)
+                    stopMeshNetwork()
                 }
-                audioSocket = DatagramSocket(localPort + 1).apply {
-                    reuseAddress = true
-                    soTimeout = SOCKET_TIMEOUT_MS
-                }
-
-                logD { "Mesh network sockets created: discovery=$localPort, audio=${localPort + 1}" }
-                logD { "Node ID: $nodeId, Device name: $deviceName" }
-
-                // Initialize the distance vector router
-                router.initialize()
-                logD { "Distance vector router initialized" }
-
-                // Start discovery and routing services
-                launch { startDiscoveryService() }
-                launch { startRoutingService() }
-                launch { startHeartbeatService() }
-                launch { startMessageListener() }
-                launch { startAudioListener() }
-                launch { startRouteAdvertisementService() } // Multi-hop routing
-
-                logD { "Mesh network services started successfully on port $localPort" }
-            } catch (e: Exception) {
-                logE({ "Failed to start mesh network on port $localPort" }, e)
-                e.printStackTrace()
-                stopMeshNetwork()
             }
         }
     }
 
+    /**
+     * Stop the mesh network.
+     */
     fun stopMeshNetwork() {
-        logD { "Stopping mesh network..." }
-        isRunning = false
-        _isActive.value = false
+        synchronized(lifecycleLock) {
+            if (!isRunning && networkJob == null) {
+                logD { "Mesh network not running" }
+                return
+            }
 
-        // Cancel all network coroutines first
-        networkJob?.cancel()
-        networkJob = null
+            logD { "Stopping mesh network..." }
+            isRunning = false
+            _isActive.value = false
 
-        // Close sockets safely
-        try {
-            discoverySocket?.close()
-        } catch (e: Exception) {
-            logW({ "Error closing discovery socket" }, e)
+            networkJob?.cancel()
+            networkJob = null
         }
-        try {
-            audioSocket?.close()
-        } catch (e: Exception) {
-            logW({ "Error closing audio socket" }, e)
-        }
-        discoverySocket = null
-        audioSocket = null
 
-        // Clear P2P interface binding
-        boundInterfaceName = null
-        boundAddress = null
+        // Close sockets outside lock to avoid blocking
+        socketManager.closeSockets()
 
-        // Clear all data structures
-        nodes.clear()
-        routingTable.clear()
+        // Clear node registry callbacks before clearing data
+        nodeRegistry.onNodeAdded = null
+        nodeRegistry.onNodeRemoved = null
+        nodeRegistry.clear()
         router.clear()
-        synchronized(messageCacheLock) {
-            messageCache.clear()
+
+        if (::messageDispatcher.isInitialized) {
+            messageDispatcher.clearCallbacks()
+            messageDispatcher.clear()
         }
-        synchronized(discoveryResponseCacheLock) {
-            discoveryResponseCache.clear()
+        if (::discoveryService.isInitialized) {
+            discoveryService.onPeerDiscovered = null
+            discoveryService.clear()
         }
-        // Note: Don't clear recentlySeenIps - keep for faster reconnection
-        _connectedNodes.value = emptyList()
+        if (::routingService.isInitialized) {
+            routingService.clear()
+        }
 
         logD { "Mesh network stopped" }
     }
 
+    /**
+     * Start mesh network bound to a specific network interface.
+     * Used for WiFi Direct P2P groups.
+     */
+    fun startMeshNetworkOnInterface(interfaceName: String, localPort: Int = DISCOVERY_PORT) {
+        synchronized(lifecycleLock) {
+            if (isRunning) {
+                logD { "Mesh network already running, stopping first to rebind to interface" }
+                // Release lock before stopping to avoid deadlock
+            }
+        }
+
+        // Stop outside lock if needed
+        if (isRunning) {
+            stopMeshNetwork()
+        }
+
+        synchronized(lifecycleLock) {
+            networkJob?.cancel()
+
+            networkJob = scope.launch {
+                try {
+                    logD { "Starting mesh network on interface $interfaceName..." }
+
+                    // Try to create sockets on the specific interface
+                    val success = socketManager.createSocketsOnInterface(interfaceName, localPort)
+                    if (!success) {
+                        logE { "Interface $interfaceName not available, falling back to default" }
+                        startMeshNetwork(localPort)
+                        return@launch
+                    }
+
+                    // Initialize services
+                    initializeServices(localPort)
+
+                    // Mark as running only after successful initialization
+                    synchronized(lifecycleLock) {
+                        isRunning = true
+                        _isActive.value = true
+                    }
+
+                    // Start all services
+                    startServices()
+
+                    // Log network interfaces for debugging
+                    NetworkInterfaceHelper.logNetworkInterfaces(
+                        socketManager.boundInterfaceName,
+                        socketManager.boundAddress,
+                    )
+
+                    logD { "Mesh network services started successfully on interface $interfaceName" }
+                } catch (e: Exception) {
+                    logE({ "Failed to start mesh network on interface $interfaceName" }, e)
+                    stopMeshNetwork()
+                }
+            }
+        }
+    }
+
+    // ==================== Scanning & Connection ====================
+
     fun scanAndConnectToAvailableDevices() {
-        scope.launch {
-            logD { "Starting optimized network scan for available devices..." }
-
-            val localIPs = getLocalIPAddresses()
-            if (localIPs.isEmpty()) {
-                logW { "No local IP addresses found, cannot scan network" }
-                return@launch
-            }
-
-            logD { "Local IPs: ${localIPs.joinToString(", ")}" }
-
-            // Use the first available local IP to determine network subnet
-            val localIP = localIPs.first()
-            val subnet = localIP.substringBeforeLast(".")
-
-            // Phase 1: Priority scan - check recently seen IPs first (faster reconnection)
-            val priorityIps = synchronized(recentlySeenIpsLock) {
-                recentlySeenIps.keys.toList()
-            }
-
-            if (priorityIps.isNotEmpty()) {
-                logD { "Phase 1: Scanning ${priorityIps.size} recently seen IPs with priority..." }
-                val priorityJobs = priorityIps
-                    .filter { !localIPs.contains(it) }
-                    .filter { !nodes.values.any { node -> node.ipAddress == it } }
-                    .map { ip ->
-                        launch {
-                            try {
-                                val address = InetAddress.getByName(ip)
-                                // Use shorter timeout for known IPs
-                                if (address.isReachable(AppConfig.Mesh.NETWORK_SCAN_PRIORITY_TIMEOUT_MS)) {
-                                    logD { "Priority: Found reachable device at $ip" }
-                                    sendDiscoveryProbe(ip, DISCOVERY_PORT)
-                                }
-                            } catch (e: Exception) {
-                                // Silently ignore
-                            }
-                        }
-                    }
-                priorityJobs.joinAll()
-                logD { "Phase 1 complete: Priority scan finished" }
-            }
-
-            // Phase 2: Full subnet scan (excluding priority IPs already scanned)
-            logD { "Phase 2: Scanning subnet $subnet.* for Enter-Comm devices..." }
-            val scanJobs = mutableListOf<Job>()
-            val priorityIpSet = priorityIps.toSet()
-
-            for (i in 1..254) {
-                val targetIP = "$subnet.$i"
-
-                // Skip our own IPs, already connected nodes, and priority IPs (already scanned)
-                if (localIPs.contains(targetIP) ||
-                    nodes.values.any { it.ipAddress == targetIP } ||
-                    priorityIpSet.contains(targetIP)
-                ) {
-                    continue
-                }
-
-                // Launch concurrent discovery probes
-                val job = launch {
-                    try {
-                        val address = InetAddress.getByName(targetIP)
-                        // Use optimized timeout
-                        if (address.isReachable(AppConfig.Mesh.NETWORK_SCAN_TIMEOUT_MS)) {
-                            logD { "Found reachable device at $targetIP, sending discovery probe..." }
-                            sendDiscoveryProbe(targetIP, DISCOVERY_PORT)
-                        }
-                    } catch (e: Exception) {
-                        // Silently ignore unreachable hosts
-                    }
-                }
-                scanJobs.add(job)
-
-                // Use larger batch size for faster scanning
-                if (scanJobs.size >= AppConfig.Mesh.NETWORK_SCAN_BATCH_SIZE) {
-                    scanJobs.joinAll()
-                    scanJobs.clear()
-                    delay(50) // Reduced delay between batches
-                }
-            }
-
-            // Wait for remaining scan jobs
-            scanJobs.joinAll()
-
-            logD { "Network scan completed. Sent discovery probes to all reachable devices." }
-            logD { "Actual mesh connections: ${nodes.size} devices" }
+        if (::discoveryService.isInitialized) {
+            discoveryService.scanAndConnect()
         }
     }
 
     fun addDirectConnection(ipAddress: String, port: Int = DISCOVERY_PORT) {
-        // Check if this is our own IP
-        val localIPs = getLocalIPAddresses()
-        if (localIPs.contains(ipAddress)) {
-            logD { "Skipping direct connection to our own IP: $ipAddress" }
-            return
+        if (::discoveryService.isInitialized) {
+            discoveryService.addDirectConnection(ipAddress, port)
         }
-
-        val nodeId = generateNodeId(ipAddress)
-
-        // Check if node already exists and was recently updated
-        val existingNode = nodes[nodeId]
-        if (existingNode != null) {
-            val timeSinceUpdate = System.currentTimeMillis() - existingNode.lastSeen
-            if (timeSinceUpdate < 30000) { // Don't re-add if updated within last 30 seconds
-                logD { "Node $nodeId at $ipAddress already exists and is recent, skipping..." }
-                return
-            }
-        }
-
-        logD { "Attempting direct connection to $ipAddress:$port" }
-
-        // Only send discovery message - don't create phantom nodes
-        // Nodes will be created only when they respond with discovery messages
-        logD { "Sending discovery message to $ipAddress:$port" }
-        sendDiscoveryMessage(ipAddress, port)
-
-        logD { "Discovery message sent to $ipAddress:$port - waiting for response..." }
     }
 
+    // ==================== Audio ====================
+
     fun sendAudioData(audioData: ByteArray, destinationId: String? = null) {
+        if (!::messageDispatcher.isInitialized) return
+
         if (destinationId != null) {
-            // Send to specific destination
-            sendMessage(
+            messageDispatcher.sendMessage(
                 MeshMessage(
                     sourceId = nodeId,
                     destinationId = destinationId,
@@ -531,12 +267,11 @@ class MeshNetworkManager(
                 ),
             )
         } else {
-            // Broadcast to all connected nodes
-            nodes.keys.forEach { nodeId ->
-                sendMessage(
+            nodeRegistry.getAllNodeIds().forEach { targetId ->
+                messageDispatcher.sendMessage(
                     MeshMessage(
-                        sourceId = this.nodeId,
-                        destinationId = nodeId,
+                        sourceId = nodeId,
+                        destinationId = targetId,
                         messageType = MeshMessage.MessageType.AUDIO_DATA,
                         payload = audioData,
                     ),
@@ -545,354 +280,244 @@ class MeshNetworkManager(
         }
     }
 
-    private suspend fun startDiscoveryService() {
-        logD { "Starting discovery service - broadcasting every 10 seconds..." }
-        while (isRunning) {
-            try {
-                // Broadcast discovery message to local network
-                logD { "Broadcasting discovery message..." }
-                broadcastDiscovery()
-                delay(10000) // Discovery every 10 seconds
-            } catch (e: Exception) {
-                logE({ "Discovery service error" }, e)
-                delay(5000)
-            }
+    // ==================== Group Management ====================
+
+    fun setGroupCode(code: String?) {
+        if (::discoveryService.isInitialized) {
+            discoveryService.setGroupCode(code)
         }
     }
 
-    private suspend fun startRoutingService() {
-        while (isRunning) {
-            try {
-                // Clean up old routes and nodes
-                cleanupOldEntries()
-
-                // Update routing table
-                updateRoutingTable()
-
-                delay(5000) // Update routing every 5 seconds
-            } catch (e: Exception) {
-                logE({ "Routing service error" }, e)
-                delay(5000)
-            }
-        }
-    }
-
-    private suspend fun startHeartbeatService() {
-        while (isRunning) {
-            try {
-                // Send heartbeat to all known nodes
-                sendHeartbeats()
-
-                // Update network statistics periodically
-                updateNetworkStats()
-
-                delay(HEARTBEAT_INTERVAL)
-            } catch (e: Exception) {
-                logE({ "Heartbeat service error" }, e)
-                delay(5000)
-            }
-        }
-    }
-
-    private suspend fun startMessageListener() {
-        logD { "Starting message listener on discovery port..." }
-        while (isRunning) {
-            try {
-                val buffer = ByteArray(1024)
-                val packet = DatagramPacket(buffer, buffer.size)
-
-                discoverySocket?.receive(packet)
-
-                val senderAddress = packet.address.hostAddress ?: "unknown"
-                logD { "Received message from $senderAddress, length: ${packet.length}" }
-
-                val message = protocol.deserialize(packet.data, packet.length)
-                if (message != null) {
-                    logD { "Deserialized: type=${message.messageType}, src=${message.sourceId}" }
-                    handleIncomingMessage(message, senderAddress)
-                } else {
-                    logW { "Failed to deserialize message from $senderAddress" }
-                    logW { "Raw data: ${String(packet.data, 0, packet.length)}" }
-                }
-            } catch (e: SocketTimeoutException) {
-                // Normal timeout - allows loop to check isRunning and respond to cancellation
-                continue
-            } catch (e: Exception) {
-                if (isRunning) {
-                    logE({ "Message listener error" }, e)
-                    delay(1000)
-                } else {
-                    logD { "Message listener stopped" }
-                }
-            }
-        }
-    }
-
-    private suspend fun startAudioListener() {
-        logD { "Starting audio listener on port ${DISCOVERY_PORT + 1}..." }
-        while (isRunning) {
-            try {
-                val socket = audioSocket
-                if (socket == null || socket.isClosed) {
-                    logE { "Audio socket is null or closed, cannot receive audio" }
-                    delay(1000)
-                    continue
-                }
-
-                val buffer = ByteArray(4096) // Larger buffer for audio
-                val packet = DatagramPacket(buffer, buffer.size)
-
-                socket.receive(packet)
-                logD { "Received audio packet from ${packet.address.hostAddress}, length: ${packet.length}" }
-
-                val message = protocol.deserialize(packet.data, packet.length)
-                if (message != null) {
-                    logD { "Deserialized audio message: type=${message.messageType}, source=${message.sourceId}" }
-
-                    // Don't filter out audio messages from ourselves -
-                    // we might need to handle echo cancellation differently
-                    if (message.messageType == MeshMessage.MessageType.AUDIO_DATA) {
-                        if (message.destinationId == nodeId || message.destinationId == "broadcast") {
-                            // Audio data for us
-                            logD { "Playing audio data from ${message.sourceId}, size: ${message.payload.size}" }
-                            try {
-                                onAudioDataReceived?.invoke(message.payload, message.sourceId)
-                            } catch (e: Exception) {
-                                logE({ "Error in audio callback" }, e)
-                            }
-                        } else {
-                            // Forward audio data
-                            logD { "Forwarding audio data to ${message.destinationId}" }
-                            forwardMessage(message)
-                        }
-                    }
-                } else {
-                    logW { "Failed to deserialize audio message" }
-                }
-            } catch (e: SocketTimeoutException) {
-                // Normal timeout - allows loop to check isRunning and respond to cancellation
-                continue
-            } catch (e: Exception) {
-                if (isRunning) {
-                    logE({ "Audio listener error" }, e)
-                    delay(1000)
-                } else {
-                    logD { "Audio listener stopped" }
-                }
-            }
-        }
-    }
-
-    private fun handleIncomingMessage(message: MeshMessage, senderIp: String) {
-        // Ignore messages from ourselves
-        if (message.sourceId == nodeId) {
-            logD { "Ignoring message from self: ${message.messageId}" }
-            return
-        }
-
-        // Check message cache to avoid processing duplicates (synchronized for LRU map)
-        synchronized(messageCacheLock) {
-            if (messageCache.containsKey(message.messageId)) {
-                return
-            }
-            messageCache[message.messageId] = System.currentTimeMillis()
-        }
-
-        // Track received packet statistics (after duplicate check)
-        recordPacketReceived(message.payload.size, message.messageType)
-
-        when (message.messageType) {
-            MeshMessage.MessageType.DISCOVERY -> {
-                handleDiscoveryMessage(message, senderIp)
-            }
-            MeshMessage.MessageType.ROUTE_UPDATE -> {
-                handleRouteUpdate(message)
-            }
-            MeshMessage.MessageType.CONTROL -> {
-                if (message.destinationId == nodeId) {
-                    onControlMessageReceived?.invoke(String(message.payload), message.sourceId)
-                } else {
-                    forwardMessage(message)
-                }
-            }
-            MeshMessage.MessageType.HEARTBEAT -> {
-                handleHeartbeat(message, senderIp)
-            }
-            MeshMessage.MessageType.AUDIO_DATA -> {
-                // Audio is handled in audio listener
-            }
-            MeshMessage.MessageType.GROUP -> {
-                if (message.destinationId == nodeId || message.destinationId == "broadcast") {
-                    handleGroupMessage(message)
-                } else {
-                    forwardMessage(message)
-                }
-            }
-            MeshMessage.MessageType.LOCATION -> {
-                if (message.destinationId == nodeId || message.destinationId == "broadcast") {
-                    handleLocationMessage(message)
-                } else {
-                    forwardMessage(message)
-                }
-            }
-        }
-    }
-
-    private fun handleDiscoveryMessage(message: MeshMessage, senderIp: String) {
-        logD { "Handling discovery message from $senderIp" }
-        logD { "Message payload size: ${message.payload.size} bytes" }
-
-        // Validate the discovery payload (binary format)
-        val validatedPayload = validateDiscoveryPayload(message.payload)
-        if (validatedPayload == null) {
-            logW { "Rejecting invalid discovery message from $senderIp" }
-            return
-        }
-
-        val remoteNodeId = validatedPayload.nodeId
-        val deviceName = validatedPayload.deviceName
-        val remoteGroupCode = validatedPayload.groupCode
-        val remoteNickname = validatedPayload.nickname
-
-        logD {
-            "Parsed discovery: nodeId=$remoteNodeId, deviceName=$deviceName, " +
-                "nickname=$remoteNickname, groupCode=$remoteGroupCode, senderIp=$senderIp, ourGroupCode=$groupCode"
-        }
-
-        // Ignore messages from ourselves
-        if (remoteNodeId == nodeId) {
-            logD { "Ignoring discovery message from self: $remoteNodeId" }
-            return
-        }
-
-        // Group filtering based on group code
-        // - If we have no group code (null/OPEN), accept everyone
-        // - If we have a group code, only accept nodes with the same code
-        val ourCode = groupCode?.uppercase()
-        val theirCode = remoteGroupCode.uppercase()
-
-        // We're in a group - only accept matching codes
-        if (ourCode != null && ourCode != "OPEN" && theirCode != ourCode) {
-            logD { "Ignoring node $remoteNodeId - group code mismatch (ours=$ourCode, theirs=$theirCode)" }
-            return
-        }
-        // If we have no group code or are OPEN, accept all nodes
-
-        // Check if we should respond (rate limiting with synchronized access)
-        val currentTime = System.currentTimeMillis()
-        var shouldSendResponse = false
-
-        synchronized(discoveryResponseCacheLock) {
-            val lastResponseTime = discoveryResponseCache[senderIp] ?: 0
-            val timeSinceLastResponse = currentTime - lastResponseTime
-
-            if (timeSinceLastResponse < AppConfig.Mesh.DISCOVERY_COOLDOWN_MS) {
-                logD { "Rate limiting discovery response to $senderIp (last response ${timeSinceLastResponse}ms ago)" }
-            } else {
-                shouldSendResponse = true
-                discoveryResponseCache[senderIp] = currentTime
-            }
-        }
-
-        // Track this IP as recently seen for priority scanning
-        synchronized(recentlySeenIpsLock) {
-            recentlySeenIps[senderIp] = currentTime
-        }
-
-        if (shouldSendResponse) {
-            logD { "Sending discovery response to $senderIp" }
-            sendDiscoveryResponse(senderIp)
-        }
-
-        // Check if this is a new node or an update
-        val existingNode = nodes[remoteNodeId]
-        if (existingNode != null) {
-            logD { "Updating existing node: $remoteNodeId" }
+    fun getGroupCode(): String? {
+        return if (::discoveryService.isInitialized) {
+            discoveryService.getGroupCode()
         } else {
-            logD { "Adding new node: $remoteNodeId" }
+            null
         }
+    }
 
-        val node = MeshNode(
-            nodeId = remoteNodeId,
+    fun setGroupModeEnabled(enabled: Boolean) {
+        if (::discoveryService.isInitialized) {
+            discoveryService.setGroupModeEnabled(enabled)
+        }
+    }
+
+    fun isGroupModeEnabled(): Boolean {
+        return if (::discoveryService.isInitialized) {
+            discoveryService.isGroupModeEnabled()
+        } else {
+            true
+        }
+    }
+
+    fun setNickname(nickname: String) {
+        if (::discoveryService.isInitialized) {
+            discoveryService.setNickname(nickname)
+        }
+    }
+
+    fun sendGroupMessage(type: GroupMessageType, destinationId: String, payload: ByteArray) {
+        if (!::messageDispatcher.isInitialized) return
+
+        val typePrefix = "${type.name}|".toByteArray()
+        val fullPayload = typePrefix + payload
+
+        val message = MeshMessage(
+            sourceId = nodeId,
+            destinationId = destinationId,
+            messageType = MeshMessage.MessageType.GROUP,
+            payload = fullPayload,
+        )
+
+        if (destinationId == "broadcast") {
+            messageDispatcher.broadcastToNeighbors(message)
+        } else {
+            messageDispatcher.sendMessage(message)
+        }
+    }
+
+    fun sendLocationMessage(type: LocationMessageType, destinationId: String, payload: ByteArray) {
+        if (!::messageDispatcher.isInitialized) return
+
+        val typePrefix = "${type.name}|".toByteArray()
+        val fullPayload = typePrefix + payload
+
+        val message = MeshMessage(
+            sourceId = nodeId,
+            destinationId = destinationId,
+            messageType = MeshMessage.MessageType.LOCATION,
+            payload = fullPayload,
+            ttl = 3,
+        )
+
+        if (destinationId == "broadcast") {
+            messageDispatcher.broadcastToNeighbors(message)
+        } else {
+            messageDispatcher.sendMessage(message)
+        }
+    }
+
+    // ==================== Routing & Topology ====================
+
+    fun getRoutingTableDump(): String {
+        return if (::routingService.isInitialized) {
+            routingService.getRoutingTableDump()
+        } else {
+            "Routing service not initialized"
+        }
+    }
+
+    fun getPathInfo(destinationId: String): PathInfo? {
+        return if (::routingService.isInitialized) {
+            routingService.getPathInfo(destinationId)
+        } else {
+            null
+        }
+    }
+
+    fun isReachable(destinationId: String): Boolean {
+        return if (::routingService.isInitialized) {
+            routingService.isReachable(destinationId)
+        } else {
+            false
+        }
+    }
+
+    fun getReachableDestinations(): Set<String> {
+        return if (::routingService.isInitialized) {
+            routingService.getReachableDestinations()
+        } else {
+            emptySet()
+        }
+    }
+
+    fun getMeshTopology(): MeshTopology {
+        return if (::routingService.isInitialized) {
+            routingService.getMeshTopology()
+        } else {
+            TopologyBuilder(nodeId, deviceName).build()
+        }
+    }
+
+    // ==================== P2P Interface Support ====================
+
+    fun getWiFiDirectInterfaceAddress(): Pair<String, InetAddress>? {
+        return NetworkInterfaceHelper.getWiFiDirectInterfaceAddress()
+    }
+
+    fun isBoundToP2PInterface(): Boolean = socketManager.isBoundToP2PInterface()
+
+    fun getBoundInterfaceName(): String? = socketManager.boundInterfaceName
+
+    fun logNetworkInterfaces() {
+        NetworkInterfaceHelper.logNetworkInterfaces(
+            socketManager.boundInterfaceName,
+            socketManager.boundAddress,
+        )
+    }
+
+    fun getLocalIPAddresses(): List<String> = NetworkInterfaceHelper.getLocalIPAddresses()
+
+    // ==================== Statistics ====================
+
+    fun resetNetworkStats() {
+        statsCollector.reset()
+    }
+
+    fun getNetworkUptime(): Long = statsCollector.getUptime()
+
+    // ==================== Private Implementation ====================
+
+    private fun initializeServices(localPort: Int) {
+        statsCollector.start()
+
+        messageDispatcher = MessageDispatcher(
+            nodeId = nodeId,
+            protocol = protocol,
+            router = router,
+            socketManager = socketManager,
+            nodeRegistry = nodeRegistry,
+            statsCollector = statsCollector,
+            scope = scope,
+        )
+
+        routingService = RoutingService(
+            nodeId = nodeId,
             deviceName = deviceName,
-            ipAddress = senderIp,
-            port = DISCOVERY_PORT,
-            isDirectConnection = true,
-            hopCount = 1,
-            lastSeen = System.currentTimeMillis(),
-            linkQuality = 1.0f,
+            router = router,
+            nodeRegistry = nodeRegistry,
+            messageDispatcher = messageDispatcher,
         )
 
-        // Check if this is a new node (not just an update)
-        val isNewNode = !nodes.containsKey(remoteNodeId)
-
-        nodes[remoteNodeId] = node
-        routingTable[remoteNodeId] = MeshRoute(
-            destinationId = remoteNodeId,
-            nextHop = remoteNodeId,
-            hopCount = 1,
+        discoveryService = DiscoveryService(
+            nodeId = nodeId,
+            deviceName = deviceName,
+            protocol = protocol,
+            socketManager = socketManager,
+            nodeRegistry = nodeRegistry,
+            router = router,
+            routingService = routingService,
+            scope = scope,
+            discoveryPort = localPort,
         )
 
-        // Add to distance vector router for multi-hop routing
-        router.addNeighbor(remoteNodeId, senderIp, DISCOVERY_PORT, 1.0f)
+        // Wire callbacks
+        wireCallbacks()
 
-        updateConnectedNodesList()
+        // Initialize router
+        routingService.initialize()
 
-        // Notify about new peer discovery (for GroupManager sync)
-        // Use nickname for display, falling back to deviceName if not available
-        if (isNewNode) {
-            onPeerDiscovered?.invoke(remoteNodeId, remoteNickname)
-        }
-
-        logD { "Mesh network updated: discovered $remoteNickname ($remoteNodeId) at $senderIp" }
-        logD { "Total connected nodes: ${nodes.size}" }
-        logD { "Reachable destinations: ${router.getReachableDestinations().size}" }
+        logD { "Services initialized. Node ID: $nodeId, Device name: $deviceName" }
     }
 
-    private fun handleRouteUpdate(message: MeshMessage) {
-        // Parse route advertisement from neighbor
-        val advertisement = router.deserializeAdvertisement(message.payload)
-        if (advertisement == null) {
-            logW { "Failed to parse route advertisement from ${message.sourceId}" }
-            return
+    private fun wireCallbacks() {
+        // Wire discovery service callbacks
+        discoveryService.onPeerDiscovered = { peerId, nickname ->
+            onPeerDiscovered?.invoke(peerId, nickname)
         }
 
-        logD { "Processing route update from ${message.sourceId} with ${advertisement.routes.size} routes" }
-
-        // Get sender's IP for verification
-        val senderNode = nodes[message.sourceId]
-        if (senderNode == null) {
-            logW { "Received route update from unknown node: ${message.sourceId}" }
-            return
+        // Wire node registry callbacks
+        nodeRegistry.onNodeRemoved = { removedNodeId ->
+            onPeerDisconnected?.invoke(removedNodeId)
+            router.removeNeighbor(removedNodeId)
+            routingService.removeRoute(removedNodeId)
         }
 
-        // Process the route advertisement (Bellman-Ford update)
-        val changed = router.processRouteAdvertisement(advertisement, senderNode.ipAddress)
+        // Wire message dispatcher callbacks
+        messageDispatcher.onDiscoveryMessage = { message, senderIp ->
+            discoveryService.handleDiscoveryMessage(message, senderIp)
+        }
 
-        if (changed) {
-            // Update our routing table from the router
-            syncRoutingTableFromRouter()
+        messageDispatcher.onRouteUpdateMessage = { message ->
+            routingService.handleRouteUpdate(message)
+        }
 
-            // Update connected nodes list to reflect new reachable nodes
-            updateConnectedNodesList()
+        messageDispatcher.onControlMessage = { payload, sourceId ->
+            onControlMessageReceived?.invoke(payload, sourceId)
+        }
 
-            // Update routing statistics
-            updateRoutingStats()
+        messageDispatcher.onHeartbeatMessage = { message, _ ->
+            nodeRegistry.updateNodeLastSeen(message.sourceId)
+            router.updateNeighborHeartbeat(message.sourceId)
+        }
 
-            logD { "Routing table updated from ${message.sourceId}" }
-            logD { router.dumpRoutingTable() }
+        messageDispatcher.onGroupMessage = { message ->
+            handleGroupMessage(message)
+        }
+
+        messageDispatcher.onLocationMessage = { message ->
+            handleLocationMessage(message)
+        }
+
+        messageDispatcher.onAudioMessage = { message ->
+            // Audio handled in audio listener
         }
     }
 
-    /**
-     * Handle incoming group messages.
-     */
     private fun handleGroupMessage(message: MeshMessage) {
-        // Parse group message type from payload prefix
         val payload = message.payload
         if (payload.isEmpty()) return
 
-        // Format: groupMessageType|actualPayload
         val payloadString = String(payload)
         val pipeIndex = payloadString.indexOf('|')
         if (pipeIndex == -1) return
@@ -908,36 +533,10 @@ class MeshNetworkManager(
         }
     }
 
-    /**
-     * Send a group management message.
-     */
-    fun sendGroupMessage(type: GroupMessageType, destinationId: String, payload: ByteArray) {
-        // Prefix payload with message type
-        val typePrefix = "${type.name}|".toByteArray()
-        val fullPayload = typePrefix + payload
-
-        val message = MeshMessage(
-            sourceId = nodeId,
-            destinationId = destinationId,
-            messageType = MeshMessage.MessageType.GROUP,
-            payload = fullPayload,
-        )
-
-        if (destinationId == "broadcast") {
-            broadcastToAllNeighbors(message)
-        } else {
-            sendMessage(message)
-        }
-    }
-
-    /**
-     * Handle incoming location messages.
-     */
     private fun handleLocationMessage(message: MeshMessage) {
         val payload = message.payload
         if (payload.isEmpty()) return
 
-        // Format: locationMessageType|actualPayload
         val payloadString = String(payload)
         val pipeIndex = payloadString.indexOf('|')
         if (pipeIndex == -1) return
@@ -953,1056 +552,172 @@ class MeshNetworkManager(
         }
     }
 
-    /**
-     * Send a location message.
-     */
-    fun sendLocationMessage(type: LocationMessageType, destinationId: String, payload: ByteArray) {
-        val typePrefix = "${type.name}|".toByteArray()
-        val fullPayload = typePrefix + payload
-
-        val message = MeshMessage(
-            sourceId = nodeId,
-            destinationId = destinationId,
-            messageType = MeshMessage.MessageType.LOCATION,
-            payload = fullPayload,
-            ttl = 3, // Location messages don't need many hops
-        )
-
-        if (destinationId == "broadcast") {
-            broadcastToAllNeighbors(message)
-        } else {
-            sendMessage(message)
-        }
+    private fun startServices() {
+        scope.launch { startDiscoveryService() }
+        scope.launch { startRoutingService() }
+        scope.launch { startHeartbeatService() }
+        scope.launch { startMessageListener() }
+        scope.launch { startAudioListener() }
+        scope.launch { startRouteAdvertisementService() }
     }
 
-    @Suppress("UNUSED_PARAMETER")
-    private fun handleHeartbeat(message: MeshMessage, senderIp: String) {
-        val sourceId = message.sourceId
-
-        // Update node's last seen time
-        nodes[sourceId]?.let { node ->
-            nodes[sourceId] = node.copy(lastSeen = System.currentTimeMillis())
-        }
-
-        // Update router's neighbor tracking
-        router.updateNeighborHeartbeat(sourceId)
-    }
-
-    private fun sendMessage(message: MeshMessage) {
-        // Use the distance vector router for next hop lookup
-        val nextHopId = router.getNextHop(message.destinationId)
-
-        if (nextHopId != null) {
-            // Get the neighbor info for the next hop
-            val neighbor = router.getNeighbor(nextHopId)
-            if (neighbor != null) {
-                val targetNode = MeshNode(
-                    nodeId = nextHopId,
-                    deviceName = nextHopId,
-                    ipAddress = neighbor.ipAddress,
-                    port = neighbor.port,
-                    isDirectConnection = true,
-                    hopCount = 1,
-                )
-                sendMessageToNode(message, targetNode)
-                _routingStats.value = _routingStats.value.copy(
-                    messagesRouted = _routingStats.value.messagesRouted + 1,
-                )
-            } else {
-                // Fallback to legacy routing table
-                val route = routingTable[message.destinationId]
-                val targetNode = route?.let { nodes[it.nextHop] }
-                if (targetNode != null) {
-                    sendMessageToNode(message, targetNode)
-                } else {
-                    logW { "No route to destination: ${message.destinationId}" }
-                    _routingStats.value = _routingStats.value.copy(
-                        messagesDropped = _routingStats.value.messagesDropped + 1,
-                    )
-                }
-            }
-        } else {
-            // Try broadcasting if destination is "broadcast"
-            if (message.destinationId == "broadcast") {
-                broadcastToAllNeighbors(message)
-            } else {
-                logW { "No route to destination: ${message.destinationId}" }
-                _routingStats.value = _routingStats.value.copy(
-                    messagesDropped = _routingStats.value.messagesDropped + 1,
-                )
-            }
-        }
-    }
-
-    private fun forwardMessage(message: MeshMessage) {
-        if (message.ttl <= 0) {
-            logD { "Dropping message ${message.messageId} - TTL expired" }
-            _routingStats.value = _routingStats.value.copy(
-                messagesDropped = _routingStats.value.messagesDropped + 1,
-            )
-            return
-        }
-
-        // Decrement TTL and forward
-        val forwardedMessage = message.copy(ttl = message.ttl - 1)
-
-        // Check if we have a route to the destination
-        if (router.isReachable(message.destinationId)) {
-            sendMessage(forwardedMessage)
-            _routingStats.value = _routingStats.value.copy(
-                messagesForwarded = _routingStats.value.messagesForwarded + 1,
-            )
-            logD { "Forwarded message to ${message.destinationId} via ${router.getNextHop(message.destinationId)}" }
-        } else {
-            logW { "Cannot forward - no route to ${message.destinationId}" }
-            _routingStats.value = _routingStats.value.copy(
-                messagesDropped = _routingStats.value.messagesDropped + 1,
-            )
-        }
-    }
-
-    private fun broadcastToAllNeighbors(message: MeshMessage) {
-        router.getNeighbors().forEach { neighbor ->
-            val targetNode = MeshNode(
-                nodeId = neighbor.nodeId,
-                deviceName = neighbor.nodeId,
-                ipAddress = neighbor.ipAddress,
-                port = neighbor.port,
-                isDirectConnection = true,
-                hopCount = 1,
-            )
-            sendMessageToNode(message, targetNode)
-        }
-    }
-
-    private fun sendMessageToNode(message: MeshMessage, node: MeshNode) {
-        scope.launch {
+    private suspend fun startDiscoveryService() {
+        logD { "Starting discovery service - broadcasting every 10 seconds..." }
+        while (isRunning) {
             try {
-                val data = protocol.serialize(message)
-                val isAudioMessage = message.messageType == MeshMessage.MessageType.AUDIO_DATA
-                val targetPort = if (isAudioMessage) node.port + 1 else node.port
-                val packet = DatagramPacket(
-                    data,
-                    data.size,
-                    InetAddress.getByName(node.ipAddress),
-                    targetPort,
-                )
-
-                val socket = if (isAudioMessage) audioSocket else discoverySocket
-                socket?.send(packet)
-
-                // Track statistics
-                recordPacketSent(data.size, message.messageType)
+                logD { "Broadcasting discovery message..." }
+                discoveryService.broadcastDiscovery()
+                delay(DISCOVERY_INTERVAL)
             } catch (e: Exception) {
-                logE({ "Failed to send message to ${node.deviceName}" }, e)
+                logE({ "Discovery service error" }, e)
+                delay(5000)
             }
         }
     }
 
-    private fun broadcastDiscovery() {
-        scope.launch {
-            // Register our own node ID for binary protocol encoding
-            NodeIdEncoder.register(nodeId)
-
-            // Create binary discovery payload
-            val groupCodePart = groupCode ?: "OPEN"
-            val payload = BinaryDiscoveryPayload.serialize(nodeId, deviceName, groupCodePart, userNickname)
-            val message = MeshMessage(
-                sourceId = nodeId,
-                destinationId = "broadcast",
-                messageType = MeshMessage.MessageType.DISCOVERY,
-                payload = payload,
-            )
-
-            // Broadcast to local network
+    private suspend fun startRoutingService() {
+        while (isRunning) {
             try {
-                val data = protocol.serialize(message)
-                logD { "Broadcasting discovery: nodeId=$nodeId, deviceName=$deviceName, dataSize=${data.size}" }
-
-                // Dynamically get broadcast addresses for all active network interfaces
-                val broadcastAddresses = getNetworkBroadcastAddresses()
-                logD {
-                    "Found ${broadcastAddresses.size} broadcast addresses: " +
-                        broadcastAddresses.joinToString(", ")
+                // Clean up old nodes
+                val expiredNodeIds = nodeRegistry.cleanupExpiredNodes(NODE_TIMEOUT)
+                expiredNodeIds.forEach { nodeId ->
+                    routingService.removeRoute(nodeId)
                 }
 
-                for (broadcastAddr in broadcastAddresses) {
-                    try {
-                        val broadcastAddress = InetAddress.getByName(broadcastAddr)
-                        val packet = DatagramPacket(data, data.size, broadcastAddress, DISCOVERY_PORT)
-                        discoverySocket?.send(packet)
-                        logD { "Sent broadcast discovery to $broadcastAddr:$DISCOVERY_PORT" }
-                    } catch (e: Exception) {
-                        logW({ "Failed to broadcast to $broadcastAddr" }, e)
-                    }
-                }
+                // Perform routing maintenance
+                routingService.performMaintenance()
+
+                // Clean up caches
+                messageDispatcher.cleanupCache()
+                discoveryService.cleanupCaches()
+
+                delay(ROUTING_INTERVAL)
             } catch (e: Exception) {
-                logE({ "Failed to broadcast discovery" }, e)
+                logE({ "Routing service error" }, e)
+                delay(5000)
             }
         }
     }
 
-    private fun sendDiscoveryMessage(ipAddress: String, port: Int) {
-        scope.launch {
+    private suspend fun startHeartbeatService() {
+        while (isRunning) {
             try {
-                logD { "Preparing discovery message to $ipAddress:$port" }
-
-                // Create binary discovery payload
-                val groupCodePart = groupCode ?: "OPEN"
-                val payload = BinaryDiscoveryPayload.serialize(nodeId, deviceName, groupCodePart, userNickname)
-                val message = MeshMessage(
-                    sourceId = nodeId,
-                    destinationId = "discovery",
-                    messageType = MeshMessage.MessageType.DISCOVERY,
-                    payload = payload,
-                )
-
-                val data = protocol.serialize(message)
-                logD { "Discovery message size: ${data.size} bytes" }
-
-                val targetAddress = InetAddress.getByName(ipAddress)
-                logD { "Resolved IP address: $ipAddress -> ${targetAddress.hostAddress}" }
-
-                val packet = DatagramPacket(data, data.size, targetAddress, port)
-
-                val socket = discoverySocket
-                if (socket != null && !socket.isClosed) {
-                    socket.send(packet)
-                    logD { "Discovery message sent successfully to $ipAddress:$port" }
-                } else {
-                    logE { "Discovery socket is null or closed, cannot send to $ipAddress:$port" }
-                }
+                sendHeartbeats()
+                statsCollector.updateStats()
+                delay(HEARTBEAT_INTERVAL)
             } catch (e: Exception) {
-                logE({ "Failed to send discovery message to $ipAddress:$port" }, e)
-                logE { "Exception details: ${e.javaClass.simpleName}: ${e.message}" }
-                e.printStackTrace()
+                logE({ "Heartbeat service error" }, e)
+                delay(5000)
             }
         }
-    }
-
-    private fun sendDiscoveryProbe(ipAddress: String, port: Int) {
-        scope.launch {
-            try {
-                logD { "Sending discovery probe to $ipAddress:$port" }
-
-                // Create binary discovery payload
-                val groupCodePart = groupCode ?: "OPEN"
-                val payload = BinaryDiscoveryPayload.serialize(nodeId, deviceName, groupCodePart, userNickname)
-                val message = MeshMessage(
-                    sourceId = nodeId,
-                    destinationId = "discovery",
-                    messageType = MeshMessage.MessageType.DISCOVERY,
-                    payload = payload,
-                )
-
-                val data = protocol.serialize(message)
-                val targetAddress = InetAddress.getByName(ipAddress)
-                val packet = DatagramPacket(data, data.size, targetAddress, port)
-
-                val socket = discoverySocket
-                if (socket != null && !socket.isClosed) {
-                    socket.send(packet)
-                    logD { "Discovery probe sent to $ipAddress:$port" }
-                } else {
-                    logW { "Discovery socket not available for probe to $ipAddress:$port" }
-                }
-            } catch (e: Exception) {
-                // Silently fail for probes - most devices won't be running Enter-Comm
-                logD { "Discovery probe failed to $ipAddress:$port: ${e.message}" }
-            }
-        }
-    }
-
-    private fun sendDiscoveryResponse(ipAddress: String) {
-        sendDiscoveryMessage(ipAddress, DISCOVERY_PORT)
     }
 
     private fun sendHeartbeats() {
         val payload = "heartbeat".toByteArray()
-        nodes.values.forEach { node ->
+        nodeRegistry.getAllNodes().forEach { (_, node) ->
             val message = MeshMessage(
                 sourceId = nodeId,
                 destinationId = node.nodeId,
                 messageType = MeshMessage.MessageType.HEARTBEAT,
                 payload = payload,
             )
-            sendMessageToNode(message, node)
+            messageDispatcher.sendToNode(message, node)
         }
     }
 
-    private fun updateRoutingTable() {
-        // Perform router maintenance (expire routes, remove dead neighbors)
-        val removedDestinations = router.performMaintenance()
+    private suspend fun startMessageListener() {
+        logD { "Starting message listener on discovery port..." }
+        while (isRunning) {
+            try {
+                val socket = socketManager.discoverySocket ?: continue
+                val buffer = ByteArray(1024)
+                val packet = java.net.DatagramPacket(buffer, buffer.size)
 
-        // Remove expired nodes from our node map
-        removedDestinations.forEach { destId ->
-            nodes.remove(destId)
+                socket.receive(packet)
+
+                val senderAddress = packet.address.hostAddress ?: "unknown"
+                logD { "Received message from $senderAddress, length: ${packet.length}" }
+
+                val message = protocol.deserialize(packet.data, packet.length)
+                if (message != null) {
+                    logD { "Deserialized: type=${message.messageType}, src=${message.sourceId}" }
+                    messageDispatcher.handleMessage(message, senderAddress)
+                } else {
+                    logW { "Failed to deserialize message from $senderAddress" }
+                }
+            } catch (e: SocketTimeoutException) {
+                continue
+            } catch (e: Exception) {
+                if (isRunning) {
+                    logE({ "Message listener error" }, e)
+                    delay(1000)
+                } else {
+                    logD { "Message listener stopped" }
+                }
+            }
         }
-
-        // Sync our legacy routing table with the router
-        syncRoutingTableFromRouter()
-
-        // Check for triggered updates
-        if (router.hasPendingUpdate()) {
-            // Send triggered route advertisements to all neighbors
-            sendRouteAdvertisements()
-            router.clearPendingUpdate()
-        }
-
-        // Update statistics
-        updateRoutingStats()
     }
 
-    /**
-     * Route advertisement service - sends periodic route updates to neighbors.
-     */
+    private suspend fun startAudioListener() {
+        logD { "Starting audio listener..." }
+        while (isRunning) {
+            try {
+                val socket = socketManager.audioSocket
+                if (socket == null || socket.isClosed) {
+                    logE { "Audio socket is null or closed" }
+                    delay(1000)
+                    continue
+                }
+
+                val buffer = ByteArray(4096)
+                val packet = java.net.DatagramPacket(buffer, buffer.size)
+
+                socket.receive(packet)
+                logD { "Received audio packet from ${packet.address.hostAddress}, length: ${packet.length}" }
+
+                val message = protocol.deserialize(packet.data, packet.length)
+                if (message != null) {
+                    logD { "Deserialized audio message: type=${message.messageType}, source=${message.sourceId}" }
+
+                    if (message.messageType == MeshMessage.MessageType.AUDIO_DATA) {
+                        if (message.destinationId == nodeId || message.destinationId == "broadcast") {
+                            logD { "Playing audio data from ${message.sourceId}, size: ${message.payload.size}" }
+                            try {
+                                onAudioDataReceived?.invoke(message.payload, message.sourceId)
+                            } catch (e: Exception) {
+                                logE({ "Error in audio callback" }, e)
+                            }
+                        } else {
+                            logD { "Forwarding audio data to ${message.destinationId}" }
+                            messageDispatcher.forwardMessage(message)
+                        }
+                    }
+                } else {
+                    logW { "Failed to deserialize audio message" }
+                }
+            } catch (e: SocketTimeoutException) {
+                continue
+            } catch (e: Exception) {
+                if (isRunning) {
+                    logE({ "Audio listener error" }, e)
+                    delay(1000)
+                } else {
+                    logD { "Audio listener stopped" }
+                }
+            }
+        }
+    }
+
     private suspend fun startRouteAdvertisementService() {
         logD { "Starting route advertisement service..." }
         while (isRunning) {
             try {
-                // Send route advertisements to all neighbors
-                sendRouteAdvertisements()
-
+                routingService.sendRouteAdvertisements()
                 delay(ROUTE_UPDATE_INTERVAL)
             } catch (e: Exception) {
                 logE({ "Route advertisement service error" }, e)
                 delay(5000)
             }
-        }
-    }
-
-    /**
-     * Send route advertisements to all direct neighbors.
-     */
-    private fun sendRouteAdvertisements() {
-        val neighbors = router.getNeighbors()
-        if (neighbors.isEmpty()) {
-            return
-        }
-
-        logD { "Sending route advertisements to ${neighbors.size} neighbors" }
-
-        for (neighbor in neighbors) {
-            // Generate advertisement with split-horizon poison-reverse
-            val advertisement = router.generateRouteAdvertisement(neighbor.nodeId)
-            val payload = router.serializeAdvertisement(advertisement)
-
-            val message = MeshMessage(
-                sourceId = nodeId,
-                destinationId = neighbor.nodeId,
-                messageType = MeshMessage.MessageType.ROUTE_UPDATE,
-                payload = payload,
-                ttl = 1, // Route updates are single-hop only
-            )
-
-            val targetNode = MeshNode(
-                nodeId = neighbor.nodeId,
-                deviceName = neighbor.nodeId,
-                ipAddress = neighbor.ipAddress,
-                port = neighbor.port,
-                isDirectConnection = true,
-                hopCount = 1,
-            )
-
-            sendMessageToNode(message, targetNode)
-        }
-
-        _routingStats.value = _routingStats.value.copy(
-            routeAdvertisementsSent = _routingStats.value.routeAdvertisementsSent + neighbors.size,
-        )
-    }
-
-    /**
-     * Sync our legacy routing table with the distance vector router.
-     */
-    private fun syncRoutingTableFromRouter() {
-        // Clear and rebuild from router
-        routingTable.clear()
-
-        router.getAllRoutes().forEach { routeEntry ->
-            routingTable[routeEntry.destination] = MeshRoute(
-                destinationId = routeEntry.destination,
-                nextHop = routeEntry.nextHop,
-                hopCount = routeEntry.hopCount,
-                lastUpdated = routeEntry.lastUpdated,
-            )
-        }
-    }
-
-    /**
-     * Update routing statistics.
-     */
-    private fun updateRoutingStats() {
-        val routes = router.getAllRoutes()
-        val neighbors = router.getNeighbors()
-
-        _routingStats.value = _routingStats.value.copy(
-            totalRoutes = routes.size,
-            directNeighbors = neighbors.size,
-            multiHopRoutes = routes.count { !it.isDirectNeighbor },
-            maxHopCount = routes.maxOfOrNull { it.hopCount } ?: 0,
-        )
-    }
-
-    /**
-     * Update network statistics snapshot.
-     */
-    private fun updateNetworkStats() {
-        _networkStats.value = NetworkStats(
-            packetsSent = statsPacketsSent,
-            packetsReceived = statsPacketsReceived,
-            bytesSent = statsBytesSent,
-            bytesReceived = statsBytesReceived,
-            discoveryRequestsSent = statsDiscoveryRequestsSent,
-            discoveryResponsesReceived = statsDiscoveryResponsesReceived,
-            audioPacketsSent = statsAudioPacketsSent,
-            audioPacketsReceived = statsAudioPacketsReceived,
-            heartbeatsSent = statsHeartbeatsSent,
-            heartbeatsReceived = statsHeartbeatsReceived,
-            lastUpdateTime = System.currentTimeMillis(),
-        )
-    }
-
-    /**
-     * Record packet sent for statistics.
-     */
-    private fun recordPacketSent(bytes: Int, messageType: MeshMessage.MessageType) {
-        statsPacketsSent++
-        statsBytesSent += bytes
-        when (messageType) {
-            MeshMessage.MessageType.DISCOVERY -> statsDiscoveryRequestsSent++
-            MeshMessage.MessageType.AUDIO_DATA -> statsAudioPacketsSent++
-            MeshMessage.MessageType.HEARTBEAT -> statsHeartbeatsSent++
-            else -> { /* Other types not tracked separately */ }
-        }
-    }
-
-    /**
-     * Record packet received for statistics.
-     */
-    private fun recordPacketReceived(bytes: Int, messageType: MeshMessage.MessageType) {
-        statsPacketsReceived++
-        statsBytesReceived += bytes
-        when (messageType) {
-            MeshMessage.MessageType.DISCOVERY -> statsDiscoveryResponsesReceived++
-            MeshMessage.MessageType.AUDIO_DATA -> statsAudioPacketsReceived++
-            MeshMessage.MessageType.HEARTBEAT -> statsHeartbeatsReceived++
-            else -> { /* Other types not tracked separately */ }
-        }
-    }
-
-    /**
-     * Reset network statistics.
-     */
-    fun resetNetworkStats() {
-        statsPacketsSent = 0
-        statsPacketsReceived = 0
-        statsBytesSent = 0
-        statsBytesReceived = 0
-        statsDiscoveryRequestsSent = 0
-        statsDiscoveryResponsesReceived = 0
-        statsAudioPacketsSent = 0
-        statsAudioPacketsReceived = 0
-        statsHeartbeatsSent = 0
-        statsHeartbeatsReceived = 0
-        networkStartTime = System.currentTimeMillis()
-        updateNetworkStats()
-        logD { "Network statistics reset" }
-    }
-
-    /**
-     * Get network uptime in milliseconds.
-     */
-    fun getNetworkUptime(): Long {
-        return if (networkStartTime > 0) {
-            System.currentTimeMillis() - networkStartTime
-        } else {
-            0
-        }
-    }
-
-    private fun cleanupOldEntries() {
-        val currentTime = System.currentTimeMillis()
-
-        // Remove old nodes and notify router
-        val expiredNodes = nodes.filter { (_, node) ->
-            currentTime - node.lastSeen > NODE_TIMEOUT
-        }.keys
-
-        expiredNodes.forEach { expiredNodeId ->
-            nodes.remove(expiredNodeId)
-            routingTable.remove(expiredNodeId)
-            // Notify router about removed neighbor
-            router.removeNeighbor(expiredNodeId)
-            // Notify about peer disconnection (for GroupManager sync)
-            onPeerDisconnected?.invoke(expiredNodeId)
-            logD { "Removed expired node: $expiredNodeId" }
-        }
-
-        // Remove old routes (router handles its own route expiration)
-        val expiredRoutes = routingTable.filter { (_, route) ->
-            currentTime - route.lastUpdated > MAX_ROUTE_AGE
-        }.keys
-
-        expiredRoutes.forEach { destinationId ->
-            routingTable.remove(destinationId)
-        }
-
-        // Remove old message cache entries (synchronized for LRU map)
-        synchronized(messageCacheLock) {
-            val expiredMessages = messageCache.filter { (_, timestamp) ->
-                currentTime - timestamp > 60000 // 1 minute
-            }.keys.toList() // Create a copy to avoid ConcurrentModification
-
-            expiredMessages.forEach { messageId ->
-                messageCache.remove(messageId)
-            }
-        }
-
-        // Remove old discovery response cache entries (with proper synchronization)
-        synchronized(discoveryResponseCacheLock) {
-            val expiredResponses = discoveryResponseCache.filter { (_, timestamp) ->
-                currentTime - timestamp > AppConfig.Mesh.DISCOVERY_CACHE_TTL_MS
-            }.keys.toList()
-
-            expiredResponses.forEach { ipAddress ->
-                discoveryResponseCache.remove(ipAddress)
-            }
-        }
-
-        // Remove old recently seen IPs
-        synchronized(recentlySeenIpsLock) {
-            val expiredIps = recentlySeenIps.filter { (_, timestamp) ->
-                currentTime - timestamp > AppConfig.Mesh.DISCOVERY_CACHE_TTL_MS
-            }.keys.toList()
-
-            expiredIps.forEach { ip ->
-                recentlySeenIps.remove(ip)
-            }
-        }
-
-        if (expiredNodes.isNotEmpty() || expiredRoutes.isNotEmpty()) {
-            updateConnectedNodesList()
-        }
-    }
-
-    private fun updateConnectedNodesList() {
-        _connectedNodes.value = nodes.values.toList()
-    }
-
-    private fun generateNodeId(ipAddress: String): String {
-        return "node-${ipAddress.replace(".", "-")}"
-    }
-
-    @Suppress("CyclomaticComplexMethod", "NestedBlockDepth")
-    private fun getNetworkBroadcastAddresses(): List<String> {
-        val broadcastAddresses = mutableListOf<String>()
-
-        try {
-            // If bound to a P2P interface, only use that interface's broadcast
-            if (boundInterfaceName != null && boundAddress != null) {
-                val networkInterface = NetworkInterface.getByName(boundInterfaceName)
-                if (networkInterface != null && networkInterface.isUp) {
-                    collectBroadcastAddressesFromInterface(networkInterface, broadcastAddresses)
-                    logD { "Using only P2P interface broadcasts: ${broadcastAddresses.joinToString(", ")}" }
-
-                    // If we couldn't get a broadcast from the interface, calculate from bound address
-                    if (broadcastAddresses.isEmpty()) {
-                        val calculatedBroadcast = calculateBroadcastFromAddress(boundAddress!!)
-                        if (calculatedBroadcast != null) {
-                            broadcastAddresses.add(calculatedBroadcast)
-                            logD { "Calculated P2P broadcast from bound address: $calculatedBroadcast" }
-                        }
-                    }
-
-                    // Return early - only use P2P broadcasts
-                    if (broadcastAddresses.isNotEmpty()) {
-                        return broadcastAddresses
-                    }
-                }
-            }
-
-            // Not bound to P2P interface - use all interfaces
-            // Include general broadcast
-            broadcastAddresses.add("255.255.255.255")
-
-            val networkInterfaces = NetworkInterface.getNetworkInterfaces()
-
-            for (networkInterface in networkInterfaces) {
-                if (!networkInterface.isUp || networkInterface.isLoopback) {
-                    continue
-                }
-
-                collectBroadcastAddressesFromInterface(networkInterface, broadcastAddresses)
-            }
-
-            // Always include common WiFi Direct broadcast address as a fallback
-            // WiFi Direct typically uses 192.168.49.x subnet
-            if (!broadcastAddresses.contains("192.168.49.255")) {
-                broadcastAddresses.add("192.168.49.255")
-                logD { "Added default WiFi Direct broadcast: 192.168.49.255" }
-            }
-        } catch (e: Exception) {
-            logE({ "Error getting network broadcast addresses" }, e)
-            // Fallback to common addresses if dynamic detection fails
-            if (broadcastAddresses.size <= 1) {
-                broadcastAddresses.add("192.168.49.255") // WiFi Direct common subnet
-                broadcastAddresses.add("192.168.1.255") // Common home network
-                broadcastAddresses.add("10.0.0.255") // Common mobile hotspot
-            }
-        }
-
-        return broadcastAddresses
-    }
-
-    /**
-     * Calculate broadcast address from an IP address assuming /24 subnet.
-     * This is used as fallback when the network interface doesn't report broadcast.
-     */
-    private fun calculateBroadcastFromAddress(address: InetAddress): String? {
-        return try {
-            if (address !is Inet4Address) return null
-            val addressBytes = address.address
-            // Assume /24 subnet for P2P
-            addressBytes[3] = 0xFF.toByte()
-            addressBytes.joinToString(".") { (it.toInt() and 0xFF).toString() }
-        } catch (e: Exception) {
-            logW({ "Failed to calculate broadcast from address" }, e)
-            null
-        }
-    }
-
-    /**
-     * Collects broadcast addresses from a single network interface.
-     * Handles both regular interfaces and WiFi Direct interfaces that may not report
-     * broadcast addresses directly.
-     */
-    private fun collectBroadcastAddressesFromInterface(networkInterface: NetworkInterface, broadcastAddresses: MutableList<String>) {
-        val interfaceName = networkInterface.name
-        logD { "Checking network interface: $interfaceName" }
-
-        // Check if this is a WiFi Direct interface (p2p0, p2p-wlan0-*, etc.)
-        val isP2pInterface = isWiFiDirectInterface(interfaceName)
-        if (isP2pInterface) {
-            logD { "Detected WiFi Direct interface: $interfaceName" }
-        }
-
-        for (interfaceAddress in networkInterface.interfaceAddresses) {
-            val broadcast = interfaceAddress.broadcast
-            if (broadcast != null) {
-                addBroadcastIfNew(broadcast.hostAddress, interfaceName, broadcastAddresses)
-            } else if (isP2pInterface) {
-                // WiFi Direct interfaces may not report broadcast address directly
-                // Calculate it from the IP address and network prefix
-                tryAddCalculatedBroadcast(interfaceAddress, interfaceName, broadcastAddresses)
-            }
-        }
-    }
-
-    /**
-     * Adds a broadcast address to the list if it's new and valid.
-     */
-    private fun addBroadcastIfNew(broadcastAddr: String?, interfaceName: String, broadcastAddresses: MutableList<String>) {
-        if (broadcastAddr != null && !broadcastAddresses.contains(broadcastAddr)) {
-            broadcastAddresses.add(broadcastAddr)
-            logD { "Found broadcast address: $broadcastAddr for interface $interfaceName" }
-        }
-    }
-
-    /**
-     * Attempts to calculate and add a broadcast address for WiFi Direct interfaces.
-     */
-    private fun tryAddCalculatedBroadcast(interfaceAddress: InterfaceAddress, interfaceName: String, broadcastAddresses: MutableList<String>) {
-        val address = interfaceAddress.address
-        if (address is Inet4Address) {
-            val calculatedBroadcast = calculateBroadcastAddress(
-                address,
-                interfaceAddress.networkPrefixLength.toInt(),
-            )
-            if (calculatedBroadcast != null && !broadcastAddresses.contains(calculatedBroadcast)) {
-                broadcastAddresses.add(calculatedBroadcast)
-                logD { "Calculated WiFi Direct broadcast: $calculatedBroadcast for interface $interfaceName" }
-            }
-        }
-    }
-
-    /**
-     * Checks if a network interface is a WiFi Direct (P2P) interface.
-     * WiFi Direct interfaces are typically named:
-     * - p2p0 (older devices)
-     * - p2p-wlan0-* (newer devices, dynamic naming)
-     * - p2p-p2p0-* (some devices)
-     */
-    private fun isWiFiDirectInterface(interfaceName: String): Boolean {
-        val lowerName = interfaceName.lowercase()
-        return lowerName == "p2p0" ||
-            lowerName.startsWith("p2p-") ||
-            lowerName.contains("p2p")
-    }
-
-    /**
-     * Calculates the broadcast address from an IP address and network prefix length.
-     * For example: 192.168.49.1/24 -> 192.168.49.255
-     */
-    private fun calculateBroadcastAddress(address: Inet4Address, prefixLength: Int): String? {
-        return try {
-            val addressBytes = address.address
-            val maskBytes = ByteArray(4)
-
-            // Build the network mask
-            for (i in 0 until 4) {
-                val bitsInOctet = (prefixLength - i * 8).coerceIn(0, 8)
-                maskBytes[i] = (0xFF shl 8 - bitsInOctet).toByte()
-            }
-
-            // Calculate broadcast address: (IP | ~mask)
-            val broadcastBytes = ByteArray(4)
-            for (i in 0 until 4) {
-                broadcastBytes[i] = (addressBytes[i].toInt() or maskBytes[i].toInt().inv()).toByte()
-            }
-
-            // Convert to dotted decimal
-            broadcastBytes.joinToString(".") { (it.toInt() and 0xFF).toString() }
-        } catch (e: Exception) {
-            logW({ "Failed to calculate broadcast address" }, e)
-            null
-        }
-    }
-
-    fun getLocalIPAddresses(): List<String> {
-        // Separate lists to prioritize WiFi Direct interfaces for P2P connectivity
-        val wifiDirectIpAddresses = mutableListOf<String>()
-        val regularIpAddresses = mutableListOf<String>()
-
-        try {
-            val networkInterfaces = NetworkInterface.getNetworkInterfaces()
-
-            for (networkInterface in networkInterfaces) {
-                if (!networkInterface.isUp || networkInterface.isLoopback) {
-                    continue
-                }
-
-                val interfaceName = networkInterface.name
-                val isP2pInterface = isWiFiDirectInterface(interfaceName)
-
-                for (interfaceAddress in networkInterface.interfaceAddresses) {
-                    val inetAddress = interfaceAddress.address
-                    if (inetAddress is Inet4Address) {
-                        val ipAddress = inetAddress.hostAddress
-                        if (ipAddress != null && !ipAddress.startsWith("127.")) {
-                            if (isP2pInterface) {
-                                wifiDirectIpAddresses.add(ipAddress)
-                                logD { "Found WiFi Direct IP: $ipAddress on interface $interfaceName" }
-                            } else {
-                                regularIpAddresses.add(ipAddress)
-                                logD { "Found local IP: $ipAddress on interface $interfaceName" }
-                            }
-                        }
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            logE({ "Error getting local IP addresses" }, e)
-        }
-
-        // Return WiFi Direct IPs first, followed by regular IPs
-        // This prioritizes P2P connectivity when available
-        return wifiDirectIpAddresses + regularIpAddresses
-    }
-
-    /**
-     * Get routing table debug information.
-     */
-    fun getRoutingTableDump(): String {
-        return router.dumpRoutingTable()
-    }
-
-    /**
-     * Get path information to a destination.
-     */
-    fun getPathInfo(destinationId: String): PathInfo? {
-        return router.getPathInfo(destinationId)
-    }
-
-    /**
-     * Check if a destination is reachable via multi-hop routing.
-     */
-    fun isReachable(destinationId: String): Boolean {
-        return router.isReachable(destinationId)
-    }
-
-    /**
-     * Get all reachable destinations.
-     */
-    fun getReachableDestinations(): Set<String> {
-        return router.getReachableDestinations()
-    }
-
-    // ========== WiFi Direct P2P Interface Support ==========
-
-    /**
-     * Log all network interfaces for debugging.
-     * Useful for diagnosing P2P connectivity issues.
-     */
-    @Suppress("NestedBlockDepth")
-    fun logNetworkInterfaces() {
-        logD { "=== Network Interface Diagnostic ===" }
-        try {
-            val interfaces = NetworkInterface.getNetworkInterfaces()
-            for (networkInterface in interfaces) {
-                if (!networkInterface.isUp) continue
-
-                val isP2P = isWiFiDirectInterface(networkInterface.name)
-                val prefix = if (isP2P) "[P2P] " else ""
-
-                logD { "${prefix}Interface: ${networkInterface.name}" }
-                for (addr in networkInterface.interfaceAddresses) {
-                    val inetAddr = addr.address
-                    if (inetAddr is Inet4Address) {
-                        val broadcast = addr.broadcast?.hostAddress ?: "N/A"
-                        logD { "  - ${inetAddr.hostAddress}/${addr.networkPrefixLength} broadcast=$broadcast" }
-                    }
-                }
-            }
-            logD { "Bound interface: $boundInterfaceName, Bound address: ${boundAddress?.hostAddress ?: "none"}" }
-            logD { "=== End Network Interface Diagnostic ===" }
-        } catch (e: Exception) {
-            logE({ "Error logging interfaces" }, e)
-        }
-    }
-
-    /**
-     * Get the IP address of the WiFi Direct P2P interface if available.
-     * Returns a Pair of (interface name, IP address) or null if no P2P interface is active.
-     */
-    @Suppress("NestedBlockDepth")
-    fun getWiFiDirectInterfaceAddress(): Pair<String, InetAddress>? {
-        try {
-            val networkInterfaces = NetworkInterface.getNetworkInterfaces()
-            for (networkInterface in networkInterfaces) {
-                if (!networkInterface.isUp || networkInterface.isLoopback) continue
-
-                if (isWiFiDirectInterface(networkInterface.name)) {
-                    for (interfaceAddress in networkInterface.interfaceAddresses) {
-                        val inetAddress = interfaceAddress.address
-                        if (inetAddress is Inet4Address && !inetAddress.isLoopbackAddress) {
-                            logD { "Found P2P interface: ${networkInterface.name} -> ${inetAddress.hostAddress}" }
-                            return Pair(networkInterface.name, inetAddress)
-                        }
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            logE({ "Error finding P2P interface" }, e)
-        }
-        logD { "No P2P interface found" }
-        return null
-    }
-
-    /**
-     * Check if mesh network is bound to a specific P2P interface.
-     */
-    fun isBoundToP2PInterface(): Boolean {
-        return boundInterfaceName != null && boundAddress != null
-    }
-
-    /**
-     * Get the currently bound interface name, if any.
-     */
-    fun getBoundInterfaceName(): String? = boundInterfaceName
-
-    /**
-     * Start mesh network bound to a specific network interface.
-     * Used for WiFi Direct P2P groups where we need to bind to the p2p interface.
-     *
-     * @param interfaceName The network interface name (e.g., "p2p-wlan0-0")
-     * @param localPort The port to bind to (defaults to DISCOVERY_PORT)
-     */
-    fun startMeshNetworkOnInterface(interfaceName: String, localPort: Int = DISCOVERY_PORT) {
-        if (isRunning) {
-            logD { "Mesh network already running, stopping first to rebind to interface" }
-            stopMeshNetwork()
-        }
-
-        // Find the interface and get its IP
-        val networkInterface = try {
-            NetworkInterface.getByName(interfaceName)
-        } catch (e: Exception) {
-            logE({ "Failed to get interface by name: $interfaceName" }, e)
-            null
-        }
-
-        if (networkInterface == null) {
-            logE { "Interface $interfaceName not found, falling back to default" }
-            startMeshNetwork(localPort)
-            return
-        }
-
-        val localAddress = networkInterface.interfaceAddresses
-            .firstOrNull { it.address is Inet4Address }
-            ?.address as? Inet4Address
-
-        if (localAddress == null) {
-            logE { "No IPv4 address on interface $interfaceName, falling back to default" }
-            startMeshNetwork(localPort)
-            return
-        }
-
-        logD { "Starting mesh on interface $interfaceName with IP ${localAddress.hostAddress}" }
-        boundInterfaceName = interfaceName
-        boundAddress = localAddress
-        startMeshNetworkWithAddress(localAddress, localPort)
-    }
-
-    /**
-     * Start mesh network bound to a specific IP address.
-     */
-    private fun startMeshNetworkWithAddress(bindAddress: InetAddress, localPort: Int) {
-        networkJob = scope.launch {
-            try {
-                logD { "Initializing mesh network on ${bindAddress.hostAddress}:$localPort..." }
-                isRunning = true
-                _isActive.value = true
-                networkStartTime = System.currentTimeMillis()
-
-                // Clean up any existing sockets
-                discoverySocket?.close()
-                audioSocket?.close()
-
-                // Create sockets bound to specific address
-                val discoverySocketAddress = InetSocketAddress(bindAddress, localPort)
-                discoverySocket = DatagramSocket(null).apply {
-                    reuseAddress = true
-                    broadcast = true
-                    soTimeout = SOCKET_TIMEOUT_MS
-                    bind(discoverySocketAddress)
-                }
-
-                val audioSocketAddress = InetSocketAddress(bindAddress, localPort + 1)
-                audioSocket = DatagramSocket(null).apply {
-                    reuseAddress = true
-                    soTimeout = SOCKET_TIMEOUT_MS
-                    bind(audioSocketAddress)
-                }
-
-                logD { "Mesh network sockets bound to ${bindAddress.hostAddress}: discovery=$localPort, audio=${localPort + 1}" }
-                logD { "Node ID: $nodeId, Device name: $deviceName" }
-
-                // Initialize the distance vector router
-                router.initialize()
-                logD { "Distance vector router initialized" }
-
-                // Start discovery and routing services
-                launch { startDiscoveryService() }
-                launch { startRoutingService() }
-                launch { startHeartbeatService() }
-                launch { startMessageListener() }
-                launch { startAudioListener() }
-                launch { startRouteAdvertisementService() }
-
-                // Log network interfaces for debugging
-                logNetworkInterfaces()
-
-                logD { "Mesh network services started successfully on ${bindAddress.hostAddress}:$localPort" }
-            } catch (e: Exception) {
-                logE({ "Failed to start mesh network on ${bindAddress.hostAddress}:$localPort" }, e)
-                e.printStackTrace()
-                stopMeshNetwork()
-            }
-        }
-    }
-
-    /**
-     * Generate current mesh topology for visualization.
-     */
-    fun getMeshTopology(): MeshTopology {
-        val builder = TopologyBuilder(nodeId, deviceName)
-
-        // Add all nodes from our node map
-        nodes.forEach { (id, node) ->
-            val routeEntry = router.getRoute(id)
-            builder.addNode(
-                nodeId = id,
-                displayName = node.deviceName,
-                isDirectNeighbor = routeEntry?.isDirectNeighbor ?: node.isDirectConnection,
-                hopCount = routeEntry?.hopCount ?: node.hopCount,
-                linkQuality = routeEntry?.linkQuality ?: node.linkQuality,
-                lastSeen = node.lastSeen,
-            )
-        }
-
-        // Add connections from router
-        router.getNeighbors().forEach { neighbor ->
-            builder.addConnection(
-                fromNodeId = nodeId,
-                toNodeId = neighbor.nodeId,
-                linkQuality = neighbor.linkQuality,
-                isDirect = true,
-            )
-        }
-
-        // Add route paths
-        router.getAllRoutes().forEach { route ->
-            if (!route.isDirectNeighbor) {
-                // For multi-hop routes, show path through next hop
-                builder.addRoutePath(route.destination, listOf(route.nextHop, route.destination))
-            }
-        }
-
-        return builder.build()
-    }
-}
-
-/**
- * Routing statistics for monitoring and debugging.
- */
-data class RoutingStats(
-    val totalRoutes: Int = 0,
-    val directNeighbors: Int = 0,
-    val multiHopRoutes: Int = 0,
-    val maxHopCount: Int = 0,
-    val messagesRouted: Long = 0,
-    val messagesForwarded: Long = 0,
-    val messagesDropped: Long = 0,
-    val routeAdvertisementsSent: Long = 0,
-)
-
-/**
- * Comprehensive network statistics for diagnostics UI.
- */
-data class NetworkStats(
-    val packetsSent: Long = 0,
-    val packetsReceived: Long = 0,
-    val bytesSent: Long = 0,
-    val bytesReceived: Long = 0,
-    val discoveryRequestsSent: Long = 0,
-    val discoveryResponsesReceived: Long = 0,
-    val audioPacketsSent: Long = 0,
-    val audioPacketsReceived: Long = 0,
-    val heartbeatsSent: Long = 0,
-    val heartbeatsReceived: Long = 0,
-    val lastUpdateTime: Long = System.currentTimeMillis(),
-) {
-    /** Calculate packet loss percentage (0-100) */
-    val packetLossPercent: Float
-        get() {
-            if (packetsSent == 0L) return 0f
-            val expectedResponses = packetsSent
-            val actualResponses = packetsReceived
-            if (actualResponses >= expectedResponses) return 0f
-            return ((expectedResponses - actualResponses) * 100f / expectedResponses).coerceIn(0f, 100f)
-        }
-
-    /** Get formatted uptime string */
-    fun getUptimeString(startTime: Long): String {
-        val uptimeMs = System.currentTimeMillis() - startTime
-        val seconds = (uptimeMs / 1000) % 60
-        val minutes = (uptimeMs / (1000 * 60)) % 60
-        val hours = uptimeMs / (1000 * 60 * 60)
-        return when {
-            hours > 0 -> "${hours}h ${minutes}m"
-            minutes > 0 -> "${minutes}m ${seconds}s"
-            else -> "${seconds}s"
         }
     }
 }
