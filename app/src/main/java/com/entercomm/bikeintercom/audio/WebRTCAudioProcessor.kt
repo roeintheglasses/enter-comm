@@ -10,6 +10,8 @@ import org.webrtc.MediaConstraints
 import org.webrtc.PeerConnectionFactory
 import org.webrtc.audio.AudioDeviceModule
 import org.webrtc.audio.JavaAudioDeviceModule
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
 /**
  * WebRTC-based audio processor with Opus codec and advanced audio processing.
@@ -60,6 +62,26 @@ class WebRTCAudioProcessor(
 
     // Context reference for WebRTC initialization
     private var applicationContext: Context? = null
+
+    // ==================== Opus Codec State ====================
+
+    // Opus encoder/decoder handles (native pointers, 0 when not initialized)
+    private var opusEncoderHandle: Long = 0
+    private var opusDecoderHandle: Long = 0
+
+    // Thread safety for encode/decode operations (matching AdpcmCodec pattern)
+    private val encodeLock = Any()
+    private val decodeLock = Any()
+
+    // Codec initialization state
+    @Volatile
+    private var isCodecInitialized = false
+
+    // FEC (Forward Error Correction) enabled for packet loss resilience
+    private var fecEnabled = true
+
+    // Decode buffer for PLC (Packet Loss Concealment)
+    private var lastDecodedSamples: ShortArray? = null
 
     /**
      * Initialize the WebRTC audio processor.
@@ -155,16 +177,67 @@ class WebRTCAudioProcessor(
             // Enable the audio track
             audioTrack?.setEnabled(true)
 
+            // Initialize Opus codec
+            initializeOpusCodec()
+
             isInitialized = true
             logD {
                 "WebRTC audio processor initialized: ${sampleRate}Hz, ${bitrate}bps, " +
-                    "AEC: $isAecEnabled, NS: $isNsEnabled, AGC: $isAgcEnabled, HP: $isHighPassFilterEnabled"
+                    "AEC: $isAecEnabled, NS: $isNsEnabled, AGC: $isAgcEnabled, HP: $isHighPassFilterEnabled, " +
+                    "Opus: $isCodecInitialized, FEC: $fecEnabled"
             }
             true
         } catch (e: RuntimeException) {
             logE({ "WebRTC initialization failed" }, e)
             cleanup()
             false
+        }
+    }
+
+    /**
+     * Initialize the Opus codec for encoding/decoding.
+     *
+     * Uses native JNI calls to libopus bundled with WebRTC SDK.
+     * Configured for voice communication at 32kbps with FEC enabled.
+     */
+    @Suppress("TooGenericExceptionCaught")
+    private fun initializeOpusCodec() {
+        synchronized(encodeLock) {
+            synchronized(decodeLock) {
+                try {
+                    // Create Opus encoder
+                    opusEncoderHandle = nativeCreateEncoder(
+                        sampleRate,
+                        CHANNELS,
+                        OPUS_APPLICATION_VOIP,
+                        bitrate,
+                        if (fecEnabled) 1 else 0,
+                    )
+
+                    if (opusEncoderHandle == 0L) {
+                        logW { "Native Opus encoder creation failed, using software fallback" }
+                    }
+
+                    // Create Opus decoder
+                    opusDecoderHandle = nativeCreateDecoder(sampleRate, CHANNELS)
+
+                    if (opusDecoderHandle == 0L) {
+                        logW { "Native Opus decoder creation failed, using software fallback" }
+                    }
+
+                    isCodecInitialized = opusEncoderHandle != 0L || opusDecoderHandle != 0L
+                    lastDecodedSamples = ShortArray(FRAME_SIZE)
+
+                    logD { "Opus codec initialized: encoder=${opusEncoderHandle != 0L}, decoder=${opusDecoderHandle != 0L}" }
+                } catch (e: UnsatisfiedLinkError) {
+                    logW({ "Native Opus library not available, using software fallback" }, e)
+                    isCodecInitialized = true // Use software fallback
+                    lastDecodedSamples = ShortArray(FRAME_SIZE)
+                } catch (e: RuntimeException) {
+                    logE({ "Failed to initialize Opus codec" }, e)
+                    isCodecInitialized = false
+                }
+            }
         }
     }
 
@@ -520,12 +593,492 @@ class WebRTCAudioProcessor(
         )
     }
 
+    // ==================== Opus Codec Encode/Decode Methods ====================
+
+    /**
+     * Encode PCM audio samples to Opus format.
+     *
+     * @param pcmData PCM samples (16-bit signed, mono, 48kHz)
+     * @return Opus-encoded data with header, or null on failure
+     */
+    @Suppress("TooGenericExceptionCaught")
+    fun encode(pcmData: ShortArray): ByteArray? {
+        if (!isInitialized || !isCodecInitialized || pcmData.isEmpty()) {
+            return null
+        }
+
+        return synchronized(encodeLock) {
+            try {
+                // Calculate max encoded size (Opus worst case: frame_size * 2 + header)
+                val maxEncodedSize = OPUS_HEADER_SIZE + (pcmData.size * 2)
+                val output = ByteArray(maxEncodedSize)
+
+                val encodedSize = encodeInto(pcmData, output)
+                if (encodedSize > 0) {
+                    // Return trimmed array with actual size
+                    output.copyOf(encodedSize)
+                } else {
+                    null
+                }
+            } catch (e: Exception) {
+                logE({ "Opus encoding failed" }, e)
+                null
+            }
+        }
+    }
+
+    /**
+     * Encode PCM audio samples to Opus format into a pre-allocated buffer.
+     * Zero-copy variant for hot path to eliminate per-frame allocations.
+     *
+     * @param pcmData PCM samples (16-bit signed, mono, 48kHz)
+     * @param output Pre-allocated output buffer (must be at least [OPUS_MAX_PACKET_SIZE] bytes)
+     * @return Number of bytes written, or -1 on failure
+     */
+    @Suppress("TooGenericExceptionCaught", "MagicNumber")
+    fun encodeInto(pcmData: ShortArray, output: ByteArray): Int {
+        if (!isInitialized || !isCodecInitialized || pcmData.isEmpty()) {
+            return -1
+        }
+
+        return synchronized(encodeLock) {
+            try {
+                // Ensure output buffer is large enough
+                if (output.size < OPUS_HEADER_SIZE) {
+                    logE { "Output buffer too small: ${output.size} < $OPUS_HEADER_SIZE" }
+                    return@synchronized -1
+                }
+
+                val buffer = ByteBuffer.wrap(output).order(ByteOrder.LITTLE_ENDIAN)
+
+                // Try native Opus encoding first
+                if (opusEncoderHandle != 0L) {
+                    val encodedLength = nativeEncode(
+                        opusEncoderHandle,
+                        pcmData,
+                        pcmData.size,
+                        output,
+                        OPUS_HEADER_SIZE,
+                        output.size - OPUS_HEADER_SIZE,
+                    )
+
+                    if (encodedLength > 0) {
+                        // Write Opus header
+                        buffer.putShort(pcmData.size.toShort()) // Original sample count
+                        buffer.putShort(encodedLength.toShort()) // Encoded data length
+                        buffer.put(OPUS_CODEC_ID) // Codec identifier
+                        buffer.put(if (fecEnabled) 1 else 0) // FEC flag
+                        buffer.putShort(0) // Reserved
+
+                        return@synchronized OPUS_HEADER_SIZE + encodedLength
+                    }
+                }
+
+                // Software fallback: Simple mu-law-like compression
+                // This provides ~2x compression as a fallback when native Opus unavailable
+                val compressedSize = softwareEncode(pcmData, output, OPUS_HEADER_SIZE)
+                if (compressedSize > 0) {
+                    buffer.putShort(pcmData.size.toShort())
+                    buffer.putShort(compressedSize.toShort())
+                    buffer.put(FALLBACK_CODEC_ID)
+                    buffer.put(0)
+                    buffer.putShort(0)
+
+                    OPUS_HEADER_SIZE + compressedSize
+                } else {
+                    -1
+                }
+            } catch (e: UnsatisfiedLinkError) {
+                logW { "Native Opus encode not available, using software fallback" }
+                softwareEncodeFallback(pcmData, output)
+            } catch (e: Exception) {
+                logE({ "Opus encoding failed" }, e)
+                -1
+            }
+        }
+    }
+
+    /**
+     * Decode Opus data back to PCM samples.
+     *
+     * @param opusData Opus-encoded data with header
+     * @return Decoded PCM samples (16-bit signed), or empty array on failure
+     */
+    @Suppress("TooGenericExceptionCaught")
+    fun decode(opusData: ByteArray): ShortArray {
+        if (!isInitialized || !isCodecInitialized || opusData.size < OPUS_HEADER_SIZE) {
+            return ShortArray(0)
+        }
+
+        return synchronized(decodeLock) {
+            try {
+                // Parse header to determine output size
+                val buffer = ByteBuffer.wrap(opusData).order(ByteOrder.LITTLE_ENDIAN)
+                val sampleCount = buffer.short.toInt() and 0xFFFF
+
+                if (sampleCount <= 0 || sampleCount > MAX_FRAME_SIZE) {
+                    logE { "Invalid sample count in Opus header: $sampleCount" }
+                    return@synchronized ShortArray(0)
+                }
+
+                val output = ShortArray(sampleCount)
+                val decodedCount = decodeInto(opusData, output)
+
+                if (decodedCount > 0) {
+                    // Store for PLC
+                    lastDecodedSamples = output.copyOf()
+                    output
+                } else {
+                    ShortArray(0)
+                }
+            } catch (e: Exception) {
+                logE({ "Opus decoding failed" }, e)
+                ShortArray(0)
+            }
+        }
+    }
+
+    /**
+     * Decode Opus data into a pre-allocated buffer.
+     * Zero-copy variant for hot path to eliminate per-frame allocations.
+     *
+     * @param opusData Opus-encoded data with header
+     * @param output Pre-allocated output buffer (must be at least sampleCount samples)
+     * @return Number of samples written, or -1 on failure
+     */
+    @Suppress("TooGenericExceptionCaught", "MagicNumber")
+    fun decodeInto(opusData: ByteArray, output: ShortArray): Int {
+        if (!isInitialized || !isCodecInitialized || opusData.size < OPUS_HEADER_SIZE) {
+            return -1
+        }
+
+        return synchronized(decodeLock) {
+            try {
+                val buffer = ByteBuffer.wrap(opusData).order(ByteOrder.LITTLE_ENDIAN)
+
+                // Parse Opus header
+                val sampleCount = buffer.short.toInt() and 0xFFFF
+                val encodedLength = buffer.short.toInt() and 0xFFFF
+                val codecId = buffer.get()
+                val fecFlag = buffer.get()
+                buffer.getShort() // Skip reserved
+
+                if (sampleCount <= 0 || sampleCount > MAX_FRAME_SIZE) {
+                    logE { "Invalid sample count: $sampleCount" }
+                    return@synchronized -1
+                }
+
+                if (output.size < sampleCount) {
+                    logE { "Output buffer too small: ${output.size} < $sampleCount" }
+                    return@synchronized -1
+                }
+
+                if (opusData.size < OPUS_HEADER_SIZE + encodedLength) {
+                    logE { "Opus data truncated: ${opusData.size} < ${OPUS_HEADER_SIZE + encodedLength}" }
+                    return@synchronized -1
+                }
+
+                // Decode based on codec ID
+                val decodedSamples = when (codecId) {
+                    OPUS_CODEC_ID -> {
+                        if (opusDecoderHandle != 0L) {
+                            nativeDecode(
+                                opusDecoderHandle,
+                                opusData,
+                                OPUS_HEADER_SIZE,
+                                encodedLength,
+                                output,
+                                sampleCount,
+                                fecFlag.toInt(),
+                            )
+                        } else {
+                            // Fallback to software decode
+                            softwareDecode(opusData, OPUS_HEADER_SIZE, encodedLength, output, sampleCount)
+                        }
+                    }
+                    FALLBACK_CODEC_ID -> {
+                        softwareDecode(opusData, OPUS_HEADER_SIZE, encodedLength, output, sampleCount)
+                    }
+                    else -> {
+                        logE { "Unknown codec ID: $codecId" }
+                        -1
+                    }
+                }
+
+                if (decodedSamples > 0) {
+                    // Update PLC buffer
+                    if (lastDecodedSamples == null || lastDecodedSamples!!.size < decodedSamples) {
+                        lastDecodedSamples = ShortArray(decodedSamples)
+                    }
+                    System.arraycopy(output, 0, lastDecodedSamples!!, 0, decodedSamples)
+                }
+
+                decodedSamples
+            } catch (e: UnsatisfiedLinkError) {
+                logW { "Native Opus decode not available" }
+                -1
+            } catch (e: Exception) {
+                logE({ "Opus decoding failed" }, e)
+                -1
+            }
+        }
+    }
+
+    /**
+     * Decode with packet loss concealment (PLC).
+     * Generates comfort noise or repeats last frame when packets are lost.
+     */
+    fun decodePLC(): ShortArray {
+        return synchronized(decodeLock) {
+            // If we have last decoded samples, fade them out
+            val lastSamples = lastDecodedSamples
+            if (lastSamples != null && lastSamples.isNotEmpty()) {
+                val output = ShortArray(lastSamples.size)
+                for (i in lastSamples.indices) {
+                    // Gradual fade to zero (95% decay per frame)
+                    @Suppress("MagicNumber")
+                    val fadedSample = (lastSamples[i] * 0.95).toInt().toShort()
+                    output[i] = fadedSample
+                    lastSamples[i] = fadedSample
+                }
+                output
+            } else {
+                // Generate silence
+                ShortArray(FRAME_SIZE)
+            }
+        }
+    }
+
+    /**
+     * Get the compression ratio achieved.
+     */
+    fun getCompressionRatio(pcmSamples: Int, encodedBytes: Int): Float {
+        val pcmBytes = pcmSamples * 2 // 16-bit samples
+        return if (encodedBytes > 0) pcmBytes.toFloat() / encodedBytes else 0f
+    }
+
+    /**
+     * Reset encoder state (call when starting a new stream).
+     */
+    fun resetEncoder() {
+        synchronized(encodeLock) {
+            if (opusEncoderHandle != 0L) {
+                try {
+                    nativeResetEncoder(opusEncoderHandle)
+                } catch (e: UnsatisfiedLinkError) {
+                    // Ignore - native not available
+                }
+            }
+            logD { "Opus encoder reset" }
+        }
+    }
+
+    /**
+     * Reset decoder state.
+     */
+    fun resetDecoder() {
+        synchronized(decodeLock) {
+            if (opusDecoderHandle != 0L) {
+                try {
+                    nativeResetDecoder(opusDecoderHandle)
+                } catch (e: UnsatisfiedLinkError) {
+                    // Ignore - native not available
+                }
+            }
+            lastDecodedSamples = null
+            logD { "Opus decoder reset" }
+        }
+    }
+
+    /**
+     * Enable or disable Forward Error Correction (FEC).
+     * FEC helps maintain audio quality during packet loss.
+     */
+    fun setFecEnabled(enabled: Boolean) {
+        fecEnabled = enabled
+        if (opusEncoderHandle != 0L) {
+            try {
+                nativeSetFecEnabled(opusEncoderHandle, if (enabled) 1 else 0)
+            } catch (e: UnsatisfiedLinkError) {
+                // Ignore - native not available
+            }
+        }
+        logD { "FEC ${if (enabled) "enabled" else "disabled"}" }
+    }
+
+    /**
+     * Check if the Opus codec is initialized and ready.
+     */
+    fun isCodecReady(): Boolean = isCodecInitialized
+
+    // ==================== Software Fallback Methods ====================
+
+    /**
+     * Software fallback encoding using simple compression.
+     * Provides ~2x compression when native Opus is unavailable.
+     */
+    @Suppress("MagicNumber")
+    private fun softwareEncode(pcmData: ShortArray, output: ByteArray, offset: Int): Int {
+        // Simple mu-law-like encoding: 16-bit to 8-bit with logarithmic compression
+        if (output.size < offset + pcmData.size) {
+            return -1
+        }
+
+        for (i in pcmData.indices) {
+            val sample = pcmData[i].toInt()
+            // Logarithmic compression to 8 bits
+            val sign = if (sample < 0) 0x80 else 0
+            val magnitude = kotlin.math.abs(sample)
+            val compressed = when {
+                magnitude < 256 -> magnitude shr 4
+                magnitude < 512 -> 16 + ((magnitude - 256) shr 5)
+                magnitude < 1024 -> 24 + ((magnitude - 512) shr 6)
+                magnitude < 2048 -> 32 + ((magnitude - 1024) shr 7)
+                magnitude < 4096 -> 40 + ((magnitude - 2048) shr 8)
+                magnitude < 8192 -> 48 + ((magnitude - 4096) shr 9)
+                magnitude < 16384 -> 56 + ((magnitude - 8192) shr 10)
+                else -> 64 + ((magnitude - 16384) shr 11).coerceAtMost(63)
+            }
+            output[offset + i] = (sign or compressed).toByte()
+        }
+
+        return pcmData.size
+    }
+
+    /**
+     * Software fallback decoding.
+     */
+    @Suppress("MagicNumber")
+    private fun softwareDecode(
+        input: ByteArray,
+        offset: Int,
+        length: Int,
+        output: ShortArray,
+        sampleCount: Int,
+    ): Int {
+        if (length > sampleCount || offset + length > input.size) {
+            return -1
+        }
+
+        for (i in 0 until length.coerceAtMost(sampleCount)) {
+            val byte = input[offset + i].toInt() and 0xFF
+            val sign = if (byte and 0x80 != 0) -1 else 1
+            val value = byte and 0x7F
+
+            // Expand from 7-bit logarithmic to 16-bit linear
+            val magnitude = when {
+                value < 16 -> value shl 4
+                value < 24 -> 256 + ((value - 16) shl 5)
+                value < 32 -> 512 + ((value - 24) shl 6)
+                value < 40 -> 1024 + ((value - 32) shl 7)
+                value < 48 -> 2048 + ((value - 40) shl 8)
+                value < 56 -> 4096 + ((value - 48) shl 9)
+                value < 64 -> 8192 + ((value - 56) shl 10)
+                else -> 16384 + ((value - 64) shl 11)
+            }
+
+            output[i] = (sign * magnitude).coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
+        }
+
+        return length.coerceAtMost(sampleCount)
+    }
+
+    /**
+     * Full software encode fallback with header.
+     */
+    @Suppress("MagicNumber")
+    private fun softwareEncodeFallback(pcmData: ShortArray, output: ByteArray): Int {
+        if (output.size < OPUS_HEADER_SIZE + pcmData.size) {
+            return -1
+        }
+
+        val buffer = ByteBuffer.wrap(output).order(ByteOrder.LITTLE_ENDIAN)
+        val compressedSize = softwareEncode(pcmData, output, OPUS_HEADER_SIZE)
+
+        if (compressedSize > 0) {
+            buffer.putShort(pcmData.size.toShort())
+            buffer.putShort(compressedSize.toShort())
+            buffer.put(FALLBACK_CODEC_ID)
+            buffer.put(0)
+            buffer.putShort(0)
+
+            return OPUS_HEADER_SIZE + compressedSize
+        }
+
+        return -1
+    }
+
+    // ==================== Native JNI Methods ====================
+
+    /**
+     * Create native Opus encoder.
+     * @return Encoder handle (pointer), or 0 on failure
+     */
+    private external fun nativeCreateEncoder(
+        sampleRate: Int,
+        channels: Int,
+        application: Int,
+        bitrate: Int,
+        enableFec: Int,
+    ): Long
+
+    /**
+     * Create native Opus decoder.
+     * @return Decoder handle (pointer), or 0 on failure
+     */
+    private external fun nativeCreateDecoder(sampleRate: Int, channels: Int): Long
+
+    /**
+     * Encode PCM to Opus.
+     * @return Encoded length in bytes, or negative on error
+     */
+    private external fun nativeEncode(
+        encoderHandle: Long,
+        pcmInput: ShortArray,
+        inputSize: Int,
+        output: ByteArray,
+        outputOffset: Int,
+        maxOutputSize: Int,
+    ): Int
+
+    /**
+     * Decode Opus to PCM.
+     * @return Number of decoded samples, or negative on error
+     */
+    private external fun nativeDecode(
+        decoderHandle: Long,
+        opusInput: ByteArray,
+        inputOffset: Int,
+        inputSize: Int,
+        output: ShortArray,
+        maxOutputSamples: Int,
+        decodeFec: Int,
+    ): Int
+
+    /** Reset encoder state. */
+    private external fun nativeResetEncoder(encoderHandle: Long)
+
+    /** Reset decoder state. */
+    private external fun nativeResetDecoder(decoderHandle: Long)
+
+    /** Enable/disable FEC in encoder. */
+    private external fun nativeSetFecEnabled(encoderHandle: Long, enabled: Int)
+
+    /** Destroy encoder and free resources. */
+    private external fun nativeDestroyEncoder(encoderHandle: Long)
+
+    /** Destroy decoder and free resources. */
+    private external fun nativeDestroyDecoder(decoderHandle: Long)
+
     /**
      * Release all WebRTC resources.
      */
     @Suppress("TooGenericExceptionCaught")
     fun cleanup() {
         synchronized(initLock) {
+            // Clean up Opus codec
+            cleanupOpusCodec()
+
             try {
                 audioTrack?.setEnabled(false)
                 audioTrack?.dispose()
@@ -543,6 +1096,35 @@ class WebRTCAudioProcessor(
             isInitialized = false
 
             logD { "WebRTC audio processor cleaned up" }
+        }
+    }
+
+    /**
+     * Clean up Opus codec resources.
+     */
+    @Suppress("TooGenericExceptionCaught")
+    private fun cleanupOpusCodec() {
+        synchronized(encodeLock) {
+            synchronized(decodeLock) {
+                try {
+                    if (opusEncoderHandle != 0L) {
+                        nativeDestroyEncoder(opusEncoderHandle)
+                        opusEncoderHandle = 0
+                    }
+                    if (opusDecoderHandle != 0L) {
+                        nativeDestroyDecoder(opusDecoderHandle)
+                        opusDecoderHandle = 0
+                    }
+                } catch (e: UnsatisfiedLinkError) {
+                    // Ignore - native not available
+                } catch (e: RuntimeException) {
+                    logE({ "Error during Opus cleanup" }, e)
+                }
+
+                isCodecInitialized = false
+                lastDecodedSamples = null
+                logD { "Opus codec cleaned up" }
+            }
         }
     }
 
@@ -571,6 +1153,25 @@ class WebRTCAudioProcessor(
         const val FRAME_SIZE = 960 // 20ms at 48kHz
         const val BITRATE = 32_000 // 32kbps - optimal for voice with Opus
 
+        // Opus codec configuration
+        /** Opus header size: sample_count (2) + encoded_length (2) + codec_id (1) + fec_flag (1) + reserved (2) */
+        private const val OPUS_HEADER_SIZE = 8
+
+        /** Maximum Opus packet size (worst case: 2 bytes per sample + header) */
+        const val OPUS_MAX_PACKET_SIZE = OPUS_HEADER_SIZE + (FRAME_SIZE * 2)
+
+        /** Maximum frame size in samples (120ms at 48kHz) */
+        private const val MAX_FRAME_SIZE = 5760
+
+        /** Opus application mode for VoIP (optimized for voice) */
+        private const val OPUS_APPLICATION_VOIP = 2048
+
+        /** Codec identifier for Opus */
+        private const val OPUS_CODEC_ID: Byte = 0x01
+
+        /** Codec identifier for software fallback (mu-law-like compression) */
+        private const val FALLBACK_CODEC_ID: Byte = 0x02
+
         // Audio constraint keys
         private const val ECHO_CANCELLATION = "googEchoCancellation"
         private const val NOISE_SUPPRESSION = "googNoiseSuppression"
@@ -581,6 +1182,15 @@ class WebRTCAudioProcessor(
         @Volatile
         private var peerConnectionFactory: PeerConnectionFactory? = null
         private val factoryLock = Any()
+
+        init {
+            // Try to load native Opus library
+            try {
+                System.loadLibrary("opus_jni")
+            } catch (e: UnsatisfiedLinkError) {
+                // Native library not available, will use software fallback
+            }
+        }
     }
 }
 
