@@ -949,13 +949,7 @@ class WebRTCAudioProcessor(
      * Software fallback decoding.
      */
     @Suppress("MagicNumber")
-    private fun softwareDecode(
-        input: ByteArray,
-        offset: Int,
-        length: Int,
-        output: ShortArray,
-        sampleCount: Int,
-    ): Int {
+    private fun softwareDecode(input: ByteArray, offset: Int, length: Int, output: ShortArray, sampleCount: Int): Int {
         if (length > sampleCount || offset + length > input.size) {
             return -1
         }
@@ -1014,13 +1008,7 @@ class WebRTCAudioProcessor(
      * Create native Opus encoder.
      * @return Encoder handle (pointer), or 0 on failure
      */
-    private external fun nativeCreateEncoder(
-        sampleRate: Int,
-        channels: Int,
-        application: Int,
-        bitrate: Int,
-        enableFec: Int,
-    ): Long
+    private external fun nativeCreateEncoder(sampleRate: Int, channels: Int, application: Int, bitrate: Int, enableFec: Int): Long
 
     /**
      * Create native Opus decoder.
@@ -1032,28 +1020,13 @@ class WebRTCAudioProcessor(
      * Encode PCM to Opus.
      * @return Encoded length in bytes, or negative on error
      */
-    private external fun nativeEncode(
-        encoderHandle: Long,
-        pcmInput: ShortArray,
-        inputSize: Int,
-        output: ByteArray,
-        outputOffset: Int,
-        maxOutputSize: Int,
-    ): Int
+    private external fun nativeEncode(encoderHandle: Long, pcmInput: ShortArray, inputSize: Int, output: ByteArray, outputOffset: Int, maxOutputSize: Int): Int
 
     /**
      * Decode Opus to PCM.
      * @return Number of decoded samples, or negative on error
      */
-    private external fun nativeDecode(
-        decoderHandle: Long,
-        opusInput: ByteArray,
-        inputOffset: Int,
-        inputSize: Int,
-        output: ShortArray,
-        maxOutputSamples: Int,
-        decodeFec: Int,
-    ): Int
+    private external fun nativeDecode(decoderHandle: Long, opusInput: ByteArray, inputOffset: Int, inputSize: Int, output: ShortArray, maxOutputSamples: Int, decodeFec: Int): Int
 
     /** Reset encoder state. */
     private external fun nativeResetEncoder(encoderHandle: Long)
