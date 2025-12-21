@@ -29,6 +29,7 @@ import org.webrtc.audio.JavaAudioDeviceModule
  *
  * Note: Must be initialized on the main thread per WebRTC requirements.
  */
+@Suppress("TooManyFunctions")
 class WebRTCAudioProcessor(
     private val sampleRate: Int = SAMPLE_RATE,
     private val bitrate: Int = BITRATE,
@@ -255,14 +256,129 @@ class WebRTCAudioProcessor(
 
     /**
      * Create media constraints for audio processing.
+     *
+     * Configures WebRTC's audio processing features via MediaConstraints:
+     * - googEchoCancellation: Multi-band AEC, superior to Android native
+     * - googNoiseSuppression: Multi-band NS, handles wind and engine noise
+     * - googAutoGainControl: Adaptive gain, maintains consistent voice levels
+     * - googHighpassFilter: Removes low-frequency noise (replaces custom 300Hz filter)
+     *
+     * Note: These constraints are applied at audio source creation time.
+     * Changes require recreating the audio source via updateAudioProcessing().
      */
     private fun createMediaConstraints(): MediaConstraints {
+        logD { "Creating MediaConstraints - AEC: $isAecEnabled, NS: $isNsEnabled, AGC: $isAgcEnabled, HP: $isHighPassFilterEnabled" }
+
         return MediaConstraints().apply {
+            // Echo cancellation - prevents feedback loops when riders are in proximity
             mandatory.add(MediaConstraints.KeyValuePair(ECHO_CANCELLATION, isAecEnabled.toString()))
+
+            // Noise suppression - multi-band, handles wind noise at 60+ km/h and engine sounds
             mandatory.add(MediaConstraints.KeyValuePair(NOISE_SUPPRESSION, isNsEnabled.toString()))
+
+            // Automatic gain control - maintains consistent voice levels despite varying microphone distances
             mandatory.add(MediaConstraints.KeyValuePair(AUTO_GAIN_CONTROL, isAgcEnabled.toString()))
+
+            // High-pass filter - removes low-frequency rumble (wind, engine vibration)
             mandatory.add(MediaConstraints.KeyValuePair(HIGH_PASS_FILTER, isHighPassFilterEnabled.toString()))
         }
+    }
+
+    /**
+     * Update audio processing settings and recreate audio source if needed.
+     *
+     * WebRTC MediaConstraints cannot be modified after audio source creation,
+     * so this method recreates the audio source with new constraints.
+     *
+     * @param aecEnabled Enable/disable acoustic echo cancellation
+     * @param nsEnabled Enable/disable noise suppression
+     * @param agcEnabled Enable/disable automatic gain control
+     * @param highPassEnabled Enable/disable high-pass filter
+     * @return true if update succeeded, false otherwise
+     */
+    @Suppress("TooGenericExceptionCaught")
+    fun updateAudioProcessing(aecEnabled: Boolean = isAecEnabled, nsEnabled: Boolean = isNsEnabled, agcEnabled: Boolean = isAgcEnabled, highPassEnabled: Boolean = isHighPassFilterEnabled): Boolean {
+        return synchronized(initLock) {
+            if (!isInitialized) {
+                logW { "Cannot update audio processing - not initialized" }
+                return@synchronized false
+            }
+
+            // Check if any settings changed
+            val hasChanges = aecEnabled != isAecEnabled ||
+                nsEnabled != isNsEnabled ||
+                agcEnabled != isAgcEnabled ||
+                highPassEnabled != isHighPassFilterEnabled
+
+            if (!hasChanges) {
+                logD { "No audio processing changes needed" }
+                return@synchronized true
+            }
+
+            // Update state
+            isAecEnabled = aecEnabled
+            isNsEnabled = nsEnabled
+            isAgcEnabled = agcEnabled
+            isHighPassFilterEnabled = highPassEnabled
+
+            logD {
+                "Updating audio processing - AEC: $isAecEnabled, NS: $isNsEnabled, " +
+                    "AGC: $isAgcEnabled, HP: $isHighPassFilterEnabled"
+            }
+
+            try {
+                val factory = peerConnectionFactory ?: run {
+                    logE { "PeerConnectionFactory is null" }
+                    return@synchronized false
+                }
+
+                // Dispose old audio track and source
+                audioTrack?.setEnabled(false)
+                audioTrack?.dispose()
+                audioSource?.dispose()
+
+                // Create new constraints with updated settings
+                mediaConstraints = createMediaConstraints()
+
+                // Create new audio source with updated constraints
+                audioSource = factory.createAudioSource(mediaConstraints)
+                if (audioSource == null) {
+                    logE { "Failed to create audio source with updated constraints" }
+                    return@synchronized false
+                }
+
+                // Create new audio track
+                audioTrack = factory.createAudioTrack("webrtc-audio", audioSource)
+                if (audioTrack == null) {
+                    logE { "Failed to create audio track with updated constraints" }
+                    return@synchronized false
+                }
+
+                audioTrack?.setEnabled(true)
+
+                logD { "Audio processing updated successfully" }
+                true
+            } catch (e: RuntimeException) {
+                logE({ "Failed to update audio processing" }, e)
+                false
+            }
+        }
+    }
+
+    /**
+     * Get a summary of current audio processing configuration.
+     * Useful for debugging and logging.
+     */
+    fun getAudioProcessingConfig(): AudioProcessingConfig {
+        return AudioProcessingConfig(
+            aecEnabled = isAecEnabled,
+            nsEnabled = isNsEnabled,
+            agcEnabled = isAgcEnabled,
+            highPassFilterEnabled = isHighPassFilterEnabled,
+            hardwareAecAvailable = true, // WebRTC handles this internally
+            hardwareNsAvailable = true, // WebRTC handles this internally
+            usingWebRtcProcessing = isInitialized,
+        )
     }
 
     /**
@@ -287,38 +403,90 @@ class WebRTCAudioProcessor(
 
     /**
      * Enable/disable echo cancellation.
-     * Note: Requires reinitialization of audio source to take effect.
+     * Automatically recreates audio source with updated constraints.
+     *
+     * @param enabled Whether to enable AEC
+     * @return true if the change was applied successfully
      */
-    fun setAecEnabled(enabled: Boolean) {
-        isAecEnabled = enabled
-        logD { "AEC ${if (enabled) "enabled" else "disabled"}" }
+    fun setAecEnabled(enabled: Boolean): Boolean {
+        if (enabled == isAecEnabled) {
+            logD { "AEC already ${if (enabled) "enabled" else "disabled"}" }
+            return true
+        }
+
+        return if (isInitialized) {
+            updateAudioProcessing(aecEnabled = enabled)
+        } else {
+            isAecEnabled = enabled
+            logD { "AEC ${if (enabled) "enabled" else "disabled"} (will apply on init)" }
+            true
+        }
     }
 
     /**
      * Enable/disable noise suppression.
-     * Note: Requires reinitialization of audio source to take effect.
+     * Automatically recreates audio source with updated constraints.
+     *
+     * @param enabled Whether to enable noise suppression
+     * @return true if the change was applied successfully
      */
-    fun setNsEnabled(enabled: Boolean) {
-        isNsEnabled = enabled
-        logD { "NS ${if (enabled) "enabled" else "disabled"}" }
+    fun setNsEnabled(enabled: Boolean): Boolean {
+        if (enabled == isNsEnabled) {
+            logD { "NS already ${if (enabled) "enabled" else "disabled"}" }
+            return true
+        }
+
+        return if (isInitialized) {
+            updateAudioProcessing(nsEnabled = enabled)
+        } else {
+            isNsEnabled = enabled
+            logD { "NS ${if (enabled) "enabled" else "disabled"} (will apply on init)" }
+            true
+        }
     }
 
     /**
      * Enable/disable automatic gain control.
-     * Note: Requires reinitialization of audio source to take effect.
+     * Automatically recreates audio source with updated constraints.
+     *
+     * @param enabled Whether to enable AGC
+     * @return true if the change was applied successfully
      */
-    fun setAgcEnabled(enabled: Boolean) {
-        isAgcEnabled = enabled
-        logD { "AGC ${if (enabled) "enabled" else "disabled"}" }
+    fun setAgcEnabled(enabled: Boolean): Boolean {
+        if (enabled == isAgcEnabled) {
+            logD { "AGC already ${if (enabled) "enabled" else "disabled"}" }
+            return true
+        }
+
+        return if (isInitialized) {
+            updateAudioProcessing(agcEnabled = enabled)
+        } else {
+            isAgcEnabled = enabled
+            logD { "AGC ${if (enabled) "enabled" else "disabled"} (will apply on init)" }
+            true
+        }
     }
 
     /**
      * Enable/disable high-pass filter.
-     * Note: Requires reinitialization of audio source to take effect.
+     * Automatically recreates audio source with updated constraints.
+     *
+     * @param enabled Whether to enable high-pass filter
+     * @return true if the change was applied successfully
      */
-    fun setHighPassFilterEnabled(enabled: Boolean) {
-        isHighPassFilterEnabled = enabled
-        logD { "High-pass filter ${if (enabled) "enabled" else "disabled"}" }
+    fun setHighPassFilterEnabled(enabled: Boolean): Boolean {
+        if (enabled == isHighPassFilterEnabled) {
+            logD { "High-pass filter already ${if (enabled) "enabled" else "disabled"}" }
+            return true
+        }
+
+        return if (isInitialized) {
+            updateAudioProcessing(highPassEnabled = enabled)
+        } else {
+            isHighPassFilterEnabled = enabled
+            logD { "High-pass filter ${if (enabled) "enabled" else "disabled"} (will apply on init)" }
+            true
+        }
     }
 
     /**
@@ -427,4 +595,18 @@ data class WebRTCAudioStats(
     val highPassFilterEnabled: Boolean,
     val sampleRate: Int,
     val bitrate: Int,
+)
+
+/**
+ * Audio processing configuration summary.
+ * Provides detailed info about current audio processing state.
+ */
+data class AudioProcessingConfig(
+    val aecEnabled: Boolean,
+    val nsEnabled: Boolean,
+    val agcEnabled: Boolean,
+    val highPassFilterEnabled: Boolean,
+    val hardwareAecAvailable: Boolean,
+    val hardwareNsAvailable: Boolean,
+    val usingWebRtcProcessing: Boolean,
 )
