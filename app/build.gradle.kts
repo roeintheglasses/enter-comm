@@ -98,6 +98,9 @@ dependencies {
     // Network
     implementation(libs.bundles.network)
 
+    // WebRTC
+    implementation(libs.webrtc)
+
     // Testing
     testImplementation(libs.junit)
     testImplementation(libs.mockk)
