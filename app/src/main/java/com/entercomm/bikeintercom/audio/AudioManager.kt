@@ -345,7 +345,6 @@ class AudioManager(
      * @param output Pre-allocated output buffer
      * @return Number of bytes encoded, or -1 on failure
      */
-    @Suppress("UnusedPrivateMember") // Will be used in subtask-2-3
     private fun encodeAudioWithFallback(samples: ShortArray, output: ByteArray): Int {
         // Try WebRTC first if active
         if (usingWebRtcCodec) {
@@ -390,7 +389,6 @@ class AudioManager(
      * @param output Pre-allocated output buffer for decoded samples
      * @return Number of samples decoded, or -1 on failure
      */
-    @Suppress("UnusedPrivateMember") // Will be used in subtask-2-3
     private fun decodeAudioWithFallback(data: ByteArray, output: ShortArray): Int {
         // Try WebRTC first if active
         if (usingWebRtcCodec) {
@@ -727,10 +725,10 @@ class AudioManager(
                 val entry = getOrCreateProcessor(sourceId)
                 entry.touch()
 
-                // Decode audio using pooled buffer to avoid per-frame allocation
+                // Decode using active codec (WebRTC/Opus or ADPCM fallback)
                 val decodeBuffer = AudioBufferPool.acquireDecodeBuffer()
                 val sampleCount = if (_processingSettings.value.opusEnabled) {
-                    adpcmCodec.decodeInto(audioData, decodeBuffer)
+                    decodeAudioWithFallback(audioData, decodeBuffer)
                 } else {
                     decodePcmInto(audioData, decodeBuffer)
                 }
@@ -797,13 +795,23 @@ class AudioManager(
 
     /**
      * Handle packet loss - generate comfort noise for a source.
+     *
+     * Uses WebRTC's PLC when available for better concealment,
+     * falls back to ADPCM PLC otherwise.
      */
     fun handlePacketLoss(sourceId: String) {
         scope.launch {
             try {
                 val entry = audioProcessors[sourceId] ?: return@launch
                 entry.touch()
-                val plcSamples = adpcmCodec.decodePLC()
+
+                // Use WebRTC PLC if active, otherwise ADPCM PLC
+                val plcSamples = if (usingWebRtcCodec) {
+                    webRtcProcessor?.decodePLC() ?: adpcmCodec.decodePLC()
+                } else {
+                    adpcmCodec.decodePLC()
+                }
+
                 if (plcSamples.isNotEmpty()) {
                     entry.processor.play(plcSamples)
                 }
@@ -947,10 +955,10 @@ class AudioManager(
                     // since we consume it synchronously before the next frame
                     val processedSamples = effectsProcessor.process(buffer)
 
-                    // Encode with ADPCM using pooled buffer to avoid allocation
+                    // Encode using active codec (WebRTC/Opus or ADPCM fallback)
                     val encodeBuffer = AudioBufferPool.getEncodeBuffer()
                     val encodedSize = if (_processingSettings.value.opusEnabled) {
-                        adpcmCodec.encodeInto(processedSamples, encodeBuffer)
+                        encodeAudioWithFallback(processedSamples, encodeBuffer)
                     } else {
                         encodePcmInto(processedSamples, encodeBuffer)
                     }
