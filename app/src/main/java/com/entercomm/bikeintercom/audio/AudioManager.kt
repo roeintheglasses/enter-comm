@@ -92,6 +92,13 @@ class AudioManager(
     )
     private val effectsProcessor = AudioEffectsProcessor()
 
+    // WebRTC audio processor for superior audio quality with Opus codec
+    private var webRtcProcessor: WebRTCAudioProcessor? = null
+
+    // Flag indicating if we're using WebRTC codec (true) or ADPCM fallback (false)
+    @Volatile
+    private var usingWebRtcCodec = false
+
     // Per-source audio processors for playback mixing with LRU eviction
     private val audioProcessors = ConcurrentHashMap<String, ProcessorEntry>()
     private val processorsLock = Any()
@@ -135,13 +142,25 @@ class AudioManager(
      */
     fun initialize() {
         try {
-            logD { "Initializing AudioManager with Opus codec..." }
+            logD { "Initializing AudioManager..." }
 
-            // Initialize Opus codec
+            // Try to initialize WebRTC codec first if Opus is enabled
+            if (_processingSettings.value.opusEnabled) {
+                initializeWebRtcCodec()
+            }
+
+            // Initialize ADPCM codec as fallback (always available)
             if (!adpcmCodec.initialize()) {
-                logE { "Failed to initialize Opus codec, falling back to PCM" }
+                logE { "Failed to initialize ADPCM codec" }
             } else {
-                logD { "Opus codec initialized: ${audioConfig.sampleRate}Hz, ${audioConfig.bitrate}bps" }
+                logD { "ADPCM codec initialized: ${audioConfig.sampleRate}Hz, ${audioConfig.bitrate}bps" }
+            }
+
+            // Log which codec is active
+            if (usingWebRtcCodec) {
+                logD { "Using WebRTC/Opus codec for audio processing" }
+            } else {
+                logD { "Using ADPCM codec for audio processing (fallback)" }
             }
 
             // Setup audio focus handling
@@ -157,6 +176,55 @@ class AudioManager(
         } catch (e: Exception) {
             logE({ "Failed to initialize AudioManager" }, e)
         }
+    }
+
+    /**
+     * Initialize the WebRTC audio processor with Opus codec.
+     *
+     * Creates the WebRTCAudioProcessor and attempts initialization.
+     * If initialization fails, falls back to ADPCM codec gracefully.
+     */
+    private fun initializeWebRtcCodec() {
+        try {
+            logD { "Attempting WebRTC/Opus codec initialization..." }
+
+            // Create WebRTC processor with matching configuration
+            webRtcProcessor = WebRTCAudioProcessor(
+                sampleRate = audioConfig.sampleRate,
+                bitrate = audioConfig.bitrate,
+            )
+
+            // Initialize WebRTC processor (must be called on main thread internally)
+            val initialized = webRtcProcessor?.initialize(context) ?: false
+
+            if (initialized && webRtcProcessor?.isCodecReady() == true) {
+                usingWebRtcCodec = true
+                logD {
+                    "WebRTC/Opus codec initialized successfully: " +
+                        "${audioConfig.sampleRate}Hz, ${audioConfig.bitrate}bps"
+                }
+            } else {
+                logW { "WebRTC codec initialization incomplete, falling back to ADPCM" }
+                cleanupWebRtcProcessor()
+                usingWebRtcCodec = false
+            }
+        } catch (e: Exception) {
+            logE({ "WebRTC initialization failed, falling back to ADPCM" }, e)
+            cleanupWebRtcProcessor()
+            usingWebRtcCodec = false
+        }
+    }
+
+    /**
+     * Clean up WebRTC processor resources.
+     */
+    private fun cleanupWebRtcProcessor() {
+        try {
+            webRtcProcessor?.cleanup()
+        } catch (e: Exception) {
+            logW({ "Error cleaning up WebRTC processor" }, e)
+        }
+        webRtcProcessor = null
     }
 
     /**
@@ -581,12 +649,25 @@ class AudioManager(
         audioRecord?.release()
         audioTrack?.release()
 
-        // Cleanup codec
+        // Cleanup codecs
+        cleanupWebRtcProcessor()
         adpcmCodec.cleanup()
 
         scope.cancel()
         logD { "AudioManager cleaned up" }
     }
+
+    /**
+     * Check if WebRTC codec is currently active.
+     * @return true if WebRTC/Opus codec is in use, false if using ADPCM fallback
+     */
+    fun isUsingWebRtcCodec(): Boolean = usingWebRtcCodec
+
+    /**
+     * Get the WebRTC audio processor (for advanced configuration or debugging).
+     * @return WebRTCAudioProcessor instance if initialized, null otherwise
+     */
+    fun getWebRtcProcessor(): WebRTCAudioProcessor? = webRtcProcessor
 
     // Private methods
 
