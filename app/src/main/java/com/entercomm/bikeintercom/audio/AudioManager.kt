@@ -53,6 +53,7 @@ data class AudioProcessingSettings(
  * - Automatic gain control (hardware AGC with software fallback)
  * - Wind noise filtering (optimized for cycling)
  */
+@Suppress("LargeClass") // Audio manager naturally combines capture, encode, decode, and playback
 class AudioManager(
     private val context: Context,
     /** Callback to send encoded audio data. Parameters: (buffer, offset, length) */

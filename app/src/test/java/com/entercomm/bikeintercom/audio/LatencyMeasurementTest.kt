@@ -29,6 +29,7 @@ import org.junit.Test
  * 3. Measure time difference between input and output
  * 4. Android AudioTimestamp APIs can provide hardware-level timing
  */
+@Suppress("ClassOrdering", "UnnecessaryParentheses")
 class LatencyMeasurementTest {
 
     private lateinit var adpcmCodec: AdpcmCodec

@@ -29,6 +29,7 @@ import org.junit.Test
  * 3. Power-friendly configuration validation
  * 4. Documentation for manual device testing
  */
+@Suppress("ClassOrdering", "UnnecessaryParentheses")
 class BatteryImpactTest {
 
     private lateinit var adpcmCodec: AdpcmCodec

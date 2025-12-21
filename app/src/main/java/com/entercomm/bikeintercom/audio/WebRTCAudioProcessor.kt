@@ -31,7 +31,7 @@ import java.nio.ByteOrder
  *
  * Note: Must be initialized on the main thread per WebRTC requirements.
  */
-@Suppress("TooManyFunctions")
+@Suppress("TooManyFunctions", "LargeClass")
 class WebRTCAudioProcessor(
     private val sampleRate: Int = SAMPLE_RATE,
     private val bitrate: Int = BITRATE,
@@ -610,7 +610,7 @@ class WebRTCAudioProcessor(
         return synchronized(encodeLock) {
             try {
                 // Calculate max encoded size (Opus worst case: frame_size * 2 + header)
-                val maxEncodedSize = OPUS_HEADER_SIZE + (pcmData.size * 2)
+                val maxEncodedSize = OPUS_HEADER_SIZE + pcmData.size * 2
                 val output = ByteArray(maxEncodedSize)
 
                 val encodedSize = encodeInto(pcmData, output)
@@ -688,7 +688,7 @@ class WebRTCAudioProcessor(
                 } else {
                     -1
                 }
-            } catch (e: UnsatisfiedLinkError) {
+            } catch (@Suppress("SwallowedException") e: UnsatisfiedLinkError) {
                 logW { "Native Opus encode not available, using software fallback" }
                 softwareEncodeFallback(pcmData, output)
             } catch (e: Exception) {
@@ -746,7 +746,7 @@ class WebRTCAudioProcessor(
      * @param output Pre-allocated output buffer (must be at least sampleCount samples)
      * @return Number of samples written, or -1 on failure
      */
-    @Suppress("TooGenericExceptionCaught", "MagicNumber")
+    @Suppress("TooGenericExceptionCaught", "MagicNumber", "LongMethod", "CyclomaticComplexMethod")
     fun decodeInto(opusData: ByteArray, output: ShortArray): Int {
         if (!isInitialized || !isCodecInitialized || opusData.size < OPUS_HEADER_SIZE) {
             return -1
@@ -814,7 +814,7 @@ class WebRTCAudioProcessor(
                 }
 
                 decodedSamples
-            } catch (e: UnsatisfiedLinkError) {
+            } catch (@Suppress("SwallowedException") e: UnsatisfiedLinkError) {
                 logW { "Native Opus decode not available" }
                 -1
             } catch (e: Exception) {
@@ -860,13 +860,14 @@ class WebRTCAudioProcessor(
     /**
      * Reset encoder state (call when starting a new stream).
      */
+    @Suppress("SwallowedException")
     fun resetEncoder() {
         synchronized(encodeLock) {
             if (opusEncoderHandle != 0L) {
                 try {
                     nativeResetEncoder(opusEncoderHandle)
-                } catch (e: UnsatisfiedLinkError) {
-                    // Ignore - native not available
+                } catch (ignored: UnsatisfiedLinkError) {
+                    // Native not available - expected on some devices
                 }
             }
             logD { "Opus encoder reset" }
@@ -876,13 +877,14 @@ class WebRTCAudioProcessor(
     /**
      * Reset decoder state.
      */
+    @Suppress("SwallowedException")
     fun resetDecoder() {
         synchronized(decodeLock) {
             if (opusDecoderHandle != 0L) {
                 try {
                     nativeResetDecoder(opusDecoderHandle)
-                } catch (e: UnsatisfiedLinkError) {
-                    // Ignore - native not available
+                } catch (ignored: UnsatisfiedLinkError) {
+                    // Native not available - expected on some devices
                 }
             }
             lastDecodedSamples = null
@@ -894,13 +896,14 @@ class WebRTCAudioProcessor(
      * Enable or disable Forward Error Correction (FEC).
      * FEC helps maintain audio quality during packet loss.
      */
+    @Suppress("SwallowedException")
     fun setFecEnabled(enabled: Boolean) {
         fecEnabled = enabled
         if (opusEncoderHandle != 0L) {
             try {
                 nativeSetFecEnabled(opusEncoderHandle, if (enabled) 1 else 0)
-            } catch (e: UnsatisfiedLinkError) {
-                // Ignore - native not available
+            } catch (ignored: UnsatisfiedLinkError) {
+                // Native not available - expected on some devices
             }
         }
         logD { "FEC ${if (enabled) "enabled" else "disabled"}" }
@@ -931,13 +934,13 @@ class WebRTCAudioProcessor(
             val magnitude = kotlin.math.abs(sample)
             val compressed = when {
                 magnitude < 256 -> magnitude shr 4
-                magnitude < 512 -> 16 + ((magnitude - 256) shr 5)
-                magnitude < 1024 -> 24 + ((magnitude - 512) shr 6)
-                magnitude < 2048 -> 32 + ((magnitude - 1024) shr 7)
-                magnitude < 4096 -> 40 + ((magnitude - 2048) shr 8)
-                magnitude < 8192 -> 48 + ((magnitude - 4096) shr 9)
-                magnitude < 16384 -> 56 + ((magnitude - 8192) shr 10)
-                else -> 64 + ((magnitude - 16384) shr 11).coerceAtMost(63)
+                magnitude < 512 -> 16 + (magnitude - 256 shr 5)
+                magnitude < 1_024 -> 24 + (magnitude - 512 shr 6)
+                magnitude < 2_048 -> 32 + (magnitude - 1_024 shr 7)
+                magnitude < 4_096 -> 40 + (magnitude - 2_048 shr 8)
+                magnitude < 8_192 -> 48 + (magnitude - 4_096 shr 9)
+                magnitude < 16_384 -> 56 + (magnitude - 8_192 shr 10)
+                else -> 64 + (magnitude - 16_384 shr 11).coerceAtMost(63)
             }
             output[offset + i] = (sign or compressed).toByte()
         }
@@ -962,13 +965,13 @@ class WebRTCAudioProcessor(
             // Expand from 7-bit logarithmic to 16-bit linear
             val magnitude = when {
                 value < 16 -> value shl 4
-                value < 24 -> 256 + ((value - 16) shl 5)
-                value < 32 -> 512 + ((value - 24) shl 6)
-                value < 40 -> 1024 + ((value - 32) shl 7)
-                value < 48 -> 2048 + ((value - 40) shl 8)
-                value < 56 -> 4096 + ((value - 48) shl 9)
-                value < 64 -> 8192 + ((value - 56) shl 10)
-                else -> 16384 + ((value - 64) shl 11)
+                value < 24 -> 256 + (value - 16 shl 5)
+                value < 32 -> 512 + (value - 24 shl 6)
+                value < 40 -> 1_024 + (value - 32 shl 7)
+                value < 48 -> 2_048 + (value - 40 shl 8)
+                value < 56 -> 4_096 + (value - 48 shl 9)
+                value < 64 -> 8_192 + (value - 56 shl 10)
+                else -> 16_384 + (value - 64 shl 11)
             }
 
             output[i] = (sign * magnitude).coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
@@ -1020,12 +1023,14 @@ class WebRTCAudioProcessor(
      * Encode PCM to Opus.
      * @return Encoded length in bytes, or negative on error
      */
+    @Suppress("LongParameterList") // JNI method signature must match native libopus API
     private external fun nativeEncode(encoderHandle: Long, pcmInput: ShortArray, inputSize: Int, output: ByteArray, outputOffset: Int, maxOutputSize: Int): Int
 
     /**
      * Decode Opus to PCM.
      * @return Number of decoded samples, or negative on error
      */
+    @Suppress("LongParameterList") // JNI method signature must match native libopus API
     private external fun nativeDecode(decoderHandle: Long, opusInput: ByteArray, inputOffset: Int, inputSize: Int, output: ShortArray, maxOutputSamples: Int, decodeFec: Int): Int
 
     /** Reset encoder state. */
@@ -1075,7 +1080,7 @@ class WebRTCAudioProcessor(
     /**
      * Clean up Opus codec resources.
      */
-    @Suppress("TooGenericExceptionCaught")
+    @Suppress("TooGenericExceptionCaught", "SwallowedException")
     private fun cleanupOpusCodec() {
         synchronized(encodeLock) {
             synchronized(decodeLock) {
@@ -1088,8 +1093,8 @@ class WebRTCAudioProcessor(
                         nativeDestroyDecoder(opusDecoderHandle)
                         opusDecoderHandle = 0
                     }
-                } catch (e: UnsatisfiedLinkError) {
-                    // Ignore - native not available
+                } catch (ignored: UnsatisfiedLinkError) {
+                    // Native not available - expected on some devices
                 } catch (e: RuntimeException) {
                     logE({ "Error during Opus cleanup" }, e)
                 }
@@ -1131,7 +1136,7 @@ class WebRTCAudioProcessor(
         private const val OPUS_HEADER_SIZE = 8
 
         /** Maximum Opus packet size (worst case: 2 bytes per sample + header) */
-        const val OPUS_MAX_PACKET_SIZE = OPUS_HEADER_SIZE + (FRAME_SIZE * 2)
+        const val OPUS_MAX_PACKET_SIZE = OPUS_HEADER_SIZE + FRAME_SIZE * 2
 
         /** Maximum frame size in samples (120ms at 48kHz) */
         private const val MAX_FRAME_SIZE = 5760
@@ -1158,9 +1163,10 @@ class WebRTCAudioProcessor(
 
         init {
             // Try to load native Opus library
+            @Suppress("SwallowedException")
             try {
                 System.loadLibrary("opus_jni")
-            } catch (e: UnsatisfiedLinkError) {
+            } catch (ignored: UnsatisfiedLinkError) {
                 // Native library not available, will use software fallback
             }
         }
