@@ -99,6 +99,15 @@ class AudioManager(
     @Volatile
     private var usingWebRtcCodec = false
 
+    // Codec fallback tracking
+    private val _codecStatus = MutableStateFlow(CodecStatus.INITIALIZING)
+    val codecStatus: StateFlow<CodecStatus> = _codecStatus.asStateFlow()
+
+    // Track consecutive WebRTC failures for runtime fallback
+    @Volatile
+    private var consecutiveWebRtcFailures = 0
+    private val maxConsecutiveFailures = 5 // Trigger fallback after 5 consecutive failures
+
     // Per-source audio processors for playback mixing with LRU eviction
     private val audioProcessors = ConcurrentHashMap<String, ProcessorEntry>()
     private val processorsLock = Any()
@@ -143,15 +152,25 @@ class AudioManager(
     fun initialize() {
         try {
             logD { "Initializing AudioManager..." }
+            _codecStatus.value = CodecStatus.INITIALIZING
 
             // Try to initialize WebRTC codec first if Opus is enabled
             if (_processingSettings.value.opusEnabled) {
                 initializeWebRtcCodec()
+            } else {
+                // Opus is disabled, use ADPCM directly
+                usingWebRtcCodec = false
+                _codecStatus.value = CodecStatus.ADPCM_OPUS_DISABLED
+                logD { "Opus disabled in settings, using ADPCM codec" }
             }
 
             // Initialize ADPCM codec as fallback (always available)
             if (!adpcmCodec.initialize()) {
                 logE { "Failed to initialize ADPCM codec" }
+                // If both codecs failed, mark as failed
+                if (!usingWebRtcCodec) {
+                    _codecStatus.value = CodecStatus.FAILED
+                }
             } else {
                 logD { "ADPCM codec initialized: ${audioConfig.sampleRate}Hz, ${audioConfig.bitrate}bps" }
             }
@@ -175,6 +194,7 @@ class AudioManager(
             logD { "AudioManager initialized successfully" }
         } catch (e: Exception) {
             logE({ "Failed to initialize AudioManager" }, e)
+            _codecStatus.value = CodecStatus.FAILED
         }
     }
 
@@ -183,6 +203,11 @@ class AudioManager(
      *
      * Creates the WebRTCAudioProcessor and attempts initialization.
      * If initialization fails, falls back to ADPCM codec gracefully.
+     *
+     * Fallback behavior:
+     * - If WebRTC initialization succeeds: usingWebRtcCodec = true, status = WEBRTC_ACTIVE
+     * - If WebRTC initialization fails: usingWebRtcCodec = false, status = ADPCM_FALLBACK_INIT_FAILURE
+     * - If Opus is disabled: usingWebRtcCodec = false, status = ADPCM_OPUS_DISABLED
      */
     private fun initializeWebRtcCodec() {
         try {
@@ -199,6 +224,8 @@ class AudioManager(
 
             if (initialized && webRtcProcessor?.isCodecReady() == true) {
                 usingWebRtcCodec = true
+                _codecStatus.value = CodecStatus.WEBRTC_ACTIVE
+                consecutiveWebRtcFailures = 0
                 logD {
                     "WebRTC/Opus codec initialized successfully: " +
                         "${audioConfig.sampleRate}Hz, ${audioConfig.bitrate}bps"
@@ -207,11 +234,13 @@ class AudioManager(
                 logW { "WebRTC codec initialization incomplete, falling back to ADPCM" }
                 cleanupWebRtcProcessor()
                 usingWebRtcCodec = false
+                _codecStatus.value = CodecStatus.ADPCM_FALLBACK_INIT_FAILURE
             }
         } catch (e: Exception) {
             logE({ "WebRTC initialization failed, falling back to ADPCM" }, e)
             cleanupWebRtcProcessor()
             usingWebRtcCodec = false
+            _codecStatus.value = CodecStatus.ADPCM_FALLBACK_INIT_FAILURE
         }
     }
 
@@ -225,6 +254,175 @@ class AudioManager(
             logW({ "Error cleaning up WebRTC processor" }, e)
         }
         webRtcProcessor = null
+    }
+
+    /**
+     * Handle a WebRTC encoding/decoding failure.
+     *
+     * Tracks consecutive failures and triggers fallback to ADPCM if
+     * the failure threshold is exceeded. This provides runtime resilience
+     * when WebRTC encounters unexpected issues during operation.
+     *
+     * @param operation Description of the failed operation for logging
+     */
+    private fun handleWebRtcFailure(operation: String) {
+        consecutiveWebRtcFailures++
+        logW { "WebRTC $operation failed (failure $consecutiveWebRtcFailures/$maxConsecutiveFailures)" }
+
+        if (consecutiveWebRtcFailures >= maxConsecutiveFailures) {
+            triggerRuntimeFallback()
+        }
+    }
+
+    /**
+     * Record a successful WebRTC operation, resetting the failure counter.
+     */
+    private fun recordWebRtcSuccess() {
+        if (consecutiveWebRtcFailures > 0) {
+            consecutiveWebRtcFailures = 0
+        }
+    }
+
+    /**
+     * Trigger runtime fallback from WebRTC to ADPCM.
+     *
+     * Called when WebRTC encounters too many consecutive failures during operation.
+     * This is distinct from initialization failure - it handles cases where WebRTC
+     * was working but starts failing (e.g., resource exhaustion, native library issues).
+     */
+    private fun triggerRuntimeFallback() {
+        if (!usingWebRtcCodec) return // Already using fallback
+
+        logE { "Triggering runtime fallback from WebRTC to ADPCM due to consecutive failures" }
+
+        usingWebRtcCodec = false
+        _codecStatus.value = CodecStatus.ADPCM_FALLBACK_RUNTIME_FAILURE
+
+        // Clean up WebRTC resources to free memory
+        cleanupWebRtcProcessor()
+
+        logD { "Runtime fallback complete, now using ADPCM codec" }
+    }
+
+    /**
+     * Attempt to recover WebRTC codec after runtime fallback.
+     *
+     * This can be called to try re-initializing WebRTC after a runtime failure,
+     * for example when the user changes settings or after a period of stability.
+     *
+     * @return true if WebRTC was successfully re-initialized, false otherwise
+     */
+    fun attemptWebRtcRecovery(): Boolean {
+        if (usingWebRtcCodec) {
+            logD { "WebRTC already active, no recovery needed" }
+            return true
+        }
+
+        if (!_processingSettings.value.opusEnabled) {
+            logD { "Opus disabled in settings, cannot recover WebRTC" }
+            return false
+        }
+
+        logD { "Attempting WebRTC recovery..." }
+        initializeWebRtcCodec()
+
+        return if (usingWebRtcCodec) {
+            logD { "WebRTC recovery successful" }
+            true
+        } else {
+            logW { "WebRTC recovery failed, continuing with ADPCM" }
+            false
+        }
+    }
+
+    /**
+     * Encode audio samples using the active codec.
+     *
+     * Uses WebRTC/Opus if available, falls back to ADPCM.
+     * Handles runtime failures gracefully with automatic fallback.
+     *
+     * @param samples PCM audio samples to encode
+     * @param output Pre-allocated output buffer
+     * @return Number of bytes encoded, or -1 on failure
+     */
+    @Suppress("UnusedPrivateMember") // Will be used in subtask-2-3
+    private fun encodeAudioWithFallback(samples: ShortArray, output: ByteArray): Int {
+        // Try WebRTC first if active
+        if (usingWebRtcCodec) {
+            val result = tryWebRtcEncode(samples, output)
+            if (result > 0) return result
+        }
+
+        // Fallback to ADPCM (or if WebRTC disabled)
+        return adpcmCodec.encodeInto(samples, output)
+    }
+
+    /**
+     * Attempt WebRTC encoding with error handling.
+     * @return encoded bytes on success, -1 on failure
+     */
+    @Suppress("TooGenericExceptionCaught")
+    private fun tryWebRtcEncode(samples: ShortArray, output: ByteArray): Int {
+        val processor = webRtcProcessor ?: return -1
+        return try {
+            val encodedSize = processor.encodeInto(samples, output)
+            if (encodedSize > 0) {
+                recordWebRtcSuccess()
+                encodedSize
+            } else {
+                handleWebRtcFailure("encode")
+                -1
+            }
+        } catch (e: Exception) {
+            logE({ "WebRTC encode exception" }, e)
+            handleWebRtcFailure("encode")
+            -1
+        }
+    }
+
+    /**
+     * Decode audio data using the active codec.
+     *
+     * Uses WebRTC/Opus if available, falls back to ADPCM.
+     * Handles runtime failures gracefully with automatic fallback.
+     *
+     * @param data Encoded audio data
+     * @param output Pre-allocated output buffer for decoded samples
+     * @return Number of samples decoded, or -1 on failure
+     */
+    @Suppress("UnusedPrivateMember") // Will be used in subtask-2-3
+    private fun decodeAudioWithFallback(data: ByteArray, output: ShortArray): Int {
+        // Try WebRTC first if active
+        if (usingWebRtcCodec) {
+            val result = tryWebRtcDecode(data, output)
+            if (result > 0) return result
+        }
+
+        // Fallback to ADPCM (or if WebRTC disabled)
+        return adpcmCodec.decodeInto(data, output)
+    }
+
+    /**
+     * Attempt WebRTC decoding with error handling.
+     * @return decoded samples on success, -1 on failure
+     */
+    @Suppress("TooGenericExceptionCaught")
+    private fun tryWebRtcDecode(data: ByteArray, output: ShortArray): Int {
+        val processor = webRtcProcessor ?: return -1
+        return try {
+            val sampleCount = processor.decodeInto(data, output)
+            if (sampleCount > 0) {
+                recordWebRtcSuccess()
+                sampleCount
+            } else {
+                handleWebRtcFailure("decode")
+                -1
+            }
+        } catch (e: Exception) {
+            logE({ "WebRTC decode exception" }, e)
+            handleWebRtcFailure("decode")
+            -1
+        }
     }
 
     /**
@@ -1076,3 +1274,26 @@ data class CodecStats(
     val compressionRatio: Float = 0f,
     val effectsStats: AudioEffectsStats? = null,
 )
+
+/**
+ * Represents the current codec status for fallback monitoring.
+ */
+enum class CodecStatus {
+    /** Codec is being initialized */
+    INITIALIZING,
+
+    /** WebRTC/Opus codec is active and working */
+    WEBRTC_ACTIVE,
+
+    /** ADPCM fallback is active due to WebRTC initialization failure */
+    ADPCM_FALLBACK_INIT_FAILURE,
+
+    /** ADPCM fallback is active due to runtime WebRTC failures */
+    ADPCM_FALLBACK_RUNTIME_FAILURE,
+
+    /** ADPCM is active because Opus is disabled in settings */
+    ADPCM_OPUS_DISABLED,
+
+    /** Codec initialization failed completely */
+    FAILED,
+}
