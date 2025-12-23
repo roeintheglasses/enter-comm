@@ -209,7 +209,7 @@ class BinaryMeshProtocol : MeshProtocol {
 
     private fun validateVersion(buffer: ByteBuffer): Boolean {
         val version = buffer.get()
-        val majorVersion = (version.toInt() and 0xF0) shr 4
+        val majorVersion = version.toInt() and 0xF0 shr 4
         if (majorVersion != 1) {
             logW { "Unsupported protocol version: $majorVersion" }
             return false
