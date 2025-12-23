@@ -76,42 +76,46 @@ class MessageDispatcher(
         // Track received packet statistics
         statsCollector.recordPacketReceived(message.payload.size, message.messageType)
 
-        // Dispatch based on message type
-        when (message.messageType) {
-            MeshMessage.MessageType.DISCOVERY -> {
-                onDiscoveryMessage?.invoke(message, senderIp)
-            }
-            MeshMessage.MessageType.ROUTE_UPDATE -> {
-                onRouteUpdateMessage?.invoke(message)
-            }
-            MeshMessage.MessageType.CONTROL -> {
-                if (message.destinationId == nodeId) {
-                    onControlMessage?.invoke(String(message.payload), message.sourceId)
-                } else {
-                    forwardMessage(message)
+        // Dispatch based on message type with exception handling
+        try {
+            when (message.messageType) {
+                MeshMessage.MessageType.DISCOVERY -> {
+                    onDiscoveryMessage?.invoke(message, senderIp)
+                }
+                MeshMessage.MessageType.ROUTE_UPDATE -> {
+                    onRouteUpdateMessage?.invoke(message)
+                }
+                MeshMessage.MessageType.CONTROL -> {
+                    if (message.destinationId == nodeId) {
+                        onControlMessage?.invoke(String(message.payload), message.sourceId)
+                    } else {
+                        forwardMessage(message)
+                    }
+                }
+                MeshMessage.MessageType.HEARTBEAT -> {
+                    onHeartbeatMessage?.invoke(message, senderIp)
+                }
+                MeshMessage.MessageType.AUDIO_DATA -> {
+                    // Audio is handled separately in audio listener
+                    onAudioMessage?.invoke(message)
+                }
+                MeshMessage.MessageType.GROUP -> {
+                    if (message.destinationId == nodeId || message.destinationId == "broadcast") {
+                        onGroupMessage?.invoke(message)
+                    } else {
+                        forwardMessage(message)
+                    }
+                }
+                MeshMessage.MessageType.LOCATION -> {
+                    if (message.destinationId == nodeId || message.destinationId == "broadcast") {
+                        onLocationMessage?.invoke(message)
+                    } else {
+                        forwardMessage(message)
+                    }
                 }
             }
-            MeshMessage.MessageType.HEARTBEAT -> {
-                onHeartbeatMessage?.invoke(message, senderIp)
-            }
-            MeshMessage.MessageType.AUDIO_DATA -> {
-                // Audio is handled separately in audio listener
-                onAudioMessage?.invoke(message)
-            }
-            MeshMessage.MessageType.GROUP -> {
-                if (message.destinationId == nodeId || message.destinationId == "broadcast") {
-                    onGroupMessage?.invoke(message)
-                } else {
-                    forwardMessage(message)
-                }
-            }
-            MeshMessage.MessageType.LOCATION -> {
-                if (message.destinationId == nodeId || message.destinationId == "broadcast") {
-                    onLocationMessage?.invoke(message)
-                } else {
-                    forwardMessage(message)
-                }
-            }
+        } catch (e: Exception) {
+            logE({ "Exception in message callback for ${message.messageType}" }, e)
         }
     }
 
@@ -159,27 +163,44 @@ class MessageDispatcher(
 
     /**
      * Send a message directly to a specific node.
+     * Uses coroutine for non-audio messages, direct call for audio (hot path).
      */
     fun sendToNode(message: MeshMessage, node: MeshNode) {
-        scope.launch {
-            try {
-                val data = protocol.serialize(message)
-                val isAudioMessage = message.messageType == MeshMessage.MessageType.AUDIO_DATA
-                val targetPort = if (isAudioMessage) node.port + 1 else node.port
-                val targetAddress = InetAddress.getByName(node.ipAddress)
+        val isAudioMessage = message.messageType == MeshMessage.MessageType.AUDIO_DATA
 
-                val success = if (isAudioMessage) {
-                    socketManager.sendAudio(data, targetAddress, targetPort)
-                } else {
-                    socketManager.sendDiscovery(data, targetAddress, targetPort)
-                }
-
-                if (success) {
-                    statsCollector.recordPacketSent(data.size, message.messageType)
-                }
-            } catch (e: Exception) {
-                logE({ "Failed to send message to ${node.deviceName}" }, e)
+        if (isAudioMessage) {
+            // Hot path for audio - avoid coroutine overhead
+            sendToNodeDirect(message, node)
+        } else {
+            // Non-audio messages can use coroutine
+            scope.launch {
+                sendToNodeDirect(message, node)
             }
+        }
+    }
+
+    /**
+     * Direct synchronous send to a node.
+     * Optimized for low-latency audio transmission.
+     */
+    private fun sendToNodeDirect(message: MeshMessage, node: MeshNode) {
+        try {
+            val data = protocol.serialize(message)
+            val isAudioMessage = message.messageType == MeshMessage.MessageType.AUDIO_DATA
+            val targetPort = if (isAudioMessage) node.port + 1 else node.port
+            val targetAddress = InetAddress.getByName(node.ipAddress)
+
+            val success = if (isAudioMessage) {
+                socketManager.sendAudio(data, targetAddress, targetPort)
+            } else {
+                socketManager.sendDiscovery(data, targetAddress, targetPort)
+            }
+
+            if (success) {
+                statsCollector.recordPacketSent(data.size, message.messageType)
+            }
+        } catch (e: Exception) {
+            logE({ "Failed to send message to ${node.deviceName}" }, e)
         }
     }
 

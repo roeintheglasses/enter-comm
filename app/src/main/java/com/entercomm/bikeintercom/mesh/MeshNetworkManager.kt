@@ -627,39 +627,37 @@ class MeshNetworkManager(
 
     private suspend fun startMessageListener() {
         logD { "Starting message listener on discovery port..." }
+        val buffer = ByteArray(2048)
+        val packet = java.net.DatagramPacket(buffer, buffer.size)
+
         while (isRunning) {
             try {
                 val socket = socketManager.discoverySocket ?: continue
-                val buffer = ByteArray(1024)
-                val packet = java.net.DatagramPacket(buffer, buffer.size)
 
                 socket.receive(packet)
 
                 val senderAddress = packet.address.hostAddress ?: "unknown"
-                logD { "Received message from $senderAddress, length: ${packet.length}" }
-
                 val message = protocol.deserialize(packet.data, packet.length)
                 if (message != null) {
-                    logD { "Deserialized: type=${message.messageType}, src=${message.sourceId}" }
                     messageDispatcher.handleMessage(message, senderAddress)
-                } else {
-                    logW { "Failed to deserialize message from $senderAddress" }
                 }
             } catch (e: SocketTimeoutException) {
                 continue
             } catch (e: Exception) {
                 if (isRunning) {
                     logE({ "Message listener error" }, e)
-                    delay(1000)
-                } else {
-                    logD { "Message listener stopped" }
+                    delay(100)
                 }
             }
         }
+        logD { "Message listener stopped" }
     }
 
     private suspend fun startAudioListener() {
         logD { "Starting audio listener..." }
+        val buffer = ByteArray(4096)
+        val packet = java.net.DatagramPacket(buffer, buffer.size)
+
         while (isRunning) {
             try {
                 val socket = socketManager.audioSocket
@@ -669,43 +667,31 @@ class MeshNetworkManager(
                     continue
                 }
 
-                val buffer = ByteArray(4096)
-                val packet = java.net.DatagramPacket(buffer, buffer.size)
-
                 socket.receive(packet)
-                logD { "Received audio packet from ${packet.address.hostAddress}, length: ${packet.length}" }
 
+                // Fast path - minimize processing time to avoid buffer overflow
                 val message = protocol.deserialize(packet.data, packet.length)
-                if (message != null) {
-                    logD { "Deserialized audio message: type=${message.messageType}, source=${message.sourceId}" }
-
-                    if (message.messageType == MeshMessage.MessageType.AUDIO_DATA) {
-                        if (message.destinationId == nodeId || message.destinationId == "broadcast") {
-                            logD { "Playing audio data from ${message.sourceId}, size: ${message.payload.size}" }
-                            try {
-                                onAudioDataReceived?.invoke(message.payload, message.sourceId)
-                            } catch (e: Exception) {
-                                logE({ "Error in audio callback" }, e)
-                            }
-                        } else {
-                            logD { "Forwarding audio data to ${message.destinationId}" }
-                            messageDispatcher.forwardMessage(message)
+                if (message != null && message.messageType == MeshMessage.MessageType.AUDIO_DATA) {
+                    if (message.destinationId == nodeId || message.destinationId == "broadcast") {
+                        try {
+                            onAudioDataReceived?.invoke(message.payload, message.sourceId)
+                        } catch (e: Exception) {
+                            logE({ "Error in audio callback" }, e)
                         }
+                    } else {
+                        messageDispatcher.forwardMessage(message)
                     }
-                } else {
-                    logW { "Failed to deserialize audio message" }
                 }
             } catch (e: SocketTimeoutException) {
                 continue
             } catch (e: Exception) {
                 if (isRunning) {
                     logE({ "Audio listener error" }, e)
-                    delay(1000)
-                } else {
-                    logD { "Audio listener stopped" }
+                    delay(100)
                 }
             }
         }
+        logD { "Audio listener stopped" }
     }
 
     private suspend fun startRouteAdvertisementService() {

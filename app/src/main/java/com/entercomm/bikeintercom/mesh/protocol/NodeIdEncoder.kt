@@ -39,6 +39,9 @@ object NodeIdEncoder {
     // Reverse cache: encoded long -> nodeId string
     private val decodeCache = ConcurrentHashMap<Long, String>()
 
+    // Lock for atomic cache size check and insertion
+    private val cacheLock = Any()
+
     // Thread-local MessageDigest to avoid synchronization overhead
     private val digestThreadLocal = ThreadLocal.withInitial {
         MessageDigest.getInstance("SHA-256")
@@ -81,10 +84,12 @@ object NodeIdEncoder {
             encoded
         }
 
-        // Cache the result (with size limit check)
-        if (encodeCache.size < MAX_CACHE_SIZE) {
-            encodeCache[nodeId] = finalEncoded
-            decodeCache[finalEncoded] = nodeId
+        // Cache the result (with atomic size limit check)
+        synchronized(cacheLock) {
+            if (encodeCache.size < MAX_CACHE_SIZE) {
+                encodeCache[nodeId] = finalEncoded
+                decodeCache[finalEncoded] = nodeId
+            }
         }
 
         return finalEncoded

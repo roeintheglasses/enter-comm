@@ -705,23 +705,13 @@ class AudioManager(
 
     /**
      * Play received audio data from a mesh node.
+     * Optimized for low-latency processing - minimal logging on hot path.
      */
     fun playAudioData(audioData: ByteArray, sourceId: String) {
+        if (audioData.isEmpty() || audioData.size > 16384) return
+
         scope.launch {
             try {
-                if (audioData.isEmpty()) {
-                    logW { "Received empty audio data from $sourceId" }
-                    return@launch
-                }
-
-                // Validate size
-                if (audioData.size > 16384) {
-                    logE { "Audio data too large from $sourceId: ${audioData.size} bytes" }
-                    return@launch
-                }
-
-                logD { "Received ${audioData.size} bytes from $sourceId" }
-
                 // Get or create processor for this source with LRU eviction
                 val entry = getOrCreateProcessor(sourceId)
                 entry.touch()
@@ -738,7 +728,6 @@ class AudioManager(
                     // Note: play() will copy samples into jitter buffer,
                     // so pooled buffer is safe to reuse after this call
                     entry.processor.play(decodeBuffer, sampleCount)
-                    logD { "Played $sampleCount samples from $sourceId" }
                 }
             } catch (e: OutOfMemoryError) {
                 logE({ "OOM processing audio from $sourceId" }, e)

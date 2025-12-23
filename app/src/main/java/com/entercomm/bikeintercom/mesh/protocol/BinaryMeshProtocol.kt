@@ -82,7 +82,6 @@ class BinaryMeshProtocol : MeshProtocol {
         buffer.flip()
         buffer.get(result)
 
-        logD { "Serialized ${message.messageType} message: $totalSize bytes" }
         return result
     }
 
@@ -95,10 +94,7 @@ class BinaryMeshProtocol : MeshProtocol {
      */
     override fun deserialize(data: ByteArray, length: Int): MeshMessage? {
         val header = parseHeader(data, length) ?: return null
-        val message = buildMessage(header) ?: return null
-
-        logD { "Deserialized ${message.messageType} from ${message.sourceId}" }
-        return message
+        return buildMessage(header)
     }
 
     /**
@@ -163,6 +159,13 @@ class BinaryMeshProtocol : MeshProtocol {
      * Build a MeshMessage from parsed header data.
      */
     private fun buildMessage(header: ParsedHeader): MeshMessage? {
+        // For DISCOVERY messages, the source node ID may not be in the cache yet.
+        // We need to extract it from the payload first and register it.
+        if (header.messageType == MeshMessage.MessageType.DISCOVERY) {
+            // Deserialize payload to register the sender's node ID in the encoder cache
+            BinaryDiscoveryPayload.deserialize(header.payload)
+        }
+
         val sourceId = NodeIdEncoder.decode(header.sourceIdEncoded)
         val destinationId = NodeIdEncoder.decode(header.destIdEncoded)
 
@@ -206,7 +209,7 @@ class BinaryMeshProtocol : MeshProtocol {
 
     private fun validateVersion(buffer: ByteBuffer): Boolean {
         val version = buffer.get()
-        val majorVersion = version.toInt() and 0xF0 shr 4
+        val majorVersion = (version.toInt() and 0xF0) shr 4
         if (majorVersion != 1) {
             logW { "Unsupported protocol version: $majorVersion" }
             return false
@@ -224,6 +227,11 @@ class BinaryMeshProtocol : MeshProtocol {
     }
 
     private fun extractPayload(buffer: ByteBuffer, totalLength: Int, payloadLength: Int): ByteArray? {
+        if (payloadLength > MAX_PAYLOAD_SIZE) {
+            logW { "Payload size $payloadLength exceeds maximum $MAX_PAYLOAD_SIZE" }
+            return null
+        }
+
         val expectedTotal = HEADER_SIZE + payloadLength
         if (totalLength < expectedTotal) {
             logW { "Truncated message: got $totalLength bytes, expected $expectedTotal" }
